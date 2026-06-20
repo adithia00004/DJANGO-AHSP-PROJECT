@@ -77,11 +77,53 @@ def _format_table(table: dict) -> None:
     table['rows'] = new_rows
 
 
+_RINCIAN_DETAIL_FORMATS = ['@', '@', '@', '@', '#,##0.000000', '#,##0.00', '#,##0.00']
+_MONEY = '#,##0.00'
+
+
+def _materialize_rincian(data: dict) -> dict:
+    """Rincian AHSP has a bespoke sections/recap/summary shape (no table_data).
+    Format its canonical Decimals to display strings for PDF/Word/CSV."""
+    for section in data.get('sections') or []:
+        if not isinstance(section, dict):
+            continue
+        fmts = (section.get('detail_table') or {}).get('column_formats') or _RINCIAN_DETAIL_FORMATS
+        for group in section.get('groups') or []:
+            if not isinstance(group, dict):
+                continue
+            group['rows'] = [
+                [format_cell_display(v, fmts[i] if i < len(fmts) else None) for i, v in enumerate(row)]
+                for row in group.get('rows') or []
+            ]
+            if 'subtotal' in group:
+                group['subtotal'] = format_cell_display(group['subtotal'], _MONEY)
+        totals = section.get('totals') or {}
+        for k in ('E', 'F', 'G'):
+            if k in totals:
+                totals[k] = format_cell_display(totals[k], _MONEY)
+        if 'markup_eff' in totals:
+            totals['markup_eff'] = format_cell_display(totals['markup_eff'], '0.00')
+        pek = section.get('pekerjaan') or {}
+        if 'total' in pek:
+            pek['total'] = format_cell_display(pek['total'], _MONEY)
+    _format_table(data.get('recap'))  # recap carries its own column_formats
+    summary = data.get('summary')
+    if isinstance(summary, dict):
+        for k in ('subtotal_langsung', 'grand_total'):
+            if k in summary:
+                summary[k] = format_cell_display(summary[k], _MONEY)
+        if 'ppn_percent' in summary:
+            summary['ppn_percent'] = format_cell_display(summary['ppn_percent'], '0.00')
+    return data
+
+
 def materialize_display_rows(data: dict) -> dict:
     """In-place: format Decimal cells of column_formats-tagged tables to display
     strings, for text-based exporters. Returns ``data`` for convenience."""
     if not isinstance(data, dict):
         return data
+    if data.get('sections'):
+        return _materialize_rincian(data)
     _format_table(data.get('table_data'))
     _format_footer(data)
     for page in data.get('pages') or []:

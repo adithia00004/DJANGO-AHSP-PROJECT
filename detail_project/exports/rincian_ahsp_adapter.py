@@ -149,14 +149,18 @@ class RincianAHSPAdapter:
                             jumlah = koefisien * harga_satuan
                             subtotal += jumlah
 
+                            # WP Export (all Option A): emit canonical Decimal; each
+                            # exporter formats at its boundary (Koef 6 dp, Harga &
+                            # Total 2 dp). The Excel sheet writes real numbers — no
+                            # =E*F / =SUM live formulas, no locale re-parse.
                             rows_in_group.append([
                                 str(detail_no),
                                 detail.uraian or '',
                                 detail.kode or '',
                                 detail.satuan or '',
-                                self._format_number(koefisien, 6),
-                                self._format_number(harga_satuan, 0),
-                                self._format_number(jumlah, 0),
+                                koefisien,
+                                harga_satuan,
+                                jumlah,
                             ])
                             detail_no += 1
                             total_items += 1
@@ -166,7 +170,7 @@ class RincianAHSPAdapter:
                             'title': title,
                             'short_title': short_title,
                             'rows': rows_in_group,
-                            'subtotal': self._format_number(subtotal, 0),
+                            'subtotal': subtotal,
                         })
 
                     canonical = canonical_rekap.get(pek.id, {})
@@ -181,11 +185,11 @@ class RincianAHSPAdapter:
                         canonical.get('unit_price_after_markup', 0)
                     )
 
-                    # Add to recap rows (Lampiran)
+                    # Add to recap rows (Lampiran) — canonical Decimal HSP.
                     recap_rows.append([
                         kode_pek or '-',
                         uraian,
-                        self._format_number(G_hsp, 0),
+                        G_hsp,
                     ])
 
                     # Create section for this pekerjaan
@@ -196,19 +200,21 @@ class RincianAHSPAdapter:
                             'kode': kode_pek or '-',
                             'uraian': uraian,
                             'satuan': satuan_pek,
-                            'total': self._format_number(G_hsp, 0),
+                            'total': G_hsp,
                         },
                         'detail_table': {
                             'headers': detail_headers,
                             'col_widths': detail_col_widths,
+                            # Koef 6 dp; Harga & Jumlah 2 dp (No/Uraian/Kode/Satuan text).
+                            'column_formats': ['@', '@', '@', '@', '#,##0.000000', '#,##0.00', '#,##0.00'],
                         },
                         # New: grouped rows to mirror page structure
                         'groups': groups,
                         'totals': {
-                            'E': self._format_number(E_total, 0),
-                            'F': self._format_number(F_margin, 0),
-                            'G': self._format_number(G_hsp, 0),
-                            'markup_eff': f"{eff_markup:.2f}",
+                            'E': E_total,
+                            'F': F_margin,
+                            'G': G_hsp,
+                            'markup_eff': eff_markup,
                         },
                         'has_details': any(len(g['rows']) > 0 for g in groups),
                     }
@@ -238,14 +244,16 @@ class RincianAHSPAdapter:
             'recap': {
                 'headers': ['Kode AHSP', 'Uraian', 'Total HSP (Rp)'],
                 'rows': recap_rows,
+                'column_formats': ['@', '@', '#,##0.00'],
             },
             'summary': {
                 'total_pekerjaan': total_pekerjaan,
                 'total_items': total_items,
                 # Grand Total = biaya langsung + PPN (= Grand Total web; kontrol vs pagu).
-                'subtotal_langsung': self._format_number(subtotal_langsung, 0),
-                'ppn_percent': f"{ppn_percent:.2f}",
-                'grand_total': self._format_number(grand_total, 0),
+                # Canonical Decimal; exporters format at their boundary.
+                'subtotal_langsung': subtotal_langsung,
+                'ppn_percent': ppn_percent,
+                'grand_total': grand_total,
             }
         }
 

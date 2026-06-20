@@ -78,11 +78,14 @@ class RincianExportContractTests(TestCase):
         self.assertEqual(D, Decimal("660.00"))
         adapter = RincianAHSPAdapter(self.project)
         data = adapter.get_export_data()
-        self.assertEqual(data["summary"]["ppn_percent"], "11.00")
-        self.assertEqual(data["summary"]["subtotal_langsung"], adapter._format_number(D, 0))
-        self.assertEqual(
-            data["summary"]["grand_total"],
-            adapter._format_number(D * Decimal("1.11"), 0),  # 660 × 1.11 = 732.6 → 733
+        # WP Export: adapter now carries canonical Decimal (exporter formats at
+        # its boundary). Parity is an exact numeric match with the service.
+        self.assertEqual(data["summary"]["ppn_percent"], Decimal("11.00"))
+        self.assertEqual(data["summary"]["subtotal_langsung"], D)  # 660
+        self.assertAlmostEqual(
+            float(data["summary"]["grand_total"]),
+            float(D * Decimal("1.11")),  # 660 × 1.11 = 732.60
+            places=2,
         )
 
     def test_no_pricing_row_still_uses_default_ppn_11(self):
@@ -90,7 +93,7 @@ class RincianExportContractTests(TestCase):
         owner2 = get_user_model().objects.create_user("p5-owner2", password="x")
         project2, _ = _build_project(owner2, with_pricing=False)
         data = RincianAHSPAdapter(project2).get_export_data()
-        self.assertEqual(data["summary"]["ppn_percent"], "11.00")
+        self.assertEqual(data["summary"]["ppn_percent"], Decimal("11.00"))
 
 
 class OverrideAuditTests(TestCase):

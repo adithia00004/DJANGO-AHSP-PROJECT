@@ -199,14 +199,10 @@ class RekapCalculationContractTests(TestCase):
         export_data = RincianAHSPAdapter(self.project).get_export_data()
         section = export_data["sections"][0]
 
-        self.assertEqual(
-            section["totals"]["G"],
-            RincianAHSPAdapter(self.project)._format_number(
-                row["unit_price_after_markup"],
-                0,
-            ),
-        )
-        self.assertEqual(section["totals"]["markup_eff"], "12.50")
+        # WP Export: section totals are canonical Decimals (exporter formats at
+        # its boundary) — an exact numeric match with the service row.
+        self.assert_decimal_equal(section["totals"]["G"], row["unit_price_after_markup"])
+        self.assert_decimal_equal(section["totals"]["markup_eff"], "12.5")
 
     def test_expanded_nested_component_uses_bundle_multiplier_once(self):
         referenced = Pekerjaan.objects.create(

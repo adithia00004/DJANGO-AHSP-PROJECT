@@ -660,28 +660,22 @@ class ExcelExporter(ConfigExporterBase):
         ws_rekap.row_dimensions[current_row].height = 30
         current_row += 1
 
-        # Data rows with cross-sheet references
+        # Data rows — canonical backend values (no cross-sheet formula references).
         for idx, ref in enumerate(pekerjaan_refs, 1):
             ws_rekap.cell(row=current_row, column=1, value=idx).border = border
             ws_rekap.cell(row=current_row, column=2, value=ref['kode']).border = border
             ws_rekap.cell(row=current_row, column=3, value=ref['uraian']).border = border
-            
-            # E column - reference to Rincian sheet
-            e_cell = ws_rekap.cell(row=current_row, column=4, value=f"=Rincian!{ref['e_cell']}")
-            e_cell.number_format = '#,##0'
+
+            e_cell = self._write_value_cell(ws_rekap, current_row, 4, ref.get('e_val'), '#,##0.00')
             e_cell.border = border
-            
-            # F column - reference to Rincian sheet
-            f_cell = ws_rekap.cell(row=current_row, column=5, value=f"=Rincian!{ref['f_cell']}")
-            f_cell.number_format = '#,##0'
+
+            f_cell = self._write_value_cell(ws_rekap, current_row, 5, ref.get('f_val'), '#,##0.00')
             f_cell.border = border
-            
-            # G column - reference to Rincian sheet
-            g_cell = ws_rekap.cell(row=current_row, column=6, value=f"=Rincian!{ref['g_cell']}")
-            g_cell.number_format = '#,##0'
+
+            g_cell = self._write_value_cell(ws_rekap, current_row, 6, ref.get('g_val'), '#,##0.00')
             g_cell.font = Font(bold=True)
             g_cell.border = border
-            
+
             current_row += 1
 
         # Column widths for Rekap
@@ -753,43 +747,37 @@ class ExcelExporter(ConfigExporterBase):
             
             for row_data in group_rows:
                 for col_idx, val in enumerate(row_data, 1):
-                    cell = ws.cell(row=start_row, column=col_idx)
-                    cell.border = border
-                    
-                    if col_idx == 7:
-                        cell.value = f"=E{start_row}*F{start_row}"
-                        cell.number_format = '#,##0'
-                    elif col_idx == 5:
-                        cell.value = self._parse_number(val)
-                        cell.number_format = '0.000000'
-                    elif col_idx == 6:
-                        cell.value = self._parse_number(val)
-                        cell.number_format = '#,##0'
+                    # WP Export K2/K3: write the canonical Decimal jumlah/koef/harga
+                    # as real numbers — no =E*F formula, no locale re-parse.
+                    if col_idx == 5:
+                        cell = self._write_value_cell(ws, start_row, col_idx, val, '0.000000')
+                    elif col_idx in (6, 7):
+                        cell = self._write_value_cell(ws, start_row, col_idx, val, '#,##0.00')
                     else:
-                        cell.value = val
+                        cell = ws.cell(row=start_row, column=col_idx, value=val)
+                    cell.border = border
                 start_row += 1
-            
+
             group_last_row = start_row - 1
-            
-            # Subtotal
+
+            # Subtotal (canonical backend value — not =SUM)
             ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
             cell = ws.cell(row=start_row, column=1, value=f"Subtotal {group.get('short_title', '')}")
             cell.font = Font(bold=True, size=9)
             cell.alignment = Alignment(horizontal='right')
             cell.border = border
-            
-            subtotal_cell = ws.cell(row=start_row, column=7)
-            subtotal_cell.value = f"=SUM(G{group_first_row}:G{group_last_row})"
+
+            subtotal_cell = self._write_value_cell(ws, start_row, 7, group.get('subtotal'), '#,##0.00')
             subtotal_cell.font = Font(bold=True)
             subtotal_cell.border = border
-            subtotal_cell.number_format = '#,##0'
-            
-            subtotal_cells.append(f"G{start_row}")
             start_row += 1
 
-        # Totals E, F, G
-        markup_pct = float(totals.get('markup_eff', '10.00').replace(',', '.')) if totals else 10.0
-        
+        # Totals E, F, G — canonical backend values (no live formula).
+        markup_pct = float(totals.get('markup_eff') or 0) if totals else 0.0
+        e_val = totals.get('E') if totals else None
+        f_val = totals.get('F') if totals else None
+        g_val = totals.get('G') if totals else None
+
         # E row
         ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
         cell = ws.cell(row=start_row, column=1, value="Jumlah (E)")
@@ -797,16 +785,13 @@ class ExcelExporter(ConfigExporterBase):
         cell.alignment = Alignment(horizontal='right')
         cell.fill = PatternFill('solid', fgColor='E8F5E9')
         cell.border = border
-        
-        e_row = start_row
-        e_formula = "=" + "+".join(subtotal_cells) if subtotal_cells else "=0"
-        cell = ws.cell(row=start_row, column=7, value=e_formula)
+
+        cell = self._write_value_cell(ws, start_row, 7, e_val, '#,##0.00')
         cell.font = Font(bold=True)
         cell.fill = PatternFill('solid', fgColor='E8F5E9')
         cell.border = border
-        cell.number_format = '#,##0'
         start_row += 1
-        
+
         # F row
         ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
         cell = ws.cell(row=start_row, column=1, value=f"Profit/Margin {markup_pct:.2f}% (F)")
@@ -814,16 +799,13 @@ class ExcelExporter(ConfigExporterBase):
         cell.alignment = Alignment(horizontal='right')
         cell.fill = PatternFill('solid', fgColor='FFF8E1')
         cell.border = border
-        
-        f_row = start_row
-        f_formula = f"=G{e_row}*{markup_pct/100}"
-        cell = ws.cell(row=start_row, column=7, value=f_formula)
+
+        cell = self._write_value_cell(ws, start_row, 7, f_val, '#,##0.00')
         cell.font = Font(bold=True)
         cell.fill = PatternFill('solid', fgColor='FFF8E1')
         cell.border = border
-        cell.number_format = '#,##0'
         start_row += 1
-        
+
         # G row
         ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
         cell = ws.cell(row=start_row, column=1, value="Harga Satuan Pekerjaan (G = E + F)")
@@ -831,23 +813,20 @@ class ExcelExporter(ConfigExporterBase):
         cell.alignment = Alignment(horizontal='right')
         cell.fill = PatternFill('solid', fgColor='BBDEFB')
         cell.border = border
-        
-        g_row = start_row
-        g_formula = f"=G{e_row}+G{f_row}"
-        cell = ws.cell(row=start_row, column=7, value=g_formula)
+
+        cell = self._write_value_cell(ws, start_row, 7, g_val, '#,##0.00')
         cell.font = Font(bold=True, size=10)
         cell.fill = PatternFill('solid', fgColor='BBDEFB')
         cell.border = border
-        cell.number_format = '#,##0'
         start_row += 1
 
-        # Track references for Rekap sheet
+        # Track canonical values for the Rekap sheet (values, not cross-sheet refs).
         pekerjaan_refs.append({
             'kode': pek_kode,
             'uraian': pek_name,
-            'e_cell': f"G{e_row}",
-            'f_cell': f"G{f_row}",
-            'g_cell': f"G{g_row}",
+            'e_val': e_val,
+            'f_val': f_val,
+            'g_val': g_val,
         })
 
         return start_row
