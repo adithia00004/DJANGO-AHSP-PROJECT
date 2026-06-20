@@ -1467,7 +1467,7 @@ Page ini **berbeda dari page lain: sedang di tengah redesign besar WP-P8** (comm
 **Sisa (mengikuti WP-P8 UAT / lintas-page, BUKAN diperbaiki piecemeal):**
 - **RK-20** `validate_total_proporsi()` masih di-comment (`models.py:1023`); efek berkurang karena partial <100% kini by-design → Belum Terjadwal (D-RK-02). Kebijakan over-alokasi (>100%) = domain **Jadwal Pekerjaan**.
 - **D-RK-01..12 lengkap** (hierarki UI, URL state, readiness banner, filter modal, hapus tahapan tuntas, parity export) = lingkup UAT WP-P8 — verifikasi visual/behavioral, bukan grep statik.
-- **RK-23** `str(e)` leak export → **WP Export**; **RK-10** localStorage conversion (cek apakah sudah dihapus per D-RK-03).
+- **~~RK-23~~ — DITUTUP 2026-06-20 (commit `09538fbf`).** Endpoint **data** Rekap Kebutuhan (`api_get_rekap_kebutuhan`, `api_validate_rekap_kebutuhan`, `api_rekap_kebutuhan_weekly`) tak lagi mengirim `str(e)`/`detail:str(e)` ke client; detail hanya log server (`logger.exception`/`exc_info`). Guard behavioral `tests_api_v2_access.py`. (Endpoint **export** Rekap Kebutuhan sudah pakai `export_error_response` sejak WP-B5.) `json.JSONDecodeError` user-file dibiarkan (input-only, bukan internals). **RK-10** localStorage conversion (cek apakah sudah dihapus per D-RK-03) tetap sisa.
 - **Dependensi:** kontrak distribusi periode dimiliki audit **Jadwal Pekerjaan (doc 22)** — Rekap Kebutuhan adalah consumer hilir. Fix kontrak lanjutan harus selaras Jadwal.
 
 **Status:** core P0 backend (RK-01/03/04/05/06) ditutup; redesign D-RK-01..12 = WP-P8 ready-for-UAT. RK-03 residual ditutup atas permintaan owner.
