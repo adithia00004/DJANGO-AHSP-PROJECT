@@ -315,6 +315,26 @@ Medium/Low akan diberi salah satu disposisi:
 
 **Disposition:** N1/N1b = perbaikan WP-P4 lanjutan (reopened post-DONE); N2/N3/N5 dijadwalkan setelahnya.
 
+**STATUS UPDATE 2026-06-19/20 — SEMUA SELESAI & COMMIT.** N1, N1b, N2, N3 (Opsi B safety-net + Opsi A `temp_id→id` kontrak), N5, dan BAC-reset semua FIXED + teruji. Commit: `7ba33278` (N1/N1b/N2/N3-B/N5/BAC), `88af7195` (N3 Opsi A). Detail kebijakan: LP-03 = last-write-wins (DEC-002, BUKAN bug); LP-05 = CL-05 (DONE, lihat tabel Fase 3). Audit doc 16 §11 diperbarui.
+
+### UF-017 - (Reaudit Volume Pekerjaan 2026-06-19/20) — bug locale-parse 3-desimal + hardening page
+
+**Ditemukan & diselesaikan:** 2026-06-19/20, reaudit mendalam halaman Volume Pekerjaan (pasca WP-P3 + seluruh follow-up UF-014). Detail lengkap di `AUDIT_VOLUME_PEKERJAAN.md` §13.
+
+**Temuan utama (BARU):**
+- **VP-A1 (Medium-High) — locale parse 3-desimal jadi ribuan.** `canonFromUIQty` (DUA copy: `volume_pekerjaan.js` penggerak nilai tersimpan + `volume_numeric_patch.js` reformat blur) memperlakukan `^\d{1,3}[.,]\d{3}$` sebagai grouping → `"0,123"`→`123` (error 1000× pada volume tersimpan). **FIXED** (kebijakan owner = **Strict id-ID**: koma SELALU desimal; titik=ribuan hanya grup 3-digit lead non-zero `^[1-9]\d{0,2}(\.\d{3})+$`). Test `volume_qty_parse_idid.test.js`.
+- **VP-A2 (Low-Med)** — leave-flush dulu diblok total oleh 1 input invalid → **FIXED** (saring id invalid, persist baris valid; manual/autosave tetap atomik).
+
+**Carry-over Feb yang ditutup:** V1/CL-05 (hapus legacy `api_save_list_pekerjaan` — leak `type(e):{e}` + 207 + print), V6 (print→logger, tutup leak `str(e)` di batch-copy), V7 (PUT param invalid value → 400), T1/T3/T4/T11 (a11y: `<main>`, `scope="col"`, tab↔panel, `aria-invalid`), V3 (`_validate_computed_parameter_graph` ref/siklus server-side), K1 (`@transaction.atomic` `_populate_expanded_from_raw`).
+
+**Keputusan sadar:** K5 (`select_for_update`) = revalidasi **low practical risk** (single-owner, txn pendek, LWW) → tak diubah. K3 + K2/`parse_number` (export) = **DIPINDAH ke WP Export** (modul `excel_exporter.py` bersama lintas-report; risiko regresi Rincian/RAB; butuh keputusan produk). V5 (keepalive 64KB) = low-risk terbuka (mitigasi autosave+Save).
+
+**Commit:** `3279f28c` + `c64ae0e2` (VP-A1/A2, V1/CL-05, V6, V7, a11y, V3), `46dd5ef2` (fix test flush-order), `74ccb7ab` (K1 + closeout docs).
+
+**Verifikasi:** backend ~205 test PASS lintas suite (V3-graph, V7, volume save/p3, accounts-middleware, security/admin/cache, bundle/rekap, list_pekerjaan); frontend **376 pass / 25 skip / 0 fail**; `manage.py check` 0 issue; `makemigrations --check` no changes.
+
+**Disposition:** halaman Volume Pekerjaan page-scope = **SELESAI**. Sisa K3/parse_number = WP Export terpisah.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.
