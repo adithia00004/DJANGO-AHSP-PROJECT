@@ -10,6 +10,7 @@ the workbook back with openpyxl. One report per test class; add reports as each
 slice lands (K2 -> K3 -> precision).
 """
 import re
+from datetime import date
 from decimal import Decimal
 from io import BytesIO
 
@@ -28,7 +29,9 @@ from detail_project.models import (
     DetailAHSPExpanded,
     VolumePekerjaan,
 )
-from detail_project.models import ProjectParameter, ProjectComputedParameter, VolumeFormulaState
+from detail_project.models import (
+    ProjectParameter, ProjectComputedParameter, VolumeFormulaState, PekerjaanProgressWeekly,
+)
 from detail_project.exports.export_manager import ExportManager
 
 
@@ -273,6 +276,78 @@ class RincianAHSPExcelParityTests(_RekapFixtureMixin, TestCase):
         # G=220 rendered id-ID; the raw str(Decimal) must not leak.
         self.assertIn("220,00", blob)
         self.assertNotIn("220.00", blob)
+
+
+class JadwalMonthlyValueOnlyTests(TestCase):
+    """WP Export 2A: the Jadwal SSOT 'Data Master' sheet carries backend NUMBERS
+    (no recompute formula), and the Monthly rincian sheet keeps only pure 1:1
+    ='Data Master'!cell mirrors — no =SUM/arithmetic/multi-reference."""
+
+    _MIRROR = re.compile(r"^='?Data Master'?!\$?[A-Za-z]+\$?\d+$")
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user("wp-jadwal-2a-owner", password="x")
+        self.project = Project.objects.create(
+            owner=self.owner, nama="Jadwal 2A",
+            tanggal_mulai=date(2026, 1, 1), tanggal_selesai=date(2026, 1, 28),
+            week_start_day=0, week_end_day=6,
+        )
+        klas = Klasifikasi.objects.create(project=self.project, name="K", ordering_index=1)
+        sub = SubKlasifikasi.objects.create(project=self.project, klasifikasi=klas, name="S", ordering_index=1)
+        pkj = Pekerjaan.objects.create(
+            project=self.project, sub_klasifikasi=sub, source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode="P-001", snapshot_uraian="P", snapshot_satuan="m2", ordering_index=1,
+        )
+        item = HargaItemProject.objects.create(
+            project=self.project, kode_item="BHN-1", kategori="BHN", uraian="B", satuan="kg",
+            harga_satuan=Decimal("100.00"),
+        )
+        src = DetailAHSPProject.objects.create(
+            project=self.project, pekerjaan=pkj, harga_item=item, kategori="BHN", kode="BHN-1",
+            uraian="B", satuan="kg", koefisien=Decimal("2.000000"),
+        )
+        DetailAHSPExpanded.objects.create(
+            project=self.project, pekerjaan=pkj, source_detail=src, harga_item=item, kategori="BHN",
+            kode="BHN-1", uraian="B", satuan="kg", koefisien=Decimal("2.000000"), expansion_depth=0,
+        )
+        VolumePekerjaan.objects.create(project=self.project, pekerjaan=pkj, quantity=Decimal("10"))
+        from datetime import timedelta
+        for wk in range(1, 5):
+            ws = date(2026, 1, 1) + timedelta(days=(wk - 1) * 7)
+            PekerjaanProgressWeekly.objects.create(
+                project=self.project, pekerjaan=pkj, week_number=wk,
+                week_start_date=ws, week_end_date=ws + timedelta(days=6),
+                planned_proportion=Decimal("25.00"),
+            )
+
+    def test_data_master_numeric_and_monthly_rincian_mirror_only(self):
+        resp = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "xlsx", report_type="monthly", months=[1],
+        )
+        wb = load_workbook(BytesIO(resp.content))
+        self.assertIn("Data Master", wb.sheetnames)
+
+        # SSOT gate: not one cell on Data Master is a live formula.
+        for cell in (c for row in wb["Data Master"].iter_rows() for c in row):
+            self.assertNotEqual(
+                cell.data_type, "f",
+                f"Data Master!{cell.coordinate} is a formula: {cell.value!r}",
+            )
+
+        # Monthly rincian gate: every formula is a pure 1:1 ='Data Master'!cell mirror.
+        rincian = next(
+            (wb[s] for s in wb.sheetnames if "Rincian" in s or s.startswith("M")), None,
+        )
+        self.assertIsNotNone(rincian, f"monthly rincian sheet not found in {wb.sheetnames}")
+        formula_cells = 0
+        for cell in (c for row in rincian.iter_rows() for c in row):
+            if cell.data_type == "f":
+                formula_cells += 1
+                self.assertRegex(
+                    str(cell.value), self._MIRROR,
+                    f"{rincian.title}!{cell.coordinate} is not a 1:1 mirror: {cell.value!r}",
+                )
+        self.assertGreater(formula_cells, 0, "expected mirror formulas on the rincian sheet")
 
 
 class VolumeExportParityTests(TestCase):
