@@ -2828,19 +2828,13 @@ class ExcelExporter(ConfigExporterBase):
         
         # Track pekerjaan rows for reference
         pekerjaan_rows = []  # List of {id, planned_row, actual_row, type, name}
-        weekly_total_by_row = {}  # row -> canonical total (backend SUM + bobot, no formula)
+        weekly_total_by_row = {}  # row -> canonical Decimal total (backend value, no formula)
         # WP Export 2A/2B: capture the canonical weekly fractions per pekerjaan so the
         # monthly/weekly rincian sheets can aggregate in Python (Decimal) instead of
         # re-summing Data Master cells with Excel formulas.
         weekly_values_by_row = {}  # planned_row -> {'planned': {wk: Decimal}, 'actual': {wk: Decimal}}
         current_row = data_start_row
         pekerjaan_counter = 0
-        
-        # Calculate total harga for bobot
-        total_harga_project = sum(
-            (r.get('total_harga', 0) or 0) + (r.get('volume', 0) or 0) * (r.get('harga_satuan', 0) or 0)
-            for r in base_rows if r.get('type') == 'pekerjaan'
-        )
         
         # Write data rows
         for item in base_rows:
@@ -2905,9 +2899,10 @@ class ExcelExporter(ConfigExporterBase):
                 # Col F: Total Harga (canonical backend value — no live =C*E formula)
                 total_value = item.get('total_harga')
                 if total_value in (None, ''):
-                    total_value = (volume or 0) * (harga_satuan or 0)
-                total_value = float(total_value or 0)
-                total_cell = ws.cell(row=planned_row, column=6, value=total_value)
+                    total_value = Decimal(str(volume or 0)) * Decimal(str(harga_satuan or 0))
+                else:
+                    total_value = Decimal(str(total_value or 0))
+                total_cell = ws.cell(row=planned_row, column=6, value=float(total_value))
                 total_cell.number_format = '#,##0'
                 total_cell.alignment = Alignment(horizontal='center', vertical='center')
                 total_cell.border = border
@@ -3033,8 +3028,8 @@ class ExcelExporter(ConfigExporterBase):
             ws.cell(row=current_row, column=col, value='').border = border
         
         # Total Harga SUM — canonical backend sum (not =SUM)
-        grand_total_value = sum(weekly_total_by_row.values())
-        total_harga_sum = ws.cell(row=current_row, column=6, value=grand_total_value)
+        grand_total_value = sum(weekly_total_by_row.values(), Decimal('0'))
+        total_harga_sum = ws.cell(row=current_row, column=6, value=float(grand_total_value))
         total_harga_sum.number_format = '#,##0'
         total_harga_sum.font = Font(bold=True)
         total_harga_sum.border = border
@@ -3053,12 +3048,12 @@ class ExcelExporter(ConfigExporterBase):
         total_row = current_row
         
         # Set Bobot as canonical share (pekerjaan total / grand total) — not a formula.
-        grand_dec = Decimal(str(grand_total_value or 0))
+        grand_dec = grand_total_value
         bobot_by_row = {}
         for pek in pekerjaan_rows:
             if pek['type'] == 'pekerjaan':
                 planned_row = pek['planned_row']
-                pek_total = Decimal(str(weekly_total_by_row.get(planned_row, 0) or 0))
+                pek_total = weekly_total_by_row.get(planned_row, Decimal('0'))
                 bobot = (pek_total / grand_dec) if grand_dec else Decimal('0')
                 bobot_by_row[planned_row] = bobot
                 bobot_cell = ws.cell(row=planned_row, column=7)
@@ -3099,30 +3094,6 @@ class ExcelExporter(ConfigExporterBase):
         # Colors for summary rows
         PROGRESS_WEEKLY_COLOR = '14b8a6'  # Teal for weekly
         PROGRESS_CUMUL_COLOR = '22c55e'   # Green for cumulative
-        
-        # Collect pekerjaan rows for SUMPRODUCT
-        pek_planned_rows = [p['planned_row'] for p in pekerjaan_rows if p['type'] == 'pekerjaan']
-        pek_actual_rows = [p['actual_row'] for p in pekerjaan_rows if p['type'] == 'pekerjaan']
-        
-        # Helper: build SUMPRODUCT formula for weighted progress
-        def build_weighted_formula(bobot_col, week_col_letter, data_rows, is_cumulative=False, up_to_week=None):
-            """Build SUMPRODUCT formula for bobot-weighted week values"""
-            formulas = []
-            week_list = list(week_col_map.keys())
-            for row in data_rows:
-                bobot_ref = f"G{row}"  # Bobot column
-                if is_cumulative and up_to_week:
-                    # Sum all weeks up to this week
-                    week_refs = []
-                    for wk in week_list:
-                        if wk <= up_to_week:
-                            wk_col = week_col_map[wk]
-                            week_refs.append(f"{wk_col}{row}")
-                    if week_refs:
-                        formulas.append(f"{bobot_ref}*SUM({','.join(week_refs)})")
-                else:
-                    formulas.append(f"{bobot_ref}*{week_col_letter}{row}")
-            return f"=SUM({','.join(formulas)})" if formulas else "0"
         
         # ROW 1: Progress Mingguan Rencana
         row1 = current_row
@@ -3256,6 +3227,8 @@ class ExcelExporter(ConfigExporterBase):
             'summary_rows': summary_rows,
             'weekly_values': weekly_values_by_row,  # planned_row -> {'planned'/'actual': {wk: Decimal}}
             'bobot_by_row': bobot_by_row,           # planned_row -> Decimal share
+            'total_by_row': {r: Decimal(str(v or 0)) for r, v in weekly_total_by_row.items()},
+            'grand_total': Decimal(str(grand_total_value or 0)),
             'week_order': week_order,               # canonical week ordering (incl. partial weeks)
             'project_weekly': {                     # project-level Σ bobot×proporsi (Decimal)
                 'planned': project_planned,
@@ -3330,18 +3303,15 @@ class ExcelExporter(ConfigExporterBase):
         weeks_per_month = 4
         month_start_week = (month - 1) * weeks_per_month + 1
         month_end_week = month * weeks_per_month
-        prev_month_end_week = month_start_week - 1
-        
-        # Get week columns for this month
-        month_week_cols = []
-        for wk in range(month_start_week, month_end_week + 1):
-            if wk in week_col_map:
-                month_week_cols.append(week_col_map[wk])
+        available_weeks = sorted(wk for wk in week_col_map if isinstance(wk, int))
+        month_weeks = [wk for wk in available_weeks if month_start_week <= wk <= month_end_week]
+        previous_weeks = [wk for wk in available_weeks if wk < month_start_week]
+        effective_month_end_week = max(month_weeks) if month_weeks else None
+        effective_prev_week = max(previous_weeks) if previous_weeks else None
         
         # Rencana Bulan Ini = Σ project planned weekly for this month (Python value)
         ws[f'H{current_row}'] = float(sum(
-            (project_weekly.get('planned', {}).get(wk, Decimal('0'))
-             for wk in range(month_start_week, month_end_week + 1)),
+            (project_weekly.get('planned', {}).get(wk, Decimal('0')) for wk in month_weeks),
             Decimal('0'),
         ))
         ws[f'H{current_row}'].number_format = '0.00%;-0.00%;"-"'
@@ -3357,8 +3327,7 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'G{current_row}'] = ':'
         # Actual Bulan Ini = Σ project actual weekly for this month (Python value)
         ws[f'H{current_row}'] = float(sum(
-            (project_weekly.get('actual', {}).get(wk, Decimal('0'))
-             for wk in range(month_start_week, month_end_week + 1)),
+            (project_weekly.get('actual', {}).get(wk, Decimal('0')) for wk in month_weeks),
             Decimal('0'),
         ))
         ws[f'H{current_row}'].number_format = '0.00%;-0.00%;"-"'
@@ -3372,9 +3341,10 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'F{current_row}'] = 'Kumulatif Bulan Lalu'
         ws[f'F{current_row}'].font = Font(bold=True)
         ws[f'G{current_row}'] = ':'
-        # Kumulatif Bulan Lalu = cumul_planned at prev_month_end_week
-        if prev_month_end_week > 0 and prev_month_end_week in week_col_map and summary_rows.get('cumul_planned_row'):
-            prev_col = week_col_map[prev_month_end_week]
+        # Kumulatif Bulan Lalu = cumulative planned at the last canonical week
+        # before this period. This also handles non-full/partial periods.
+        if effective_prev_week is not None and summary_rows.get('cumul_planned_row'):
+            prev_col = week_col_map[effective_prev_week]
             cumul_plan_row = summary_rows['cumul_planned_row']
             ws[f'H{current_row}'] = f"='{ssot_name}'!{prev_col}{cumul_plan_row}"
         else:
@@ -3390,9 +3360,10 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'F{current_row}'] = 'Kumulatif s.d Ini'
         ws[f'F{current_row}'].font = Font(bold=True)
         ws[f'G{current_row}'] = ':'
-        # Kumulatif s.d Ini = cumul_planned at month_end_week
-        if month_end_week in week_col_map and summary_rows.get('cumul_planned_row'):
-            curr_col = week_col_map[month_end_week]
+        # Kumulatif s.d Ini = cumulative planned at the final canonical week that
+        # actually exists in this period (the last period may contain only 1-3 weeks).
+        if effective_month_end_week is not None and summary_rows.get('cumul_planned_row'):
+            curr_col = week_col_map[effective_month_end_week]
             cumul_plan_row = summary_rows['cumul_planned_row']
             ws[f'H{current_row}'] = f"='{ssot_name}'!{curr_col}{cumul_plan_row}"
         else:
@@ -3404,10 +3375,12 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'F{current_row}'].font = Font(bold=True)
         ws[f'G{current_row}'] = ':'
         # Deviasi = cumulative Actual - Rencana s.d akhir bulan (Python value, not =ref-ref)
-        dev_value = (
-            project_weekly.get('cumul_actual', {}).get(month_end_week, Decimal('0'))
-            - project_weekly.get('cumul_planned', {}).get(month_end_week, Decimal('0'))
-        )
+        dev_value = Decimal('0')
+        if effective_month_end_week is not None:
+            dev_value = (
+                project_weekly.get('cumul_actual', {}).get(effective_month_end_week, Decimal('0'))
+                - project_weekly.get('cumul_planned', {}).get(effective_month_end_week, Decimal('0'))
+            )
         ws[f'H{current_row}'] = float(dev_value)
         ws[f'H{current_row}'].number_format = '+0.00%;-0.00%;"-"'
         current_row += 2
@@ -3443,7 +3416,8 @@ class ExcelExporter(ConfigExporterBase):
         weeks_per_month = 4
         month_end_week = month * weeks_per_month
         month_start_week = (month - 1) * weeks_per_month + 1
-        prev_month_end_week = month_start_week - 1
+        # Reuse the canonical period membership resolved above. Do not assume the
+        # final four-week period always contains its nominal ending week.
 
         row_hij = []  # (bobot, kum_lalu, prog_ini, kum_ini) per row for the bobot-weighted TOTAL
         for pek in pekerjaan_rows:
@@ -3493,12 +3467,12 @@ class ExcelExporter(ConfigExporterBase):
             # fractions over the period (not =SUM of Data Master cells). The month/4-week
             # filter is applied before aggregation; week order follows the canonical map.
             pek_planned_wk = weekly_values.get(ssot_row, {}).get('planned', {})
-            kum_lalu = (
-                sum((pek_planned_wk.get(wk, Decimal('0')) for wk in range(1, prev_month_end_week + 1)), Decimal('0'))
-                if prev_month_end_week > 0 else Decimal('0')
+            kum_lalu = sum(
+                (pek_planned_wk.get(wk, Decimal('0')) for wk in previous_weeks),
+                Decimal('0'),
             )
             prog_ini = sum(
-                (pek_planned_wk.get(wk, Decimal('0')) for wk in range(month_start_week, month_end_week + 1)),
+                (pek_planned_wk.get(wk, Decimal('0')) for wk in month_weeks),
                 Decimal('0'),
             )
             kum_ini = kum_lalu + prog_ini
@@ -3850,13 +3824,20 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'A{current_row}'].font = Font(bold=True, size=11)
         current_row += 1
         
-        # Get table range from ssot_ranges for SUMPRODUCT formulas
+        # Get table range from ssot_ranges
         table_info = ssot_ranges['table']
         data_start = table_info['data_start_row']
         data_end = table_info['data_end_row']
         week_col_map = table_info['week_col_map']
-        
-        # Progress Kumulatif s.d. Minggu Lalu (SUMPRODUCT of bobot * SUM(week1..week-1))
+        # WP Export 2B: canonical aggregates (Decimal) captured on the SSOT sheet — the
+        # official sheet carries backend VALUES; only 1:1 ='Data Master'!cell mirrors stay.
+        project_weekly = ssot_ranges.get('project_weekly', {})
+        weekly_values = ssot_ranges.get('weekly_values', {})
+        bobot_by_row = ssot_ranges.get('bobot_by_row', {})
+        proj_cum_p = project_weekly.get('cumul_planned', {})
+        proj_p = project_weekly.get('planned', {})
+
+        # Progress Kumulatif s.d. Minggu Lalu = project cumulative planned at prev week
         ws.merge_cells(f'A{current_row}:D{current_row}')
         ws[f'A{current_row}'] = 'Progress Kumulatif s.d. Minggu Lalu'
         ws[f'A{current_row}'].font = Font(bold=True)
@@ -3864,52 +3845,29 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'E{current_row}'] = ':'
         ws.merge_cells(f'F{current_row}:G{current_row}')
         prev_week = week - 1
-        if prev_week > 0 and week_col_map:
-            prev_week_cols = [week_col_map[wk] for wk in range(1, prev_week + 1) if wk in week_col_map]
-            if prev_week_cols:
-                week_ranges = '+'.join([f"'{ssot_name}'!{col}{data_start}:{col}{data_end}" for col in prev_week_cols])
-                formula = f"=SUMPRODUCT('{ssot_name}'!G{data_start}:G{data_end},({week_ranges}))"
-                ws[f'F{current_row}'] = formula
-            else:
-                ws[f'F{current_row}'] = 0
-        else:
-            ws[f'F{current_row}'] = 0
+        ws[f'F{current_row}'] = float(proj_cum_p.get(prev_week, Decimal('0'))) if prev_week > 0 else 0
         ws[f'F{current_row}'].number_format = '0.00%'
         current_row += 1
 
-        # Progress Minggu Ini (SUMPRODUCT of bobot * current week)
+        # Progress Minggu Ini = project planned weekly at this week
         ws.merge_cells(f'A{current_row}:D{current_row}')
         ws[f'A{current_row}'] = 'Progress Minggu Ini'
         ws[f'A{current_row}'].font = Font(bold=True)
         ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
         ws[f'E{current_row}'] = ':'
         ws.merge_cells(f'F{current_row}:G{current_row}')
-        if week in week_col_map:
-            week_col = week_col_map[week]
-            formula = f"=SUMPRODUCT('{ssot_name}'!G{data_start}:G{data_end},'{ssot_name}'!{week_col}{data_start}:{week_col}{data_end})"
-            ws[f'F{current_row}'] = formula
-        else:
-            ws[f'F{current_row}'] = 0
+        ws[f'F{current_row}'] = float(proj_p.get(week, Decimal('0')))
         ws[f'F{current_row}'].number_format = '0.00%'
         current_row += 1
 
-        # Progress Kumulatif s.d. Minggu Ini (SUMPRODUCT of bobot * SUM(week1..week))
+        # Progress Kumulatif s.d. Minggu Ini = project cumulative planned at this week
         ws.merge_cells(f'A{current_row}:D{current_row}')
         ws[f'A{current_row}'] = 'Progress Kumulatif s.d. Minggu Ini'
         ws[f'A{current_row}'].font = Font(bold=True)
         ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
         ws[f'E{current_row}'] = ':'
         ws.merge_cells(f'F{current_row}:G{current_row}')
-        if week_col_map:
-            cum_week_cols = [week_col_map[wk] for wk in range(1, week + 1) if wk in week_col_map]
-            if cum_week_cols:
-                week_ranges = '+'.join([f"'{ssot_name}'!{col}{data_start}:{col}{data_end}" for col in cum_week_cols])
-                formula = f"=SUMPRODUCT('{ssot_name}'!G{data_start}:G{data_end},({week_ranges}))"
-                ws[f'F{current_row}'] = formula
-            else:
-                ws[f'F{current_row}'] = 0
-        else:
-            ws[f'F{current_row}'] = 0
+        ws[f'F{current_row}'] = float(proj_cum_p.get(week, Decimal('0')))
         ws[f'F{current_row}'].number_format = '0.00%'
         current_row += 2
         
@@ -3935,9 +3893,10 @@ class ExcelExporter(ConfigExporterBase):
         current_row += 1
         table_data_start = current_row
         
-        # Data rows - formulas referencing SSOT
+        # Data rows — A–G are 1:1 mirrors; H/I/J are canonical Python values.
         pekerjaan_rows = ssot_ranges['pekerjaan_rows']
-        
+        row_hij_w = []  # (h, i, j) per pekerjaan for the TOTAL row (Python sum, not =SUM)
+
         for pek in pekerjaan_rows:
             ssot_row = pek['planned_row']
             item_type = pek['type']
@@ -4002,45 +3961,25 @@ class ExcelExporter(ConfigExporterBase):
                 ws.cell(row=current_row, column=7, value=f"='{ssot_name}'!G{ssot_row}").border = border
                 ws.cell(row=current_row, column=7).number_format = '0.00%'
                 
-                # Col H: Kumulatif Minggu Lalu = Bobot * SUM(week1..week-1)
-                # Formula: =G{row}*SUM(weeks1..prev)
-                if prev_week > 0:
-                    kum_lalu_formulas = []
-                    for wk in range(1, prev_week + 1):
-                        if wk in week_col_map:
-                            col_letter = week_col_map[wk]
-                            kum_lalu_formulas.append(f"'{ssot_name}'!{col_letter}{ssot_row}")
-                    if kum_lalu_formulas:
-                        # Bobot * SUM(previous weeks progress)
-                        sum_formula = f"SUM({','.join(kum_lalu_formulas)})"
-                        ws.cell(row=current_row, column=8, value=f"=G{current_row}*{sum_formula}").border = border
-                    else:
-                        ws.cell(row=current_row, column=8, value=0).border = border
-                else:
-                    ws.cell(row=current_row, column=8, value=0).border = border
-                ws.cell(row=current_row, column=8).number_format = '0.00%;-0.00%;"-"'
-                
-                # Col I: Progress Minggu Ini = Bobot * current week progress
-                if week in week_col_map:
-                    col_letter = week_col_map[week]
-                    # Bobot * this week progress
-                    ws.cell(row=current_row, column=9, value=f"=G{current_row}*'{ssot_name}'!{col_letter}{ssot_row}").border = border
-                else:
-                    ws.cell(row=current_row, column=9, value=0).border = border
-                ws.cell(row=current_row, column=9).number_format = '0.00%;-0.00%;"-"'
-                
-                # Col J: Kumulatif Minggu Ini = Bobot * SUM(week1..current week)
-                kum_ini_formulas = []
-                for wk in range(1, week + 1):
-                    if wk in week_col_map:
-                        col_letter = week_col_map[wk]
-                        kum_ini_formulas.append(f"'{ssot_name}'!{col_letter}{ssot_row}")
-                if kum_ini_formulas:
-                    sum_formula = f"SUM({','.join(kum_ini_formulas)})"
-                    ws.cell(row=current_row, column=10, value=f"=G{current_row}*{sum_formula}").border = border
-                else:
-                    ws.cell(row=current_row, column=10, value=0).border = border
-                ws.cell(row=current_row, column=10).number_format = '0.00%;-0.00%;"-"'
+                # Col H/I/J = bobot × Σ planned weekly fractions over the period, computed
+                # in Python (Decimal) from canonical data — not =G*SUM('Data Master'!..).
+                bobot = bobot_by_row.get(ssot_row, Decimal('0'))
+                pek_planned_wk = weekly_values.get(ssot_row, {}).get('planned', {})
+                h_val = bobot * sum(
+                    (pek_planned_wk.get(wk, Decimal('0')) for wk in range(1, prev_week + 1)), Decimal('0')
+                ) if prev_week > 0 else Decimal('0')
+                i_val = bobot * pek_planned_wk.get(week, Decimal('0'))
+                j_val = bobot * sum(
+                    (pek_planned_wk.get(wk, Decimal('0')) for wk in range(1, week + 1)), Decimal('0')
+                )
+                row_hij_w.append((h_val, i_val, j_val))
+
+                c = ws.cell(row=current_row, column=8, value=float(h_val)); c.border = border
+                c.number_format = '0.00%;-0.00%;"-"'
+                c = ws.cell(row=current_row, column=9, value=float(i_val)); c.border = border
+                c.number_format = '0.00%;-0.00%;"-"'
+                c = ws.cell(row=current_row, column=10, value=float(j_val)); c.border = border
+                c.number_format = '0.00%;-0.00%;"-"'
             
             # Apply background color
             if bg_color:
@@ -4063,30 +4002,28 @@ class ExcelExporter(ConfigExporterBase):
         for col in range(2, 6):
             ws.cell(row=total_row, column=col).border = border
         
-        # Col F: Sum Total Harga
-        ws.cell(row=total_row, column=6, value=f"=SUM(F{table_data_start}:F{total_row-1})").border = border
+        # Canonical Python totals (not =SUM): F = Σ total harga (grand total),
+        # G = Σ bobot (≈100%), H/I/J = Σ of the per-pekerjaan weighted values.
+        total_harga_all = ssot_ranges.get('grand_total', Decimal('0'))
+        total_bobot_all = sum(bobot_by_row.values(), Decimal('0'))
+        sum_h = sum((h for h, _i, _j in row_hij_w), Decimal('0'))
+        sum_i = sum((i for _h, i, _j in row_hij_w), Decimal('0'))
+        sum_j = sum((j for _h, _i, j in row_hij_w), Decimal('0'))
+
+        # Col F: Total Harga (sum)
+        ws.cell(row=total_row, column=6, value=float(total_harga_all)).border = border
         ws.cell(row=total_row, column=6).font = Font(bold=True)
-        ws.cell(row=total_row, column=6).number_format = '#,##0'
-        
-        # Col G: Sum Bobot (should be 100%)
-        ws.cell(row=total_row, column=7, value=f"=SUM(G{table_data_start}:G{total_row-1})").border = border
+        ws.cell(row=total_row, column=6).number_format = '#,##0.00'
+
+        # Col G: Bobot (≈100%)
+        ws.cell(row=total_row, column=7, value=float(total_bobot_all)).border = border
         ws.cell(row=total_row, column=7).font = Font(bold=True)
         ws.cell(row=total_row, column=7).number_format = '0.00%'
-        
-        # Col H: Sum Kumulatif Minggu Lalu
-        ws.cell(row=total_row, column=8, value=f"=SUM(H{table_data_start}:H{total_row-1})").border = border
-        ws.cell(row=total_row, column=8).font = Font(bold=True)
-        ws.cell(row=total_row, column=8).number_format = '0.00%'
-        
-        # Col I: Sum Progress Minggu Ini
-        ws.cell(row=total_row, column=9, value=f"=SUM(I{table_data_start}:I{total_row-1})").border = border
-        ws.cell(row=total_row, column=9).font = Font(bold=True)
-        ws.cell(row=total_row, column=9).number_format = '0.00%'
-        
-        # Col J: Sum Kumulatif Minggu Ini
-        ws.cell(row=total_row, column=10, value=f"=SUM(J{table_data_start}:J{total_row-1})").border = border
-        ws.cell(row=total_row, column=10).font = Font(bold=True)
-        ws.cell(row=total_row, column=10).number_format = '0.00%'
+
+        for col, val in ((8, sum_h), (9, sum_i), (10, sum_j)):
+            ws.cell(row=total_row, column=col, value=float(val)).border = border
+            ws.cell(row=total_row, column=col).font = Font(bold=True)
+            ws.cell(row=total_row, column=col).number_format = '0.00%'
         
         current_row = total_row + 3
         

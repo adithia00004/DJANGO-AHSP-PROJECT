@@ -289,7 +289,7 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.owner = get_user_model().objects.create_user("wp-jadwal-2a-owner", password="x")
         self.project = Project.objects.create(
             owner=self.owner, nama="Jadwal 2A",
-            tanggal_mulai=date(2026, 1, 1), tanggal_selesai=date(2026, 1, 28),
+            tanggal_mulai=date(2026, 1, 1), tanggal_selesai=date(2026, 2, 11),
             week_start_day=0, week_end_day=6,
         )
         klas = Klasifikasi.objects.create(project=self.project, name="K", ordering_index=1)
@@ -311,14 +311,47 @@ class JadwalMonthlyValueOnlyTests(TestCase):
             kode="BHN-1", uraian="B", satuan="kg", koefisien=Decimal("2.000000"), expansion_depth=0,
         )
         VolumePekerjaan.objects.create(project=self.project, pekerjaan=pkj, quantity=Decimal("10"))
+
+        # A second pekerjaan with half the value and different progress locks the
+        # weighted aggregation (the single-row/100%-weight case cannot catch mapping
+        # mistakes between pekerjaan, planned, and actual rows).
+        pkj_2 = Pekerjaan.objects.create(
+            project=self.project, sub_klasifikasi=sub, source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode="P-002", snapshot_uraian="P2", snapshot_satuan="m2", ordering_index=2,
+        )
+        src_2 = DetailAHSPProject.objects.create(
+            project=self.project, pekerjaan=pkj_2, harga_item=item, kategori="BHN", kode="BHN-1",
+            uraian="B", satuan="kg", koefisien=Decimal("1.000000"),
+        )
+        DetailAHSPExpanded.objects.create(
+            project=self.project, pekerjaan=pkj_2, source_detail=src_2, harga_item=item, kategori="BHN",
+            kode="BHN-1", uraian="B", satuan="kg", koefisien=Decimal("1.000000"), expansion_depth=0,
+        )
+        VolumePekerjaan.objects.create(project=self.project, pekerjaan=pkj_2, quantity=Decimal("10"))
+
         from datetime import timedelta
-        for wk in range(1, 5):
+        for wk in range(1, 7):
             ws = date(2026, 1, 1) + timedelta(days=(wk - 1) * 7)
             PekerjaanProgressWeekly.objects.create(
                 project=self.project, pekerjaan=pkj, week_number=wk,
                 week_start_date=ws, week_end_date=ws + timedelta(days=6),
-                planned_proportion=Decimal("25.00"),
+                planned_proportion=Decimal("15.00"),
+                actual_proportion=Decimal("10.00"),
             )
+            PekerjaanProgressWeekly.objects.create(
+                project=self.project, pekerjaan=pkj_2, week_number=wk,
+                week_start_date=ws, week_end_date=ws + timedelta(days=6),
+                planned_proportion=Decimal("5.00"),
+                actual_proportion=Decimal("20.00"),
+            )
+
+    @staticmethod
+    def _value_for_label(ws, label):
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value == label:
+                    return ws.cell(row=cell.row, column=cell.column + 2)
+        raise AssertionError(f"label {label!r} not found in {ws.title}")
 
     def test_data_master_numeric_and_monthly_rincian_mirror_only(self):
         resp = ExportManager(self.project, self.owner).export_jadwal_professional(
@@ -348,6 +381,78 @@ class JadwalMonthlyValueOnlyTests(TestCase):
                     f"{rincian.title}!{cell.coordinate} is not a 1:1 mirror: {cell.value!r}",
                 )
         self.assertGreater(formula_cells, 0, "expected mirror formulas on the rincian sheet")
+
+    def test_padded_final_period_preserves_weighted_planned_and_actual_values(self):
+        """Period 2 carries data in W5-W6 and pads W7-W8 with zero. Aggregates
+        must preserve both weighted planned and actual values through the padding."""
+        resp = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "xlsx", report_type="monthly", months=[2],
+        )
+        wb = load_workbook(BytesIO(resp.content), data_only=False)
+        rincian = next(
+            (wb[s] for s in wb.sheetnames if "Rincian" in s or s.startswith("M")), None,
+        )
+        self.assertIsNotNone(rincian, f"monthly rincian sheet not found in {wb.sheetnames}")
+
+        # Values are in a 2:1 ratio, so weights are 2/3 and 1/3.
+        # Planned per week=(2/3*15% + 1/3*5%)=7/60; actual=(2/3*10% + 1/3*20%)=2/15.
+        self.assertAlmostEqual(self._value_for_label(rincian, "Rencana Bulan Ini").value, 7 / 30, places=9)
+        self.assertAlmostEqual(self._value_for_label(rincian, "Actual Bulan Ini").value, 4 / 15, places=9)
+
+        # Cumulative remains a pure SSOT mirror through the padded W7-W8 columns.
+        cumulative = self._value_for_label(rincian, "Kumulatif s.d Ini")
+        self.assertEqual(cumulative.data_type, "f")
+        self.assertRegex(str(cumulative.value), self._MIRROR)
+
+        # Through W6: weighted actual=80%, planned=70%, therefore deviation=+10%.
+        self.assertAlmostEqual(self._value_for_label(rincian, "Deviasi").value, 0.10, places=9)
+
+        # Per-pekerjaan monthly planned values remain unweighted in rows (30% and
+        # 10%); the TOTAL row applies the 2:1 project weights and yields 7/30.
+        col_i_values = [
+            cell.value for cell in (rincian.cell(row=r, column=9) for r in range(1, rincian.max_row + 1))
+            if isinstance(cell.value, (int, float))
+        ]
+        self.assertTrue(any(abs(value - 0.30) < 1e-9 for value in col_i_values))
+        self.assertTrue(any(abs(value - 0.10) < 1e-9 for value in col_i_values))
+        self.assertTrue(any(abs(value - (7 / 30)) < 1e-9 for value in col_i_values))
+
+    def test_weekly_rincian_is_values_with_mirror_only_formulas(self):
+        """WP Export 2B: Weekly rincian carries Python-weighted VALUES; the only
+        formulas left are pure 1:1 ='Data Master'!cell mirrors. Per-pekerjaan
+        Progress Minggu Ini = bobot×planned (2/3×15%=10% and 1/3×5%=1/60); the
+        TOTAL row is the weighted project value 7/60."""
+        resp = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "xlsx", report_type="weekly", weeks=[1],
+        )
+        wb = load_workbook(BytesIO(resp.content), data_only=False)
+
+        # Data Master is still numeric-only (shared SSOT).
+        for cell in (c for row in wb["Data Master"].iter_rows() for c in row):
+            self.assertNotEqual(cell.data_type, "f", f"Data Master!{cell.coordinate}={cell.value!r}")
+
+        rincian = next(
+            (wb[s] for s in wb.sheetnames if "Rincian" in s or "Minggu" in s), None,
+        )
+        self.assertIsNotNone(rincian, f"weekly rincian sheet not found in {wb.sheetnames}")
+        formula_cells = 0
+        for cell in (c for row in rincian.iter_rows() for c in row):
+            if cell.data_type == "f":
+                formula_cells += 1
+                self.assertRegex(
+                    str(cell.value), self._MIRROR,
+                    f"{rincian.title}!{cell.coordinate} is not a 1:1 mirror: {cell.value!r}",
+                )
+        self.assertGreater(formula_cells, 0, "expected mirror formulas on the weekly rincian sheet")
+
+        # Col I (Progress Minggu Ini) = bobot × planned per pekerjaan + weighted TOTAL.
+        col_i = [
+            cell.value for cell in (rincian.cell(row=r, column=9) for r in range(1, rincian.max_row + 1))
+            if isinstance(cell.value, (int, float))
+        ]
+        self.assertTrue(any(abs(v - 0.10) < 1e-9 for v in col_i), col_i)      # P-001: 2/3×15%
+        self.assertTrue(any(abs(v - (1 / 60)) < 1e-9 for v in col_i), col_i)  # P-002: 1/3×5%
+        self.assertTrue(any(abs(v - (7 / 60)) < 1e-9 for v in col_i), col_i)  # TOTAL (weighted)
 
 
 class VolumeExportParityTests(TestCase):
