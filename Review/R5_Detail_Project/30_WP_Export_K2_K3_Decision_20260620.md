@@ -371,7 +371,44 @@ Pola sama 2A untuk `_build_weekly_rincian_sheet`:
 - `_build_ssot_sheet` ekspos `total_by_row` + `grand_total` untuk TOTAL weekly.
 - **Gate (✅):** test render weekly → Data Master tanpa formula; weekly rincian hanya mirror 1:1; per-pekerjaan Progress Minggu Ini + TOTAL tertimbang cocok backend (2/3×15%=10%, 1/3×5%=1/60, total 7/60). **159 export test PASS**, check bersih.
 
+**Verifikasi independen 21 Juni 2026:** kontrak Weekly dikonfirmasi **planned-only** sesuai perilaku report sebelumnya; actual tetap tersimpan di Data Master dan akan direkonsiliasi pada 2C/2D, bukan ditambahkan diam-diam ke layout Weekly. Gate diperkuat untuk mengunci tiga nilai ringkasan planned serta TOTAL F–J (grand total, Σbobot, kumulatif lalu, progress minggu, kumulatif kini), bukan hanya mencari nilai per-pekerjaan di kolom I. Docstring/komentar `SUMPRODUCT formulas` yang sudah basi dan variabel table-range yang tidak lagi dipakai dibersihkan. Verifikasi tambahan: targeted Jadwal Monthly+Weekly 3/3 PASS; discovery `tests*export*.py` 82/82 PASS; `manage.py check` bersih.
+
 **Sisa: 2C Professional Kurva** (rewrite S-curve berbobot penuh — terberat, tanpa mirror) → **2D Parity gate** → kunci 6/6.
+
+### 8.4 RENCANA 2C — Professional Kurva (AUDIT MENYELURUH, read-only 2026-06-21)
+
+**Arsitektur (temuan audit):**
+- `_build_kurva_s_sheet` (`:1618`) **SHARED** → dipakai **2 report**: `export_professional` (sheet **"Kurva S"**, `:1319`) + `export_monthly_professional` (sheet **"Kurva S M{m}"**, `:2293`). **Weekly TIDAK punya kurva** (hanya rincian) → 2C tak menyentuh weekly.
+- **Data value-ization SUDAH tersedia di signature** `_build_kurva_s_sheet(ws, rows, weekly_columns, planned_map, actual_map, kurva_s_data, gantt_ranges, ...)`: `rows`=base_rows (total_harga/harga/volume per pekerjaan), `planned_map`/`actual_map`={item_id:{week:proporsi%}}, `kurva_s_data`=S-curve tertimbang kanonik (`_calculate_kurva_s_data :1427` → `weighted_planned_period/cumulative`, `cumulative_target/actual`). **Tak perlu capture baru.**
+
+**Inventaris formula `_build_kurva_s_sheet` (semua RECOMPUTE → nilai; TIDAK ADA mirror murni):**
+| Baris | Formula | → nilai dari |
+|---|---|---|
+| `:1779` | `=C*E` Total Harga/pekerjaan | `rows[i].total_harga` (volume×harga) |
+| `:1924` | `=IF(F/total)` Bobot/pekerjaan | `total_harga / Σtotal_harga` |
+| `:1806/1828` | `=bobot×'Data Master'!gantt` sel mingguan planned/actual | `bobot × planned_map/actual_map[item][wk]/100` |
+| `:1845/1854` | `=SUM(minggu)` Total kolom planned/actual | Σ nilai mingguan |
+| `:1902/1909` | `={F+F..}`/`={G+G..}` TOTAL harga & bobot | Σ Python |
+| `:1968/1987` | `={refs}` Progress Mingguan Rencana/Realisasi | Σ bobot×proporsi (= `kurva_s_data` weighted weekly) |
+| `:2008/2032` | `=week0+col` Kumulatif Rencana/Realisasi | running-sum (= `kurva_s_data` cumulative) |
+
+**Scope tambahan (sheet lain yang tersentuh kurva):**
+- **Cover** (`:1421/1423`): `final_planned_ref` = `='Kurva S'!cell` → **MIRROR 1:1 KEEP**; `deviation_ref` (`:2045`) = `='Kurva S'!cell - 'Kurva S'!cell` → **recompute → nilai** (`kurva_s_data` deviation).
+- **Input Progress-Gantt** (SSOT professional, `:1583`): `=SUM(planned)+SUM(actual)` Total Bobot → **recompute → nilai**. (Sisanya sudah nilai.)
+
+**Rencana implementasi:**
+1. `_build_kurva_s_sheet`: hitung per-pekerjaan total_harga + bobot + sel mingguan (bobot×proporsi) + total kolom sebagai **nilai Decimal**; TOTAL row Σ Python; **summary Progress Mingguan + Kumulatif dari `kurva_s_data`** (sumber kanonik tunggal yang juga dipakai chart) → konsistensi chart dijamin.
+2. Cover `deviation_ref` → nilai; final refs tetap mirror.
+3. Input Progress-Gantt `:1583` Total Bobot → nilai.
+4. **Planned & actual diperlakukan terpisah** (planned_map vs actual_map).
+
+**Risiko & mitigasi:**
+- **Chart (LineChart)** membaca baris summary S-curve → setelah jadi nilai, chart tetap render (baca nilai sel). Pakai `kurva_s_data` sebagai sumber summary agar nilai == yang dipakai chart.
+- **Parity**: nilai-S-curve hasil Python harus == hasil formula lama == `kurva_s_data` == backend. Gate test kunci ini (kecil/2-pekerjaan rasio 2:1, planned/actual beda).
+- **Name mismatch** `'Data Master'` vs `'Input Progress-Gantt'` di ref formula lama → **lenyap** setelah value-ization (tak ada cross-ref lagi).
+- **Shared method 2 report** → wajib render+test BOTH professional & monthly kurva.
+
+**Gate 2C:** render professional + monthly → sheet **"Kurva S"/"Kurva S M{m}"** tanpa sel recompute (hanya nilai; mirror 1:1 hanya di Cover); summary S-curve == `kurva_s_data` == backend tertimbang; planned/actual terpisah; chart valid; Cover deviation = nilai; Input Progress-Gantt tanpa `=SUM`. Lalu **2D** → kunci 6/6.
 
 **KESIMPULAN ORDERING (terkonfirmasi, asumsi awal TERBALIK):**
 - **Effort: Monthly ≈ Weekly (bounded, banyak mirror) ≪ Professional (rewrite S-curve penuh, tanpa mirror).**
