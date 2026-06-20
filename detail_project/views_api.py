@@ -2317,6 +2317,8 @@ def _auto_cleanup_orphans(project):
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # TA-07: throttle write floods
+@limit_request_body()  # TA-07: cap body size (DoS guard)
 @transaction.atomic
 def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pekerjaan_id: int):
     """
@@ -3039,6 +3041,8 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # TA-07: throttle write floods
+@limit_request_body()  # TA-07: cap body size (DoS guard)
 @transaction.atomic
 def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaan_id: int):
     """
@@ -3058,6 +3062,10 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
     ref_obj = getattr(pkj, "ref", None)
     if not ref_obj:
         return JsonResponse({"ok": False, "errors": [_err("ref", "Pointer referensi tidak ditemukan")]}, status=400)
+
+    # TA-04: capture the pre-reset detail snapshot so the destructive reset is
+    # recorded in the audit trail (parity with the save path).
+    old_snapshot = snapshot_pekerjaan_details(pkj)
 
     # Bersihkan isi lama
     DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
@@ -3128,6 +3136,22 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
     if detail_ready:
         touch_project_change(project, ahsp=True)
 
+    # TA-04: record the reset (old -> new detail snapshot) in the audit trail,
+    # mirroring the save path so this destructive action is traceable.
+    pkj.refresh_from_db()
+    new_snapshot = snapshot_pekerjaan_details(pkj)
+    if old_snapshot != new_snapshot:
+        log_audit(
+            project,
+            pkj,
+            DetailAHSPAudit.ACTION_UPDATE,
+            old_data=old_snapshot,
+            new_data=new_snapshot,
+            triggered_by="user",
+            user=request.user,
+            change_summary="Reset detail AHSP ke referensi",
+        )
+
     # CACHE FIX: Invalidate cache AFTER transaction commits
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
     # Reset-to-ref mengganti detail â†’ harga item custom lama bisa jadi orphan.
@@ -3138,6 +3162,8 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # TA-07: throttle write floods
+@limit_request_body()  # TA-07: cap body size (DoS guard)
 @transaction.atomic
 def api_sync_reference(request: HttpRequest, project_id: int):
     """WP-B7d: manually sync CUSTOM bundles to the current master AHSP version.
@@ -3247,6 +3273,8 @@ def api_sync_reference(request: HttpRequest, project_id: int):
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # TA-07: throttle write floods
+@limit_request_body()  # TA-07: cap body size (DoS guard)
 @transaction.atomic
 def api_rebuild_missing_expansion(request: HttpRequest, project_id: int):
     """Rebuild derived DetailAHSPExpanded rows reported by readiness.

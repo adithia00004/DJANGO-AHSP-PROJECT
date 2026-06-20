@@ -368,6 +368,11 @@
     if (level === 'warning') tr.classList.add('ta-koef-warning');
     if (level === 'error') tr.classList.add('ta-koef-error');
 
+    // TA-10 (a11y): expose the koefisien validation state to assistive tech, not
+    // only via the visual row class.
+    if (level === 'error') input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+
     ensureFxBadge(tr, isFx, rawFormula);
     const titleParts = [];
     if (rawFormula) titleParts.push(rawFormula);
@@ -722,6 +727,8 @@
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.className = 'form-check-input ta-row-check me-2';
+    // TA-10 (a11y): dynamic selection checkbox needs an accessible name.
+    cb.setAttribute('aria-label', 'Pilih baris untuk dihapus');
     noCell.prepend(cb);
   }
 

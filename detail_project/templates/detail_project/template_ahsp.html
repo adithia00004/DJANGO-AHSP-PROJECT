@@ -248,11 +248,11 @@
             </colgroup>
             <thead class="ta-thead-sticky">
               <tr>
-                <th class="col-no">No</th>
-                <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode item</th>
-                <th class="col-satuan">Satuan</th>
-                <th class="col-koef">Koefisien</th>
+                <th scope="col" class="col-no">No</th>
+                <th scope="col" class="col-uraian">Uraian</th>
+                <th scope="col" class="col-kode">Kode item</th>
+                <th scope="col" class="col-satuan">Satuan</th>
+                <th scope="col" class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-TK-body">
@@ -291,11 +291,11 @@
             </colgroup>
             <thead class="ta-thead-sticky">
               <tr>
-                <th class="col-no">No</th>
-                <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode item</th>
-                <th class="col-satuan">Satuan</th>
-                <th class="col-koef">Koefisien</th>
+                <th scope="col" class="col-no">No</th>
+                <th scope="col" class="col-uraian">Uraian</th>
+                <th scope="col" class="col-kode">Kode item</th>
+                <th scope="col" class="col-satuan">Satuan</th>
+                <th scope="col" class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-BHN-body">
@@ -334,11 +334,11 @@
             </colgroup>
             <thead class="ta-thead-sticky">
               <tr>
-                <th class="col-no">No</th>
-                <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode item</th>
-                <th class="col-satuan">Satuan</th>
-                <th class="col-koef">Koefisien</th>
+                <th scope="col" class="col-no">No</th>
+                <th scope="col" class="col-uraian">Uraian</th>
+                <th scope="col" class="col-kode">Kode item</th>
+                <th scope="col" class="col-satuan">Satuan</th>
+                <th scope="col" class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-ALT-body">
@@ -380,11 +380,11 @@
             </colgroup>
             <thead class="ta-thead-sticky">
               <tr>
-                <th class="col-no">No</th>
-                <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode item</th>
-                <th class="col-satuan">Satuan</th>
-                <th class="col-koef">Koefisien</th>
+                <th scope="col" class="col-no">No</th>
+                <th scope="col" class="col-uraian">Uraian</th>
+                <th scope="col" class="col-kode">Kode item</th>
+                <th scope="col" class="col-satuan">Satuan</th>
+                <th scope="col" class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-LAIN-body">
@@ -429,11 +429,11 @@
             </colgroup>
             <thead class="ta-thead-sticky">
               <tr>
-                <th class="col-no">No</th>
-                <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode item</th>
-                <th class="col-satuan">Satuan</th>
-                <th class="col-koef">Koefisien</th>
+                <th scope="col" class="col-no">No</th>
+                <th scope="col" class="col-uraian">Uraian</th>
+                <th scope="col" class="col-kode">Kode item</th>
+                <th scope="col" class="col-satuan">Satuan</th>
+                <th scope="col" class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-LAIN_BUNDLE-body">
@@ -505,11 +505,11 @@
         <!-- Tabs: Base / Computed -->
         <div class="dp-ps-pane-tabs" role="tablist" aria-label="Mode Sidebar Parameter">
           <button type="button" class="btn btn-sm btn-outline-secondary dp-ps-pane-tab is-active" id="ta-tab-base"
-            role="tab" aria-selected="true" data-pane="base">
+            role="tab" aria-selected="true" aria-controls="ta-pane-base" data-pane="base">
             Parameter <span class="badge text-bg-secondary ms-1" id="ta-tab-base-count">0</span>
           </button>
           <button type="button" class="btn btn-sm btn-outline-secondary dp-ps-pane-tab" id="ta-tab-computed"
-            role="tab" aria-selected="false" data-pane="computed">
+            role="tab" aria-selected="false" aria-controls="ta-pane-computed" data-pane="computed">
             Formula <span class="badge text-bg-secondary ms-1" id="ta-tab-computed-count">0</span>
           </button>
         </div>
@@ -527,7 +527,8 @@
         </div>
 
         <!-- Pane: Base Parameters -->
-        <div class="dp-ps-pane is-active" data-pane="base">
+        <div class="dp-ps-pane is-active" data-pane="base" id="ta-pane-base" role="tabpanel"
+          aria-labelledby="ta-tab-base" tabindex="0">
           <div class="dp-ps-param-toolbar">
             <span class="text-muted small">
               <span id="ta-param-count">0</span> parameter
@@ -573,9 +574,9 @@
             <table class="table table-sm align-middle" id="ta-var-table">
               <thead class="dp-ps-thead-sticky">
                 <tr>
-                  <th style="width:45%">Nama</th>
-                  <th style="width:35%">Nilai</th>
-                  <th class="text-end" style="width:20%">Aksi</th>
+                  <th scope="col" style="width:45%">Nama</th>
+                  <th scope="col" style="width:35%">Nilai</th>
+                  <th scope="col" class="text-end" style="width:20%">Aksi</th>
                 </tr>
               </thead>
               <tbody><!-- diisi JS --></tbody>
@@ -584,7 +585,8 @@
         </div>
 
         <!-- Pane: Computed Parameters (Formula) -->
-        <div class="dp-ps-pane" data-pane="computed">
+        <div class="dp-ps-pane" data-pane="computed" id="ta-pane-computed" role="tabpanel"
+          aria-labelledby="ta-tab-computed" tabindex="0">
           <div class="dp-ps-cparam-section">
             <div class="dp-ps-param-toolbar">
               <span class="text-muted small">
@@ -601,9 +603,9 @@
               <table class="table table-sm align-middle" id="ta-cparam-table">
                 <thead class="dp-ps-thead-sticky">
                   <tr>
-                    <th style="width:35%">Nama</th>
-                    <th style="width:40%">Formula</th>
-                    <th class="text-end" style="width:25%">Nilai / Aksi</th>
+                    <th scope="col" style="width:35%">Nama</th>
+                    <th scope="col" style="width:40%">Formula</th>
+                    <th scope="col" class="text-end" style="width:25%">Nilai / Aksi</th>
                   </tr>
                 </thead>
                 <tbody><!-- diisi JS --></tbody>
