@@ -214,4 +214,46 @@ Blast radius terbesar (jalur exporter khusus `_export_rincian_ahsp_2sheet`, buka
 
 **Gate Rincian (semua ✅):** parity backend→adapter→workbook (komponen koef/harga/jumlah + E/F/G); **tak ada sel `data_type='f'`** (di-assert lintas semua sheet); explicit-zero numeric (None→0 coercion lama Rincian dipertahankan, beda dari Harga Items yg NULL→`-`); markup default/override + bundle expanded tak berubah (tetap dari canonical rekap + `bundle_totals`); **123 export test PASS**; Word render `"220,00"` (bukan `"220.00"`).
 
-**Berikutnya — Volume** (slice tersendiri): `_convert_volume_formula` (rumus parameter user → rumus Excel) butuh **perlakuan khusus** (formula parameter Volume = fitur, bukan sekadar kalkulasi nilai) — evaluasi terpisah sesuai instruksi owner.
+**Berikutnya — Volume** (slice tersendiri): lihat §6.8 (mapping read-only).
+
+### 6.8 EVALUASI VOLUME — Mapping (read-only, 2026-06-20; belum ubah kode)
+
+**Keputusan desain owner (2026-06-20):** Nilai Volume = numeric backend (resmi). Rumus Input = teks/audit (kolom "Rumus Volume"). Parameter = sheet terpisah nama/label/nilai kanonik. `_convert_volume_formula()` **tidak lagi** hasilkan formula Excel hidup di laporan resmi. Bila kelak butuh file yang dapat dihitung-ulang → tipe export **terpisah "Template Kalkulasi"**, bukan laporan Volume resmi.
+
+**(1) Bentuk formula & parameter didukung**
+- Formula disimpan pakai **opaque code** (`bp_N` base, `cp_N` computed); operator `+ - * / ^ ( )` + fungsi `sum/min/max/round/avg/abs/floor/ceil/pow`. `_humanize_formula`→`remap_expression` ubah code→label utk display.
+- **Base param** `ProjectParameter(name,label,value,unit)` — **punya `value`**. **Computed param** `ProjectComputedParameter(name,label,expression,unit)` — **TIDAK punya field value** (hanya expression).
+
+**(2) Semua pemanggil `_convert_volume_formula()`** (semua di `excel_exporter.py`):
+| Baris | Konteks | Status target |
+|---|---|---|
+| `:446` | **kolom Volume** → formula hidup (nilai resmi jadi `=Parameters!..`) | **GANTI ke nilai numeric backend (vol_map)** |
+| `:346/:348` | **kolom Value param** (computed) → formula hidup | **GANTI ke nilai kanonik** (lihat blocker) |
+| `:431` | kolom Formula saat `formula_display_mode != 'label'` | **inactive** (adapter set `'label'` → cabang `:437` apostrophe = teks). Bisa di-retire |
+| `:502` | definisi | retire dari jalur resmi; simpan utk "Template Kalkulasi" |
+
+**(3) Nilai backend kanonik tersedia?**
+- **Volume**: ✅ `VolumePekerjaan.quantity` (`vol_map`, sudah di adapter `:207`) — nilai resmi tersimpan, **bukan** hasil recompute formula.
+- **Base param**: ✅ `ProjectParameter.value` (`name_to_value`).
+- **Computed param**: ❌ **TIDAK tersedia server-side.** Tak ada field cache, tak ada evaluator server (tokenizer hanya tokenize/remap; evaluasi `evaluateComputedParams` ada di **frontend**). Payload `?params=` opsional & sering kosong → computed value default **0**. **Saat ini nilai computed "benar" di Excel HANYA karena formula hidup** — persis anti-pola yang owner ingin hapus.
+
+**(4) Struktur sheet pertahankan formula sebagai teks** — SUDAH ADA:
+- Sheet "Volume Pekerjaan": kolom `[No, Uraian, Formula, Satuan, Volume]`. Kolom **Formula** (col 3) di mode `'label'` ditulis text-prefixed `'=...` (`:437`) → tak dievaluasi Excel. = kolom "Rumus Volume" yang owner mau.
+- Sheet "Parameters" (appendix): `[No, Label, Value, Unit]` + `param_codes`/`param_formulas`/`_parameter_cells`.
+- Jadi struktur owner (Rumus teks + Nilai numeric + Parameter sheet) **sudah ada**; tinggal hentikan konversi formula hidup pada Volume-value & computed-value.
+
+**(5) Rencana contract test** (formula-text + numeric-result parity):
+- Kolom Volume = **numeric** == `VolumePekerjaan.quantity` (3 dp), `data_type='n'`.
+- Kolom Formula = **teks** `"=panjang*lebar"` (humanized), `data_type='s'`, **bukan** `'f'`.
+- **Tak ada sel `data_type='f'`** di sheet manapun (Volume + Parameters).
+- Param value = numeric kanonik (base dari `value`; computed lihat blocker).
+- PDF/Word/CSV via `materialize_display_rows` (tambah `column_formats`: Volume `['@','@','@','@','#,##0.000']`, Param `['@','@','#,##0.00','@']`).
+
+**⛔ BLOCKER DESAIN — sumber nilai kanonik computed-param.** Untuk menulis VALUE (bukan formula hidup) computed-param, butuh salah satu:
+- **(A)** Evaluator computed-param **server-side** (tokenizer sudah ada; tambah evaluator yang resolve graf `cp_*` dari `bp_*` value + fungsi). Paling kokoh & sejalan "Excel=laporan SSOT backend".
+- **(B)** Endpoint export **wajib terima** nilai ter-evaluasi dari client (`?params=` selalu diisi frontend). Lebih cepat tapi mengikat export ke state client (rapuh; tak konsisten "nilai resmi dari backend").
+- **(C)** Laporan resmi tampilkan **expression saja** utk computed (tanpa value, atau "—") sampai (A) tersedia. Degraded tapi aman (tak ada formula hidup, tak ada nilai salah).
+
+Rekomendasi: **(A)** — selaras kontrak SSOT. Bila (A) di luar scope slice ini, **(C)** sebagai langkah aman sementara (jangan (B)).
+
+**Catatan precision param value**: base param `_format_number(value,2)` (2dp) saat ini. Perlu konfirmasi: param value 2dp cukup, atau presisi penuh? (param bisa integer/desimal panjang).
