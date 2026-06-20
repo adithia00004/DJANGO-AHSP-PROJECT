@@ -239,14 +239,17 @@ class HargaExportUsesHargaSatuanTests(TestCase):
         )
 
     def test_base_table_shows_harga_satuan_not_derived(self):
+        from decimal import Decimal
         from .exports.harga_items_adapter import HargaItemsAdapter
         data = HargaItemsAdapter(self.project).get_export_data()
         base_page = data["pages"][0]
         item_rows = [r for r in base_page["table_data"]["rows"] if r[1] == "BHN-1"]
         self.assertEqual(len(item_rows), 1)
-        # Base price column must be 23.500 (harga_satuan), NOT 24.000 (derived).
-        self.assertIn("23.500", item_rows[0][4])
-        self.assertNotIn("24.000", item_rows[0][4])
+        # WP Export: the adapter now carries the canonical Decimal (the exporter
+        # formats at its boundary). Base price column must be the SSOT
+        # harga_satuan (23500), NOT the conversion-derived value (24000).
+        self.assertEqual(Decimal(str(item_rows[0][4])), self.item.harga_satuan)
+        self.assertNotEqual(Decimal(str(item_rows[0][4])), Decimal("24000"))
 
     def test_konversi_table_flags_mismatch(self):
         from .exports.harga_items_adapter import HargaItemsAdapter

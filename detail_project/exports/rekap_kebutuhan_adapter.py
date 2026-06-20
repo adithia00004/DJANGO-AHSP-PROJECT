@@ -5,6 +5,7 @@
 from typing import Dict, Any, List
 from collections import Counter
 from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 import calendar
 
 
@@ -15,6 +16,18 @@ class RekapKebutuhanAdapter:
         self.project = project
         self.rows_override = rows
         self.summary = summary or {}
+
+    @staticmethod
+    def _to_dec(val) -> Decimal:
+        """Canonical Decimal at the adapter->exporter boundary (never a locale string)."""
+        try:
+            if val is None or val == '':
+                return Decimal('0')
+            if isinstance(val, Decimal):
+                return val
+            return Decimal(str(val))
+        except Exception:
+            return Decimal('0')
 
     @staticmethod
     def _parse_week_value(value: str):
@@ -145,39 +158,27 @@ class RekapKebutuhanAdapter:
                     factor = Decimal(str(conv['factor_to_base']))
                     market_qty = (base_qty / factor).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
                     
-                    # Replace with market values
+                    # Replace with market values (keep Decimal — owner contract:
+                    # Decimal on the adapter->exporter path, never float).
                     satuan = conv['market_unit']
-                    quantity = float(market_qty)
-                    harga_satuan = float(conv['market_price'])
+                    quantity = market_qty
+                    harga_satuan = Decimal(str(conv['market_price']))
                     # Total stays the same (market_qty * market_price = base_qty * base_price)
                 except Exception:
                     pass  # Keep original values on error
-            
-            # Format values
-            def fmt_qty(val):
-                try:
-                    v = float(val)
-                    if v == int(v):
-                        return f"{int(v):,}".replace(',', '.')
-                    return f"{v:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                except:
-                    return str(val)
-            
-            def fmt_currency(val):
-                try:
-                    v = int(float(val))
-                    return f"Rp {v:,}".replace(',', '.')
-                except:
-                    return str(val)
-            
+
+            # WP Export (all Option A): emit canonical Decimal; the exporter writes
+            # real Excel numbers at its boundary (Qty 3 dp, money 2 dp). Values are
+            # unchanged — only their representation — so the scheduled/unscheduled
+            # split and the totals stay identical.
             rows.append([
                 str(len(rows) + 1),  # No (1-indexed)
                 kode,
                 uraian,
                 satuan,
-                fmt_qty(quantity),
-                fmt_currency(harga_satuan),
-                fmt_currency(harga_total),
+                self._to_dec(quantity),
+                self._to_dec(harga_satuan),
+                self._to_dec(harga_total),
             ])
             counts[kat] += 1
 
@@ -194,7 +195,7 @@ class RekapKebutuhanAdapter:
         
         summary = getattr(self, 'summary', {}) or {}
         if summary.get('grand_total_cost'):
-            footer_rows.append(['Grand Total Harga', str(summary['grand_total_cost'])])
+            footer_rows.append(['Grand Total Harga', self._to_dec(summary['grand_total_cost'])])
 
         qty_totals = (self.summary or {}).get('quantity_totals')
         if qty_totals:
@@ -269,9 +270,12 @@ class RekapKebutuhanAdapter:
             'table_data': {
                 'headers': headers,
                 'rows': rows,
+                # No/Kode/Uraian/Satuan text; Qty 3 dp; Harga & Total 2 dp.
+                'column_formats': ['@', '@', '@', '@', '#,##0.000', '#,##0.00', '#,##0.00'],
             },
             'col_widths': col_widths,
             'footer_rows': footer_rows,
+            'footer_value_format': '#,##0.00',
             'include_charts': include_charts,
             'chart_data': chart_data,
             'unit_mode': unit_mode,

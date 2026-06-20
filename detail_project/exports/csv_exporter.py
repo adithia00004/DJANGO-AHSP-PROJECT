@@ -26,6 +26,11 @@ class CSVExporter(ConfigExporterBase):
             'footer_rows': [['label', 'value'], ...] (optional)
         }
         """
+        # WP Export: format canonical Decimal cells to display strings at this
+        # text-exporter boundary (only column_formats-tagged tables are touched).
+        from .cell_format import materialize_display_rows
+        data = materialize_display_rows(data)
+
         class _Echo:
             def write(self, value):
                 return value

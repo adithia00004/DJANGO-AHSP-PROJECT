@@ -564,6 +564,10 @@ class PDFExporter(ConfigExporterBase):
     
     def export(self, data: Dict[str, Any]) -> HttpResponse:
         """Export to PDF (supports single or multi-page payload)"""
+        # WP Export: format canonical Decimal cells to display strings at this
+        # text-exporter boundary (only column_formats-tagged tables are touched).
+        from .cell_format import materialize_display_rows
+        data = materialize_display_rows(data)
         buffer = BytesIO()
 
         # Determine page size based on orientation

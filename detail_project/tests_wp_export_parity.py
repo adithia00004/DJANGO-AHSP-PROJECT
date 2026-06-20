@@ -105,6 +105,70 @@ class RekapRABExcelParityTests(_RekapFixtureMixin, TestCase):
         self.assertEqual(volume_cell.number_format, "#,##0.000")
 
 
+class RekapRABWordParityTests(_RekapFixtureMixin, TestCase):
+    """The text exporters (here: Word) must render the canonical Decimal as a
+    properly formatted id-ID 2-dp string at their boundary — never the raw
+    str(Decimal) '220.00' and never a live formula."""
+
+    def test_word_cells_are_formatted_idid_strings(self):
+        from docx import Document
+
+        resp = ExportManager(self.project, self.owner).export_rekap_rab("word")
+        doc = Document(BytesIO(resp.content))
+        texts = [
+            cell.text
+            for table in doc.tables
+            for row in table.rows
+            for cell in row.cells
+        ]
+        # G=220, total=660 rendered id-ID with 2 decimals.
+        self.assertIn("220,00", texts)
+        self.assertIn("660,00", texts)
+        # The raw Decimal repr must not leak through.
+        self.assertNotIn("220.00", texts)
+        self.assertNotIn("660.00", texts)
+
+
+class RekapKebutuhanExcelParityTests(_RekapFixtureMixin, TestCase):
+    """Same fixture: volume 3 x koef 2 => kebutuhan qty 6; harga 100; total 600.
+    Qty is a 3-dp number, money is 2-dp, and the grand total reconciles."""
+
+    def test_item_and_grand_total_are_numbers(self):
+        resp = ExportManager(self.project, self.owner).export_rekap_kebutuhan("xlsx")
+        ws = load_workbook(BytesIO(resp.content)).worksheets[0]
+
+        # Item row: [No, Kode, Uraian, Satuan, Qty, Harga, Total]
+        item_row = None
+        for row in ws.iter_rows():
+            if len(row) >= 7 and row[1].value == "BHN-001":
+                item_row = row
+                break
+        self.assertIsNotNone(item_row, "kebutuhan item row not found")
+
+        qty_cell, harga_cell, total_cell = item_row[4], item_row[5], item_row[6]
+        for cell in (qty_cell, harga_cell, total_cell):
+            self.assertIsInstance(
+                cell.value, (int, float), f"{cell.coordinate}={cell.value!r} not numeric",
+            )
+        self.assertAlmostEqual(float(qty_cell.value), 6.0, places=3)
+        self.assertAlmostEqual(float(harga_cell.value), 100.0, places=2)
+        self.assertAlmostEqual(float(total_cell.value), 600.0, places=2)
+        self.assertEqual(qty_cell.number_format, "#,##0.000")
+        self.assertEqual(harga_cell.number_format, "#,##0.00")
+        self.assertEqual(total_cell.number_format, "#,##0.00")
+
+        # Grand Total footer reconciles to the sum of item totals, as a number.
+        grand_cell = None
+        for row in ws.iter_rows():
+            if row and row[0].value == "Grand Total Harga":
+                grand_cell = row[1]
+                break
+        if grand_cell is not None:
+            self.assertIsInstance(grand_cell.value, (int, float))
+            self.assertAlmostEqual(float(grand_cell.value), 600.0, places=2)
+            self.assertEqual(grand_cell.number_format, "#,##0.00")
+
+
 class HargaItemsExcelParityTests(TestCase):
     """Three USED price items: one priced, one NULL (not filled), one explicit 0.00.
     The Excel price cell must be a real 2-dp number for priced/zero, and a distinct
