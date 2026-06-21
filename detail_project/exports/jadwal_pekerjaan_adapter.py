@@ -712,6 +712,12 @@ class JadwalPekerjaanExportAdapter:
         return {
             "planned_pages": planned_pages,
             "actual_pages": actual_pages,
+            # Canonical in-process payload for Excel. Page materialization is a
+            # presentation concern and loses stable pekerjaan identity across
+            # hierarchy rows and column chunks.
+            "base_rows": base_rows,
+            "planned_map": progress_map,
+            "actual_map": actual_map,
             "kurva_s_data": kurva_s_data,
             "summary": summary,
             "project_info": self._get_project_info(),

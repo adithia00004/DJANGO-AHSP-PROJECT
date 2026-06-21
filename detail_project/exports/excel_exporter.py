@@ -1179,6 +1179,11 @@ class ExcelExporter(ConfigExporterBase):
         planned_pages = data.get('planned_pages', [])
         actual_pages = data.get('actual_pages', [])
         weekly_columns = data.get('weekly_columns', [])
+        if data.get('canonical_base_rows'):
+            # Canonical payload supersedes page-shaped presentation data. The
+            # parser below remains only for backward-compatible callers.
+            planned_pages = []
+            actual_pages = []
         
         # Build hierarchy rows from planned_pages
         # Note: Adapter returns [uraian, volume, satuan, week1, week2, ...]
@@ -1282,15 +1287,62 @@ class ExcelExporter(ConfigExporterBase):
                                     week_dict[week_num] = parsed_val
                             actual_map[pek_id] = week_dict
 
+        # The active professional path carries stable pekerjaan identity and all
+        # week chunks directly from the adapter. Keep the page parser above only
+        # as a backward-compatible fallback for older callers.
+        canonical_rows = data.get('canonical_base_rows')
+        if canonical_rows:
+            base_rows = []
+            for raw in canonical_rows:
+                row_type = raw.get('type', '')
+                if row_type == 'pekerjaan':
+                    pekerjaan_id = raw.get('pekerjaan_id')
+                    volume_display = raw.get('volume_display', 0)
+                    base_rows.append({
+                        'id': pekerjaan_id,
+                        'pekerjaan_id': pekerjaan_id,
+                        'type': 'pekerjaan',
+                        'kode': raw.get('kode', ''),
+                        'name': raw.get('uraian', ''),
+                        'volume': volume_display,
+                        'volume_num': safe_float(volume_display, 0),
+                        'satuan': raw.get('unit', ''),
+                        'harga_satuan': 0,
+                        'total_harga': 0,
+                        'bobot': 0,
+                    })
+                else:
+                    base_rows.append({
+                        'type': row_type,
+                        'kode': raw.get('kode', ''),
+                        'name': raw.get('uraian', ''),
+                    })
+
+            def _nest_progress_map(flat_map):
+                nested = {}
+                for key, value in (flat_map or {}).items():
+                    if not isinstance(key, tuple) or len(key) != 2:
+                        continue
+                    pekerjaan_id, week_number = key
+                    nested.setdefault(pekerjaan_id, {})[week_number] = value
+                return nested
+
+            planned_map = _nest_progress_map(data.get('canonical_planned_map'))
+            actual_map = _nest_progress_map(data.get('canonical_actual_map'))
+
         print(f"[ExcelExporter] Data: {len(base_rows)} rows, {len(weekly_columns)} weeks, planned_map: {len(planned_map)}, actual_map: {len(actual_map)}")
 
         # Merge harga data from base_rows_with_harga (from ExportManager)
         base_rows_with_harga = data.get('base_rows_with_harga', [])
         if base_rows_with_harga:
             print(f"[ExcelExporter] Merging {len(base_rows_with_harga)} rows with harga data...")
-            # Build lookup by uraian
+            # Prefer stable pekerjaan_id; uraian remains a legacy fallback.
             harga_lookup = {}
+            harga_lookup_by_id = {}
             for hrow in base_rows_with_harga:
+                pekerjaan_id = hrow.get('pekerjaan_id')
+                if pekerjaan_id:
+                    harga_lookup_by_id[pekerjaan_id] = hrow
                 uraian = hrow.get('uraian', '')
                 if uraian:
                     harga_lookup[uraian] = hrow
@@ -1298,8 +1350,8 @@ class ExcelExporter(ConfigExporterBase):
             # Update base_rows with harga data
             for brow in base_rows:
                 uraian = brow.get('name', '')
-                if uraian in harga_lookup:
-                    hdata = harga_lookup[uraian]
+                hdata = harga_lookup_by_id.get(brow.get('pekerjaan_id')) or harga_lookup.get(uraian)
+                if hdata:
                     brow['satuan'] = hdata.get('satuan', brow.get('satuan', ''))
                     brow['harga_satuan'] = hdata.get('harga_satuan', 0)
                     brow['total_harga'] = hdata.get('total_harga', 0)
@@ -1578,10 +1630,23 @@ class ExcelExporter(ConfigExporterBase):
                     start_row=planned_row, start_column=total_col,
                     end_row=actual_row, end_column=total_col
                 )
-                first_week = get_column_letter(week_start_col)
-                last_week = get_column_letter(week_start_col + week_count - 1)
-                formula = f'=SUM({first_week}{planned_row}:{last_week}{planned_row})+SUM({first_week}{actual_row}:{last_week}{actual_row})'
-                cell = ws.cell(row=planned_row, column=total_col, value=formula)
+                planned_total = sum(
+                    Decimal(str((planned_map.get(item_id) or {}).get(
+                        week_col.get('week', week_idx + 1), 0
+                    ) or 0))
+                    for week_idx, week_col in enumerate(weekly_columns)
+                ) / Decimal('100')
+                actual_total = sum(
+                    Decimal(str((actual_map.get(item_id) or {}).get(
+                        week_col.get('week', week_idx + 1), 0
+                    ) or 0))
+                    for week_idx, week_col in enumerate(weekly_columns)
+                ) / Decimal('100')
+                cell = ws.cell(
+                    row=planned_row,
+                    column=total_col,
+                    value=float(planned_total + actual_total),
+                )
                 cell.number_format = '0.0%'
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.border = border
@@ -1621,7 +1686,7 @@ class ExcelExporter(ConfigExporterBase):
                               title_text: str = 'KURVA S - RINCIAN PROGRESS',
                               max_week_num: int = None) -> Dict:
         """
-        Build Kurva S sheet with data table, formulas, and native LineChart.
+        Build Kurva S sheet with canonical backend values and a native LineChart.
         
         Args:
             ws: Worksheet to build on
@@ -1699,10 +1764,16 @@ class ExcelExporter(ConfigExporterBase):
         # Freeze panes
         ws.freeze_panes = 'C4'
 
-        # Build gantt row map for cross-reference
-        gantt_row_map = {}
-        for r in gantt_ranges.get('pekerjaan_rows', []):
-            gantt_row_map[r['id']] = r
+        pekerjaan_items = [item for item in rows if item.get('type') == 'pekerjaan']
+        total_harga_project = sum(
+            (Decimal(str(item.get('total_harga', 0) or 0)) for item in pekerjaan_items),
+            Decimal('0'),
+        )
+        kurva_by_week = {
+            point.get('week'): point
+            for point in kurva_s_data
+            if point.get('week') is not None
+        }
 
         # Process rows
         current_row = header_row + 1
@@ -1725,10 +1796,17 @@ class ExcelExporter(ConfigExporterBase):
                     first_pekerjaan_row = planned_row
                 last_pekerjaan_row = actual_row
 
+                total_harga = Decimal(str(item.get('total_harga', 0) or 0))
+                bobot = (
+                    total_harga / total_harga_project
+                    if total_harga_project > 0 else Decimal('0')
+                )
                 pekerjaan_row_data.append({
                     'planned': planned_row,
                     'actual': actual_row,
-                    'id': item_id
+                    'id': item_id,
+                    'total_harga': total_harga,
+                    'bobot': bobot,
                 })
 
                 # Merge fixed columns
@@ -1770,80 +1848,73 @@ class ExcelExporter(ConfigExporterBase):
                 # Harga Satuan
                 harga_satuan = safe_float(item.get('harga_satuan', 0) or 0)
                 cell = ws.cell(row=planned_row, column=5, value=harga_satuan)
-                cell.number_format = '#,##0'
+                cell.number_format = '#,##0.00'
                 cell.alignment = Alignment(horizontal='right', vertical='center')
                 cell.border = border
                 cell.font = Font(size=8)
 
-                # Total Harga = Volume * Harga Satuan (FORMULA)
-                formula = f'=C{planned_row}*E{planned_row}'
-                cell = ws.cell(row=planned_row, column=6, value=formula)
-                cell.number_format = '#,##0'
+                # Canonical backend total, not a spreadsheet recomputation.
+                cell = ws.cell(row=planned_row, column=6, value=float(total_harga))
+                cell.number_format = '#,##0.00'
                 cell.alignment = Alignment(horizontal='right', vertical='center')
                 cell.border = border
                 cell.font = Font(size=8)
 
-                # Bobot (placeholder - will be updated after total row)
-                cell = ws.cell(row=planned_row, column=7, value=0)
+                cell = ws.cell(row=planned_row, column=7, value=float(bobot))
                 cell.number_format = '0.00%'
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.border = border
                 cell.font = Font(size=8)
 
-                # Get corresponding gantt row for cross-reference
-                gantt_row = gantt_row_map.get(item_id)
-                bobot_ref = f'$G${planned_row}'
+                # Preserve planned/actual as separate weighted series.
+                planned_week_values = []
+                actual_week_values = []
 
-                # Week columns - Planned row: Bobot × Input Progress (cross-sheet formula)
+                # Week columns - planned weighted values from canonical input.
                 for week_idx in range(week_count):
                     col_num = week_start_col + week_idx
-                    gantt_week_col = gantt_ranges['week_start_col'] + week_idx
-                    gantt_col_letter = get_column_letter(gantt_week_col)
-
-                    cell = ws.cell(row=planned_row, column=col_num)
-                    if gantt_row:
-                        gantt_ref = f"'Data Master'!{gantt_col_letter}{gantt_row['planned_row']}"
-                        cell.value = f'={bobot_ref}*{gantt_ref}'
-                        cell.number_format = '0.00%;-0.00%;"-"'
-
-                        # Check if has progress for coloring
-                        week_key = weekly_columns[week_idx].get('week', week_idx + 1)
-                        if item_id and item_id in planned_map:
-                            wp = planned_map[item_id]
-                            if isinstance(wp, dict) and safe_float(wp.get(week_key, 0) or 0) > 0:
-                                cell.fill = PatternFill('solid', fgColor=COLORS['PLANNED_BG'])
+                    week_key = weekly_columns[week_idx].get(
+                        'week', weekly_columns[week_idx].get('week_number', week_idx + 1)
+                    )
+                    planned_fraction = Decimal(str(
+                        (planned_map.get(item_id) or {}).get(week_key, 0) or 0
+                    )) / Decimal('100')
+                    weighted_value = bobot * planned_fraction
+                    planned_week_values.append(weighted_value)
+                    cell = ws.cell(row=planned_row, column=col_num, value=float(weighted_value))
+                    cell.number_format = '0.00%;-0.00%;"-"'
+                    if planned_fraction > 0:
+                        cell.fill = PatternFill('solid', fgColor=COLORS['PLANNED_BG'])
                     cell.border = border
                     cell.alignment = Alignment(horizontal='center')
                     cell.font = Font(size=8)
 
-                # Week columns - Actual row
+                # Week columns - actual weighted values from canonical input.
                 for week_idx in range(week_count):
                     col_num = week_start_col + week_idx
-                    gantt_week_col = gantt_ranges['week_start_col'] + week_idx
-                    gantt_col_letter = get_column_letter(gantt_week_col)
-
-                    cell = ws.cell(row=actual_row, column=col_num)
-                    if gantt_row:
-                        gantt_ref = f"'Data Master'!{gantt_col_letter}{gantt_row['actual_row']}"
-                        cell.value = f'={bobot_ref}*{gantt_ref}'
-                        cell.number_format = '0.00%;-0.00%;"-"'
-
-                        week_key = weekly_columns[week_idx].get('week', week_idx + 1)
-                        if item_id and item_id in actual_map:
-                            wp = actual_map[item_id]
-                            if isinstance(wp, dict) and safe_float(wp.get(week_key, 0) or 0) > 0:
-                                cell.fill = PatternFill('solid', fgColor=COLORS['ACTUAL_BG'])
+                    week_key = weekly_columns[week_idx].get(
+                        'week', weekly_columns[week_idx].get('week_number', week_idx + 1)
+                    )
+                    actual_fraction = Decimal(str(
+                        (actual_map.get(item_id) or {}).get(week_key, 0) or 0
+                    )) / Decimal('100')
+                    weighted_value = bobot * actual_fraction
+                    actual_week_values.append(weighted_value)
+                    cell = ws.cell(row=actual_row, column=col_num, value=float(weighted_value))
+                    cell.number_format = '0.00%;-0.00%;"-"'
+                    if actual_fraction > 0:
+                        cell.fill = PatternFill('solid', fgColor=COLORS['ACTUAL_BG'])
                     cell.border = border
                     cell.alignment = Alignment(horizontal='center')
                     cell.font = Font(size=8)
 
                 # Total column - SEPARATE cells for planned and actual rows (not merged)
-                first_week = get_column_letter(week_start_col)
-                last_week = get_column_letter(week_start_col + week_count - 1)
-                
                 # Total for Planned row
-                planned_formula = f'=SUM({first_week}{planned_row}:{last_week}{planned_row})'
-                cell_planned = ws.cell(row=planned_row, column=total_col, value=planned_formula)
+                cell_planned = ws.cell(
+                    row=planned_row,
+                    column=total_col,
+                    value=float(sum(planned_week_values, Decimal('0'))),
+                )
                 cell_planned.number_format = '0.00%;-0.00%;"-"'
                 cell_planned.alignment = Alignment(horizontal='center', vertical='center')
                 cell_planned.border = border
@@ -1851,8 +1922,11 @@ class ExcelExporter(ConfigExporterBase):
                 cell_planned.fill = PatternFill('solid', fgColor=COLORS['PLANNED_BG'])
                 
                 # Total for Actual row
-                actual_formula = f'=SUM({first_week}{actual_row}:{last_week}{actual_row})'
-                cell_actual = ws.cell(row=actual_row, column=total_col, value=actual_formula)
+                cell_actual = ws.cell(
+                    row=actual_row,
+                    column=total_col,
+                    value=float(sum(actual_week_values, Decimal('0'))),
+                )
                 cell_actual.number_format = '0.00%;-0.00%;"-"'
                 cell_actual.alignment = Alignment(horizontal='center', vertical='center')
                 cell_actual.border = border
@@ -1897,16 +1971,13 @@ class ExcelExporter(ConfigExporterBase):
         ws.cell(row=total_row, column=2).fill = PatternFill('solid', fgColor=COLORS['TOTAL_BG'])
         ws.cell(row=total_row, column=2).border = border
 
-        # Total Harga sum
-        total_harga_refs = '+'.join([f'F{p["planned"]}' for p in pekerjaan_row_data])
-        cell = ws.cell(row=total_row, column=6, value=f'={total_harga_refs}' if total_harga_refs else 0)
-        cell.number_format = '#,##0'
+        cell = ws.cell(row=total_row, column=6, value=float(total_harga_project))
+        cell.number_format = '#,##0.00'
         cell.font = Font(bold=True)
         cell.border = border
 
-        # Bobot sum
-        bobot_refs = '+'.join([f'G{p["planned"]}' for p in pekerjaan_row_data])
-        cell = ws.cell(row=total_row, column=7, value=f'={bobot_refs}' if bobot_refs else 0)
+        total_bobot = sum((p['bobot'] for p in pekerjaan_row_data), Decimal('0'))
+        cell = ws.cell(row=total_row, column=7, value=float(total_bobot))
         cell.number_format = '0.00%'
         cell.font = Font(bold=True)
         cell.border = border
@@ -1917,16 +1988,8 @@ class ExcelExporter(ConfigExporterBase):
             if week_start_col <= c < total_col:
                 ws.cell(row=total_row, column=c).fill = PatternFill('solid', fgColor=COLORS['TOTAL_BG'])
 
-        # Update Bobot formulas with total row reference
-        total_harga_ref = f'$F${total_row}'
-        for p in pekerjaan_row_data:
-            cell = ws.cell(row=p['planned'], column=7)
-            cell.value = f'=IF({total_harga_ref}=0,0,F{p["planned"]}/{total_harga_ref})'
-
         # Calculate total harga for cover
-        kurva_ranges['total_harga'] = sum(
-            safe_float(r.get('total_harga', 0) or 0) for r in rows if r.get('type') == 'pekerjaan'
-        )
+        kurva_ranges['total_harga'] = float(total_harga_project)
         kurva_ranges['pekerjaan_count'] = len(pekerjaan_row_data)
 
         # SUMMARY ROWS
@@ -1961,11 +2024,22 @@ class ExcelExporter(ConfigExporterBase):
         ws.cell(row=data_start_row, column=week0_col).number_format = '0.00%'
         ws.cell(row=data_start_row, column=week0_col).border = border
 
+        cumulative_planned_values = []
+        cumulative_actual_values = []
+        previous_planned = Decimal('0')
         for week_idx in range(week_count):
             col_num = week_start_col + week_idx
-            col_letter = get_column_letter(col_num)
-            refs = '+'.join([f'{col_letter}{p["planned"]}' for p in pekerjaan_row_data])
-            cell = ws.cell(row=data_start_row, column=col_num, value=f'={refs}' if refs else 0)
+            week_key = weekly_columns[week_idx].get(
+                'week', weekly_columns[week_idx].get('week_number', week_idx + 1)
+            )
+            point = kurva_by_week.get(week_key, {})
+            cumulative_planned = Decimal(str(point.get('planned', 0) or 0)) / Decimal('100')
+            cumulative_actual = Decimal(str(point.get('actual', 0) or 0)) / Decimal('100')
+            cumulative_planned_values.append(cumulative_planned)
+            cumulative_actual_values.append(cumulative_actual)
+            weekly_planned = cumulative_planned - previous_planned
+            previous_planned = cumulative_planned
+            cell = ws.cell(row=data_start_row, column=col_num, value=float(weekly_planned))
             cell.number_format = '0.00%'
             cell.border = border
             cell.font = Font(size=8)
@@ -1980,11 +2054,13 @@ class ExcelExporter(ConfigExporterBase):
         ws.cell(row=data_start_row + 1, column=week0_col).number_format = '0.00%'
         ws.cell(row=data_start_row + 1, column=week0_col).border = border
 
+        previous_actual = Decimal('0')
         for week_idx in range(week_count):
             col_num = week_start_col + week_idx
-            col_letter = get_column_letter(col_num)
-            refs = '+'.join([f'{col_letter}{p["actual"]}' for p in pekerjaan_row_data])
-            cell = ws.cell(row=data_start_row + 1, column=col_num, value=f'={refs}' if refs else 0)
+            cumulative_actual = cumulative_actual_values[week_idx]
+            weekly_actual = cumulative_actual - previous_actual
+            previous_actual = cumulative_actual
+            cell = ws.cell(row=data_start_row + 1, column=col_num, value=float(weekly_actual))
             cell.number_format = '0.00%'
             cell.border = border
             cell.font = Font(size=8)
@@ -2001,15 +2077,11 @@ class ExcelExporter(ConfigExporterBase):
 
         for week_idx in range(week_count):
             col_num = week_start_col + week_idx
-            col_letter = get_column_letter(col_num)
-            if week_idx == 0:
-                # First week: Week0 + this week's progress
-                week0_letter = get_column_letter(week0_col)
-                formula = f'={week0_letter}{data_start_row + 2}+{col_letter}{data_start_row}'
-            else:
-                prev_col = get_column_letter(col_num - 1)
-                formula = f'={prev_col}{data_start_row + 2}+{col_letter}{data_start_row}'
-            cell = ws.cell(row=data_start_row + 2, column=col_num, value=formula)
+            cell = ws.cell(
+                row=data_start_row + 2,
+                column=col_num,
+                value=float(cumulative_planned_values[week_idx]),
+            )
             cell.number_format = '0.00%'
             cell.border = border
             cell.font = Font(size=8)
@@ -2026,23 +2098,23 @@ class ExcelExporter(ConfigExporterBase):
 
         for week_idx in range(week_count):
             col_num = week_start_col + week_idx
-            col_letter = get_column_letter(col_num)
-            if week_idx == 0:
-                week0_letter = get_column_letter(week0_col)
-                formula = f'={week0_letter}{data_start_row + 3}+{col_letter}{data_start_row + 1}'
-            else:
-                prev_col = get_column_letter(col_num - 1)
-                formula = f'={prev_col}{data_start_row + 3}+{col_letter}{data_start_row + 1}'
-            cell = ws.cell(row=data_start_row + 3, column=col_num, value=formula)
+            cell = ws.cell(
+                row=data_start_row + 3,
+                column=col_num,
+                value=float(cumulative_actual_values[week_idx]),
+            )
             cell.number_format = '0.00%'
             cell.border = border
             cell.font = Font(size=8)
 
         # Calculate final references for Cover sheet
         last_week_col = get_column_letter(week_start_col + week_count - 1)
-        kurva_ranges['final_planned_ref'] = f"='Kurva S'!{last_week_col}{data_start_row + 2}"
-        kurva_ranges['final_actual_ref'] = f"='Kurva S'!{last_week_col}{data_start_row + 3}"
-        kurva_ranges['deviation_ref'] = f"='Kurva S'!{last_week_col}{data_start_row + 3}-'Kurva S'!{last_week_col}{data_start_row + 2}"
+        quoted_title = ws.title.replace("'", "''")
+        kurva_ranges['final_planned_ref'] = f"='{quoted_title}'!{last_week_col}{data_start_row + 2}"
+        kurva_ranges['final_actual_ref'] = f"='{quoted_title}'!{last_week_col}{data_start_row + 3}"
+        final_planned = cumulative_planned_values[-1] if cumulative_planned_values else Decimal('0')
+        final_actual = cumulative_actual_values[-1] if cumulative_actual_values else Decimal('0')
+        kurva_ranges['deviation_ref'] = float(final_actual - final_planned)
 
         # =====================================================================
         # NATIVE LINECHART - Kurva S (Rencana vs Realisasi)
@@ -2223,9 +2295,12 @@ class ExcelExporter(ConfigExporterBase):
         base_rows_with_harga = data.get('base_rows_with_harga', [])
         if base_rows_with_harga:
             print(f"[ExcelExporter] Monthly: Merging {len(base_rows_with_harga)} rows with harga data...")
-            # Build lookup by uraian
             harga_lookup = {}
+            harga_lookup_by_id = {}
             for hrow in base_rows_with_harga:
+                pekerjaan_id = hrow.get('pekerjaan_id')
+                if pekerjaan_id:
+                    harga_lookup_by_id[pekerjaan_id] = hrow
                 uraian = hrow.get('uraian', '')
                 if uraian:
                     harga_lookup[uraian] = hrow
@@ -2233,8 +2308,9 @@ class ExcelExporter(ConfigExporterBase):
             # Update base_rows with harga data
             for brow in base_rows:
                 uraian = brow.get('name', brow.get('uraian', ''))
-                if uraian in harga_lookup:
-                    hdata = harga_lookup[uraian]
+                pekerjaan_id = brow.get('pekerjaan_id') or brow.get('id')
+                hdata = harga_lookup_by_id.get(pekerjaan_id) or harga_lookup.get(uraian)
+                if hdata:
                     brow['satuan'] = hdata.get('satuan', brow.get('satuan', '-'))
                     brow['harga_satuan'] = hdata.get('harga_satuan', 0)
                     brow['total_harga'] = hdata.get('total_harga', 0)
@@ -3680,15 +3756,20 @@ class ExcelExporter(ConfigExporterBase):
         if base_rows_with_harga:
             print(f"[ExcelExporter] Weekly: Merging {len(base_rows_with_harga)} rows with harga data...")
             harga_lookup = {}
+            harga_lookup_by_id = {}
             for hrow in base_rows_with_harga:
+                pekerjaan_id = hrow.get('pekerjaan_id')
+                if pekerjaan_id:
+                    harga_lookup_by_id[pekerjaan_id] = hrow
                 uraian = hrow.get('uraian', '')
                 if uraian:
                     harga_lookup[uraian] = hrow
             
             for brow in base_rows:
                 uraian = brow.get('name', brow.get('uraian', ''))
-                if uraian in harga_lookup:
-                    hdata = harga_lookup[uraian]
+                pekerjaan_id = brow.get('pekerjaan_id') or brow.get('id')
+                hdata = harga_lookup_by_id.get(pekerjaan_id) or harga_lookup.get(uraian)
+                if hdata:
                     brow['satuan'] = hdata.get('satuan', brow.get('satuan', '-'))
                     brow['harga_satuan'] = hdata.get('harga_satuan', 0)
                     brow['total_harga'] = hdata.get('total_harga', 0)

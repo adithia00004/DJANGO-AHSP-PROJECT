@@ -1,5 +1,16 @@
 # UAT Checklist — WP-B4 Readiness Banner (Pilot Rekap RAB)
 
+> **STATUS 21 Juni 2026: HISTORICAL PILOT / SUPERSEDED UNTUK EKSEKUSI.**
+> Dokumen ini merekam rancangan pilot awal schema `b4.3`. Tracker 28 mencatat
+> re-UAT owner untuk `missing_price` dan `missing_volume` **PASS pada 15 Juni 2026**,
+> tetapi checklist file ini tidak pernah diisi sebagai bukti formal lengkap. Kontrak
+> aktif sekarang adalah readiness `b4.5`: lima consumer, sinyal jadwal live,
+> expansion detail/rebuild, dan reference-update sync. Seluruh kasus yang masih relevan
+> beserta kontrak terbaru telah digabung ke
+> `31_R5_Comprehensive_UAT_Execution_20260621.md` bagian **4.9 Canonical Readiness**.
+> **Jangan mengeksekusi dokumen 29 dan 31 sebagai dua UAT terpisah.** Simpan dokumen 29
+> sebagai jejak historis pilot dan gunakan dokumen 31 sebagai checklist otoritatif.
+
 **Tanggal:** 2026-06-15
 **Scope:** Memverifikasi banner readiness (`b4.3`) di halaman **Rekap RAB** — display-only, server-authoritative.
 **Yang diuji:** banner muncul saat data belum lengkap/sinkron, isinya akurat & aman (escaped), hilang saat data bersih, dan tidak mengubah perhitungan.

@@ -4,6 +4,38 @@
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
 **Status keseluruhan (≈ 85% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) + WP-P8 (Rekap Kebutuhan) DONE/siap UAT runtime; WP-P9 Dashboard targeted fixes DONE/siap UAT runtime.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: Fase 3 cleanup / UAT runtime lintas-page. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint legacy removal setelah monitoring, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
 
+### Checkpoint WP Export Jadwal 2C + 2D - SELESAI (2026-06-21)
+
+**Status: SELESAI, menunggu checkpoint commit.** Builder shared Kurva S untuk
+professional dan monthly kini menulis nilai kanonik backend, bukan formula recompute.
+Input Progress-Gantt bebas formula total; Cover hanya mempertahankan mirror satu-sel
+planned/actual dan menulis deviasi sebagai nilai. Gate professional/monthly, chart dua
+series, planned-vs-actual, serta total proyek nol telah ditambahkan.
+
+| Command/Test | Result | Catatan |
+|---|---|---|
+| `tests_wp_export_parity.JadwalMonthlyValueOnlyTests` | PASS 7/7 | 2C + parity backend/professional/monthly/weekly |
+| discovery `tests*export*.py` | PASS 86/86 | tidak ada regresi lintas-report |
+| `manage.py check` | PASS | 0 issue |
+
+**2D CLOSED:** Professional kini menerima payload kanonik dengan `pekerjaan_id` dan
+seluruh map minggu; hierarchy tidak lagi dihitung sebagai pekerjaan. Merge harga pada
+professional/monthly/weekly memakai ID stabil, bukan uraian. Test dua pekerjaan dengan
+uraian identik mengunci jumlah pekerjaan serta parity planned/actual lintas backend,
+Input Progress, Kurva S, Data Master, Monthly, dan Weekly. **WP Export nilai-resmi 6/6
+report selesai.**
+
+### Fase 4 - Comprehensive UAT (READY TO EXECUTE 2026-06-21)
+
+Dokumen eksekusi otoritatif: `31_R5_Comprehensive_UAT_Execution_20260621.md`.
+Cakupan meliputi journey lintas-page List -> Volume -> Template -> Harga/Rincian/RAB ->
+Jadwal -> Kebutuhan, Dashboard identity, race/multi-tab, a11y/visual, security smoke,
+serta parity XLSX/PDF/Word untuk seluruh perubahan WP Export. Status Fase 4 tetap
+`PENDING/IN EXECUTION` sampai seluruh BLOCKER/HIGH lulus dan tabel sign-off terisi.
+Dokumen `29_UAT_WP-B4_Readiness_Rekap_RAB_20260615.md` dipertahankan sebagai historical
+pilot; checklist readiness aktif telah digabung dan diperbarui ke schema `b4.5` pada
+dokumen 31 bagian 4.9 sehingga tidak ada dua eksekusi UAT yang tumpang tindih.
+
 ## 1. Aturan Tracking
 
 Dokumen ini diperbarui ketika:

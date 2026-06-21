@@ -415,6 +415,51 @@ Pola sama 2A untuk `_build_weekly_rincian_sheet`:
 - **Rekomendasi urutan: 2A=Monthly → 2B=Weekly → 2C=Professional** (sederhana-dengan-mirror dulu; pola guard "sheet resmi = mirror-1:1-only + nilai" matang sebelum hadapi Professional yang terumit). Penamaan 2A/2B/2C disesuaikan ke urutan baru ini.
 - Mirror `='Data Master'!cell` DIPERTAHANKAN di Monthly & Weekly; Professional tak punya mirror sehingga seluruh sel resmi jadi nilai.
 
+### 8.5 Increment 2C - Kurva S shared - SELESAI (2026-06-21)
+
+- `_build_kurva_s_sheet` kini menulis **nilai backend** untuk total harga, bobot,
+  kontribusi mingguan planned/actual, total per-pekerjaan, TOTAL project, progress
+  mingguan, dan kumulatif. Tidak ada formula kalkulasi tersisa pada sheet `Kurva S`
+  maupun `Kurva S M{m}`.
+- Baris summary yang menjadi sumber `LineChart` diisi dari `kurva_s_data` berdasarkan
+  nomor minggu kanonik. Chart dan tabel karena itu membaca angka yang sama.
+- `Input Progress-Gantt` tidak lagi memakai formula `SUM(planned)+SUM(actual)`;
+  total display ditulis sebagai nilai. Cover mempertahankan hanya dua mirror satu-sel
+  untuk progress akhir planned/actual; deviasi menjadi nilai backend.
+- Perhitungan internal memakai `Decimal`; konversi ke `float` hanya saat boundary
+  penulisan sel. `grand_total=0` menghasilkan bobot dan kurva nol tanpa pembagian nol.
+- **Gate:** professional dan monthly dirender dari fixture dua pekerjaan berbobot 2:1,
+  planned/actual berbeda. Kurva bebas formula, cumulative planned/actual cocok backend,
+  chart memiliki dua series, Cover hanya dua mirror langsung, serta zero-total aman.
+  Targeted Jadwal 6/6 PASS; discovery `tests*export*.py` 85/85 PASS; Django check bersih.
+
+### 8.6 Increment 2D - Final parity gate - SELESAI (2026-06-21)
+
+Gate final menemukan dan menutup dua bug identity yang sebelumnya tertutup oleh fixture
+bernama unik:
+
+1. `export_professional` membangun ulang pekerjaan dari `planned_pages`, sehingga baris
+   klasifikasi/sub-klasifikasi dianggap pekerjaan berbobot nol, pekerjaan dicocokkan
+   berdasarkan uraian, dan chunk minggu setelah chunk pertama dapat hilang.
+   Adapter sekarang mengirim payload kanonik aditif (`base_rows`, tuple-keyed
+   `planned_map`/`actual_map`) melalui ExportManager. Excel professional memakai
+   `pekerjaan_id` stabil dan seluruh minggu; parser page lama hanya fallback caller lama.
+2. Monthly dan Weekly masih menggabungkan harga berdasarkan uraian. Dua pekerjaan dengan
+   nama sama mendapat harga pekerjaan terakhir sehingga bobot/kurva berubah. Ketiganya
+   sekarang memprioritaskan `pekerjaan_id`; uraian hanya fallback kompatibilitas.
+
+**Kontrak parity yang dikunci:** fixture dua pekerjaan bernilai 2:1, planned/actual
+berbeda, enam minggu, serta uraian identik. Nilai kumulatif backend sama dengan:
+Professional Kurva S, Monthly Data Master + Kurva S, Weekly Data Master + ringkasan
+planned. Jumlah pekerjaan professional tepat dua; hierarchy tidak dihitung sebagai
+pekerjaan. Gate 2D 1/1 PASS; seluruh targeted Jadwal 7/7 PASS; discovery export 86/86
+PASS; Django check, migration check, dan diff check bersih.
+
+**Status WP Export nilai-resmi: 6/6 report SELESAI.** Rekap RAB, Harga Items, Rekap
+Kebutuhan, Rincian AHSP, Volume, dan Jadwal kini menulis nilai resmi dari backend sesuai
+kontrak masing-masing. Formula hidup hanya berada pada lapisan kontrol yang disengaja
+atau mirror satu-sel yang telah disetujui.
+
 ---
 
 ## 9. Aturan lapisan kontrol (rollout)

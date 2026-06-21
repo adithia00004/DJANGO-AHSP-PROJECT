@@ -33,6 +33,7 @@ from detail_project.models import (
     ProjectParameter, ProjectComputedParameter, VolumeFormulaState, PekerjaanProgressWeekly,
 )
 from detail_project.exports.export_manager import ExportManager
+from detail_project.exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
 
 
 class _RekapFixtureMixin:
@@ -479,6 +480,167 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.assertAlmostEqual(rincian.cell(total_row, 8).value, 0.00, places=9)
         self.assertAlmostEqual(rincian.cell(total_row, 9).value, 7 / 60, places=9)
         self.assertAlmostEqual(rincian.cell(total_row, 10).value, 7 / 60, places=9)
+
+    @staticmethod
+    def _assert_no_formulas(ws):
+        for cell in (c for row in ws.iter_rows() for c in row):
+            if cell.data_type == "f":
+                raise AssertionError(f"{ws.title}!{cell.coordinate}={cell.value!r}")
+
+    def test_2c_professional_kurva_uses_backend_values_and_chart_remains_valid(self):
+        resp = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "xlsx", report_type="rekap",
+        )
+        wb = load_workbook(BytesIO(resp.content), data_only=False)
+        kurva = wb["Kurva S"]
+        gantt = wb["Input Progress-Gantt"]
+
+        self._assert_no_formulas(kurva)
+        self._assert_no_formulas(gantt)
+        self.assertEqual(len(kurva._charts), 1)
+        self.assertEqual(len(kurva._charts[0].series), 2)
+
+        # Six weeks: planned=(2/3*15% + 1/3*5%)*6=70%;
+        # actual=(2/3*10% + 1/3*20%)*6=80%.
+        planned_row = self._value_for_label(kurva, "Kumulatif Rencana", 0).row
+        actual_row = self._value_for_label(kurva, "Kumulatif Realisasi", 0).row
+        final_week_col = 7 + 6  # G is W0, H-M are W1-W6.
+        self.assertAlmostEqual(kurva.cell(planned_row, final_week_col).value, 0.70, places=9)
+        self.assertAlmostEqual(kurva.cell(actual_row, final_week_col).value, 0.80, places=9)
+
+        first_week_col = 8
+        detail_planned = []
+        detail_actual = []
+        for row in range(4, planned_row):
+            planned_value = kurva.cell(row, first_week_col).value
+            actual_value = kurva.cell(row + 1, first_week_col).value
+            if (
+                isinstance(kurva.cell(row, 6).value, (int, float))
+                and kurva.cell(row, 6).value > 0
+                and isinstance(planned_value, (int, float))
+                and isinstance(actual_value, (int, float))
+            ):
+                detail_planned.append(planned_value)
+                detail_actual.append(actual_value)
+        self.assertAlmostEqual(sum(detail_planned), 7 / 60, places=9)
+        self.assertAlmostEqual(sum(detail_actual), 2 / 15, places=9)
+        self.assertAlmostEqual(kurva.cell(planned_row - 2, first_week_col).value, 7 / 60, places=9)
+        self.assertAlmostEqual(kurva.cell(planned_row - 1, first_week_col).value, 2 / 15, places=9)
+
+        cover = wb["Cover"]
+        formulas = [
+            c for row in cover.iter_rows() for c in row if c.data_type == "f"
+        ]
+        self.assertEqual(len(formulas), 2)
+        for cell in formulas:
+            self.assertRegex(str(cell.value), r"^='Kurva S'![A-Z]+\d+$")
+        self.assertAlmostEqual(self._value_for_label(cover, "Deviasi").value, 0.10, places=9)
+
+    def test_2c_monthly_shared_kurva_uses_backend_values_and_chart(self):
+        resp = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "xlsx", report_type="monthly", months=[1],
+        )
+        wb = load_workbook(BytesIO(resp.content), data_only=False)
+        kurva = wb["Kurva S M1"]
+        self._assert_no_formulas(kurva)
+        self.assertEqual(len(kurva._charts), 1)
+        self.assertEqual(len(kurva._charts[0].series), 2)
+
+        planned_row = self._value_for_label(kurva, "Kumulatif Rencana", 0).row
+        actual_row = self._value_for_label(kurva, "Kumulatif Realisasi", 0).row
+        final_week_col = 7 + 4  # G is W0, H-K are W1-W4.
+        self.assertAlmostEqual(kurva.cell(planned_row, final_week_col).value, 7 / 15, places=9)
+        self.assertAlmostEqual(kurva.cell(actual_row, final_week_col).value, 8 / 15, places=9)
+
+    def test_2c_zero_project_total_produces_zero_weights_without_formulas(self):
+        HargaItemProject.objects.filter(project=self.project).update(harga_satuan=Decimal("0"))
+        resp = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "xlsx", report_type="rekap",
+        )
+        wb = load_workbook(BytesIO(resp.content), data_only=False)
+        kurva = wb["Kurva S"]
+        self._assert_no_formulas(kurva)
+
+        total_row = next(
+            r for r in range(1, kurva.max_row + 1)
+            if kurva.cell(r, 2).value == "TOTAL"
+        )
+        self.assertEqual(kurva.cell(total_row, 6).value, 0)
+        self.assertEqual(kurva.cell(total_row, 7).value, 0)
+        for label in ("Progress Mingguan Rencana", "Progress Mingguan Realisasi",
+                      "Kumulatif Rencana", "Kumulatif Realisasi"):
+            row = self._value_for_label(kurva, label, 0).row
+            for col in range(7, 7 + 6 + 1):
+                self.assertEqual(kurva.cell(row, col).value, 0)
+
+    def test_2d_backend_parity_and_stable_identity_across_jadwal_reports(self):
+        # Duplicate uraian proves the professional path no longer joins rows by name.
+        Pekerjaan.objects.filter(project=self.project, snapshot_kode="P-002").update(
+            snapshot_uraian="P"
+        )
+        backend = JadwalPekerjaanExportAdapter(self.project).get_rekap_report_data()
+        self.assertEqual(backend["meta"]["total_pekerjaan"], 2)
+        expected_planned = backend["kurva_s_data"][-1]["planned"] / 100
+        expected_actual = backend["kurva_s_data"][-1]["actual"] / 100
+
+        professional = load_workbook(BytesIO(
+            ExportManager(self.project, self.owner).export_jadwal_professional(
+                "xlsx", report_type="rekap",
+            ).content
+        ), data_only=False)
+        kurva = professional["Kurva S"]
+        input_progress = professional["Input Progress-Gantt"]
+        self.assertEqual(
+            sum(1 for row in input_progress.iter_rows() if isinstance(row[0].value, int)),
+            2,
+        )
+        self.assertEqual(
+            sorted(c.value for c in kurva["A"] if c.value in {"P-001", "P-002"}),
+            ["P-001", "P-002"],
+        )
+        prof_planned_row = self._value_for_label(kurva, "Kumulatif Rencana", 0).row
+        prof_actual_row = self._value_for_label(kurva, "Kumulatif Realisasi", 0).row
+        self.assertAlmostEqual(kurva.cell(prof_planned_row, 13).value, expected_planned, places=9)
+        self.assertAlmostEqual(kurva.cell(prof_actual_row, 13).value, expected_actual, places=9)
+
+        monthly = load_workbook(BytesIO(
+            ExportManager(self.project, self.owner).export_jadwal_professional(
+                "xlsx", report_type="monthly", months=[2],
+            ).content
+        ), data_only=False)
+        monthly_master = monthly["Data Master"]
+        monthly_kurva = monthly["Kurva S M2"]
+        self.assertEqual(
+            sum(1 for row in monthly_master.iter_rows() if isinstance(row[0].value, int)),
+            2,
+        )
+        master_planned_row = self._value_for_label(monthly_master, "Kumulatif Rencana", 0).row
+        master_actual_row = self._value_for_label(monthly_master, "Kumulatif Realisasi", 0).row
+        self.assertAlmostEqual(monthly_master.cell(master_planned_row, 13).value, expected_planned, places=9)
+        self.assertAlmostEqual(monthly_master.cell(master_actual_row, 13).value, expected_actual, places=9)
+        month_planned_row = self._value_for_label(monthly_kurva, "Kumulatif Rencana", 0).row
+        month_actual_row = self._value_for_label(monthly_kurva, "Kumulatif Realisasi", 0).row
+        self.assertAlmostEqual(monthly_kurva.cell(month_planned_row, 13).value, expected_planned, places=9)
+        self.assertAlmostEqual(monthly_kurva.cell(month_actual_row, 13).value, expected_actual, places=9)
+
+        weekly = load_workbook(BytesIO(
+            ExportManager(self.project, self.owner).export_jadwal_professional(
+                "xlsx", report_type="weekly", weeks=[6],
+            ).content
+        ), data_only=False)
+        weekly_master = weekly["Data Master"]
+        weekly_rincian = weekly["Rincian Progress W6"]
+        weekly_planned_row = self._value_for_label(weekly_master, "Kumulatif Rencana", 0).row
+        weekly_actual_row = self._value_for_label(weekly_master, "Kumulatif Realisasi", 0).row
+        self.assertAlmostEqual(weekly_master.cell(weekly_planned_row, 13).value, expected_planned, places=9)
+        self.assertAlmostEqual(weekly_master.cell(weekly_actual_row, 13).value, expected_actual, places=9)
+        self.assertAlmostEqual(
+            self._value_for_label(
+                weekly_rincian, "Progress Kumulatif s.d. Minggu Ini", 5
+            ).value,
+            expected_planned,
+            places=9,
+        )
 
 
 class VolumeExportParityTests(TestCase):

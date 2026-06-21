@@ -782,6 +782,9 @@ class ExportManager:
         if report_type == 'rekap':
             data['planned_pages'] = report_data.get('planned_pages', [])
             data['actual_pages'] = report_data.get('actual_pages', [])
+            data['canonical_base_rows'] = report_data.get('base_rows', [])
+            data['canonical_planned_map'] = report_data.get('planned_map', {})
+            data['canonical_actual_map'] = report_data.get('actual_map', {})
             data['kurva_s_data'] = report_data.get('kurva_s_data', [])
             data['summary'] = report_data.get('summary', {})
             data['meta'] = report_data.get('meta', {})
