@@ -28,7 +28,7 @@
 | TC-1 | Create payment → Snap token generated | snap_token returned | `[x]` | `views.py:85-95` |
 | TC-2 | order_id uniqueness | Unique per transaction | `[x]` | SUB-2: order_id dari UUID pk transaksi + single-insert; diuji `PaymentOrderIdUniquenessTests` |
 | TC-3 | Amount matches plan price | Server-side price, not client | `[x]` | diuji `test_create_payment_uses_server_side_effective_pricing` |
-| TC-4 | Duplicate payment prevention | Block if pending exists | `[ ]` | **A10a**: tidak ada dedup; user bisa buat banyak `pending` |
+| TC-4 | Duplicate payment prevention | Block if pending exists | `[x]` | SUB-9 (A10a): reuse transaksi `pending` ≤30 menit (amount cocok + snap_token) alih-alih buat baru; diuji `test_rapid_double_create_reuses_recent_pending` |
 | TC-5 | Midtrans API error handling | Graceful error message | `[x]` | `except MidtransError` → 500 + pesan generik |
 | TC-6 | Staff/admin create payment | Diblok | `[x]` | diuji `test_create_payment_blocks_staff_user` (403 `ADMIN_CHECKOUT_BLOCKED`) |
 
@@ -59,7 +59,7 @@
 | **A3** | 🟢 FIXED (SUB-2) | `generate_order_id()` kini berbasis UUID pk transaksi (`f"AHSP-{user_id}-{id.hex}"`, unik per transaksi, tersedia sebelum save) menggantikan timestamp detik; `CreatePaymentView` membangun transaksi + set `order_id` sebelum **satu** `save()`, menghapus window `order_id=''`. Double-submit/konkuren tak lagi tabrakan. | `subscriptions/models.py:generate_order_id`, `subscriptions/views.py:CreatePaymentView` | Regression: `PaymentOrderIdUniquenessTests` (3/3) |
 | **A5** | 🟢 FIXED (SUB-1) | Notifikasi `refund` kini set `REFUND` + revoke subscription user; late `cancel/deny/expire` setelah aktivasi tidak lagi menimpa transaksi `success`. | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_after_success_revokes_access`, `test_late_deny_after_success_does_not_overwrite_success` |
 | **A6** | 🟢 FIXED (SUB-6) | `CreatePaymentView` di-throttle per-user via cache (5/60s → 429 `RATE_LIMIT_EXCEEDED`) sebelum membuat baris/memanggil Midtrans. | `subscriptions/views.py:CreatePaymentView` | Regression: `CreatePaymentRateLimitTests` |
-| **A10a** | 🟡 LOW | Tidak ada pencegahan transaksi `pending` ganda untuk plan yang sama; user dapat membuat banyak baris `pending` (TC-4). | `subscriptions/views.py:64-80` | Telaah kode |
+| **A10a** | 🟢 FIXED (SUB-9) | `CreatePaymentView` me-reuse transaksi `pending` yang masih segar (≤30 menit), ber-`amount` sesuai harga efektif terkini, dan ber-`snap_token` — alih-alih menumpuk baris + call Midtrans baru tiap klik. | `subscriptions/views.py:CreatePaymentView` | Regression: `test_rapid_double_create_reuses_recent_pending` |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis marker `paid_at is not None`, bukan `status`. Replay `settlement` setelah `refund` tidak mengaktifkan ulang karena `paid_at` tetap dipertahankan. Detail webhook di [05](05_Webhook_Security.md). | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_preserves_activation_marker`, `test_replay_settlement_after_refund_does_not_reactivate` |
 | **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic` dan menghitung `subscription_end_date` dari nilai terkunci → dua pembayaran konkuren menumpuk, bukan saling menimpa. **Catatan:** serialisasi lintas-koneksi penuh perlu gate PostgreSQL 15; test SQLite membuktikan perbaikan stale-instance. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` (2/2) |
 
@@ -88,6 +88,7 @@
 | 3 | 2026-06-23 | SUB-1: Kebijakan refund/transisi status (A5) + idempotensi replay setelah terminal (A11) | - | DONE |
 | 3b | 2026-06-23 | ACC-1: aktivasi atomik re-read user (A12) + refund revoke hanya bila sole-paid (EC-1) | branch `fix/accounts-acc1-atomic-activation` | DONE |
 | 4 | 2026-06-23 | SUB-6: rate-limit `create_payment` per-user 5/60s (A6) | branch `fix/subscriptions-sub6-webhook-hardening` | DONE |
+| 5 | 2026-06-23 | SUB-9: reuse transaksi `pending` segar (A10a) + cek checkout `is_pro_active` (A10b) | branch `fix/subscriptions-sub9-pending-dedup` | DONE |
 
 ---
 
