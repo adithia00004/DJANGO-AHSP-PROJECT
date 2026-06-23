@@ -58,7 +58,7 @@
 |----|----------|-----------|--------|----------|
 | **A3** | 🟢 FIXED (SUB-2) | `generate_order_id()` kini berbasis UUID pk transaksi (`f"AHSP-{user_id}-{id.hex}"`, unik per transaksi, tersedia sebelum save) menggantikan timestamp detik; `CreatePaymentView` membangun transaksi + set `order_id` sebelum **satu** `save()`, menghapus window `order_id=''`. Double-submit/konkuren tak lagi tabrakan. | `subscriptions/models.py:generate_order_id`, `subscriptions/views.py:CreatePaymentView` | Regression: `PaymentOrderIdUniquenessTests` (3/3) |
 | **A5** | 🟢 FIXED (SUB-1) | Notifikasi `refund` kini set `REFUND` + revoke subscription user; late `cancel/deny/expire` setelah aktivasi tidak lagi menimpa transaksi `success`. | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_after_success_revokes_access`, `test_late_deny_after_success_does_not_overwrite_success` |
-| **A6** | 🟠 MED | Tidak ada rate limiting pada `CreatePaymentView`; tiap hit membuat baris DB + memanggil Midtrans → rawan spam/abuse. | `subscriptions/views.py:41-115` | Telaah kode |
+| **A6** | 🟢 FIXED (SUB-6) | `CreatePaymentView` di-throttle per-user via cache (5/60s → 429 `RATE_LIMIT_EXCEEDED`) sebelum membuat baris/memanggil Midtrans. | `subscriptions/views.py:CreatePaymentView` | Regression: `CreatePaymentRateLimitTests` |
 | **A10a** | 🟡 LOW | Tidak ada pencegahan transaksi `pending` ganda untuk plan yang sama; user dapat membuat banyak baris `pending` (TC-4). | `subscriptions/views.py:64-80` | Telaah kode |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis marker `paid_at is not None`, bukan `status`. Replay `settlement` setelah `refund` tidak mengaktifkan ulang karena `paid_at` tetap dipertahankan. Detail webhook di [05](05_Webhook_Security.md). | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_preserves_activation_marker`, `test_replay_settlement_after_refund_does_not_reactivate` |
 | **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic` dan menghitung `subscription_end_date` dari nilai terkunci → dua pembayaran konkuren menumpuk, bukan saling menimpa. **Catatan:** serialisasi lintas-koneksi penuh perlu gate PostgreSQL 15; test SQLite membuktikan perbaikan stale-instance. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` (2/2) |
@@ -87,7 +87,7 @@
 | 2 | 2026-06-23 | SUB-2: order_id atomik (UUID pk) + hapus window `order_id=''` (A3) | branch `fix/subscriptions-sub2-order-id` | DONE |
 | 3 | 2026-06-23 | SUB-1: Kebijakan refund/transisi status (A5) + idempotensi replay setelah terminal (A11) | - | DONE |
 | 3b | 2026-06-23 | ACC-1: aktivasi atomik re-read user (A12) + refund revoke hanya bila sole-paid (EC-1) | branch `fix/accounts-acc1-atomic-activation` | DONE |
-| 4 | - | Rate limit create_payment (A6) | - | TODO |
+| 4 | 2026-06-23 | SUB-6: rate-limit `create_payment` per-user 5/60s (A6) | branch `fix/subscriptions-sub6-webhook-hardening` | DONE |
 
 ---
 

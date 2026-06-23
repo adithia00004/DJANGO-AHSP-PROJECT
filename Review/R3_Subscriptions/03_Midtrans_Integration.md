@@ -40,7 +40,7 @@
 |----|----------|-----------|--------|----------|
 | **A1** | 🟢 FIXED (SUB-3) | Toggle produksi kini lengkap: backend (`MidtransClient`) dan frontend (template checkout via `midtrans_is_production`) sama-sama mengikuti `MIDTRANS_IS_PRODUCTION`. Detail di [01](01_Checkout_Page.md). | `subscriptions/midtrans.py:44-51`, `templates/subscriptions/checkout.html`, `views.py:CheckoutView` | Regression: `CheckoutSnapJsToggleTests` |
 | **A2** | 🟢 FIXED (SUB-4) | `reconcile_pending_payments` (service) memakai `get_transaction_status` untuk memulihkan transaksi paid-but-pending lewat jalur aktivasi yang sama (`mark_paid_and_activate`). Dijalankan via Celery task `subscriptions.reconcile_pending_payments` (beat tiap 15 menit) + management command manual. `get_transaction_status` tak lagi dead-code. | `subscriptions/reconciliation.py`, `subscriptions/tasks.py`, `config/celery.py`, `management/commands/reconcile_pending_payments.py` | Regression: `PendingPaymentReconciliationTests` (6/6) |
-| **A7** | 🟡 LOW | `verify_signature` membandingkan dengan `==` (bukan constant-time). Praktik aman: `hmac.compare_digest`. Dampak rendah (server-to-server HTTPS), tetapi mudah dikeraskan. | `subscriptions/midtrans.py:143` | Telaah kode |
+| **A7** | 🟢 FIXED (SUB-6) | `verify_signature` kini memakai `hmac.compare_digest` (constant-time) dan menolak signature non-`str`. | `subscriptions/midtrans.py:verify_signature` | Regression: `SignatureVerificationTests` (3/3) |
 
 ---
 
@@ -61,14 +61,14 @@
 | 1 | 2026-06-23 | Audit kode statis Midtrans client; temuan A1/A2/A7 tercatat | - | DONE (audit) |
 | 1b | 2026-06-23 | SUB-3: lengkapi toggle produksi di frontend Snap.js (A1) | branch `fix/subscriptions-sub3-snap-toggle` | DONE |
 | 2 | 2026-06-23 | SUB-4: service+task+command+beat reconcile paid-but-pending (A2) | branch `fix/subscriptions-sub4-reconcile` | DONE |
-| 3 | - | Constant-time signature (A7) | - | TODO |
+| 3 | 2026-06-23 | SUB-6: `hmac.compare_digest` constant-time + tolak non-str (A7) | branch `fix/subscriptions-sub6-webhook-hardening` | DONE |
 
 ---
 
 ## Checklist Sign-off
 
 - [x] Server key secure
-- [x] Signature verification correct (algoritma)
+- [x] Signature verification correct (algoritma ✓ / constant-time ✓ SUB-6)
 - [x] Production/sandbox toggle works (backend ✓ / frontend ✓ SUB-3)
 - [x] Error handling robust
 - [x] No double-charge risk (idempotent ✓ / recovery webhook terlewat ✓ SUB-4)
