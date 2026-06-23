@@ -38,7 +38,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 |----|-----|--------|----------------|
 | **A1** | 🔴 HIGH | `checkout.html` meng-hardcode Snap.js **sandbox** → produksi tidak berfungsi | [01](01_Checkout_Page.md), [03](03_Midtrans_Integration.md) |
 | **A2** | 🟠 MED | Tidak ada rekonsiliasi webhook gagal/terlewat → transaksi yang sudah dibayar dapat tetap `pending` tanpa batas (`get_transaction_status` dead code) | [03](03_Midtrans_Integration.md), [02](02_Payment_Flow.md) |
-| **A3** | 🟠 MED | `order_id` rawan tabrakan (timestamp detik) + pola two-step save (`order_id=''`) → 500 intermittent saat double-click/konkuren | [02](02_Payment_Flow.md) |
+| **A3** | 🟢 FIXED (SUB-2) | `order_id` kini dari UUID pk transaksi + single-insert (hapus window `order_id=''`); double-click/konkuren tak lagi tabrakan | [02](02_Payment_Flow.md) |
 | **A4** | 🟠 MED | Field penentu aktivasi (`transaction_status`/`fraud_status`) tidak dilindungi signature; tak ada re-verifikasi via Status API | [05](05_Webhook_Security.md) |
 | **A5** | 🟢 FIXED (SUB-1) | `refund` susulan kini mencabut akses PRO; late `cancel`/`deny`/`expire` setelah success tidak menimpa record aktif | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
 | **A6** | 🟠 MED | Tidak ada rate-limit di `create_payment`; proteksi abuse webhook juga belum ada, tetapi sebaiknya diterapkan di edge/WAF agar notifikasi sah tidak terblokir | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
@@ -73,7 +73,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 
 | Prioritas | Temuan | Alasan |
 |-----------|--------|--------|
-| **P0 — sebelum go-live** | A1, A2, A3 | Checkout produksi, rekonsiliasi, dan uniqueness order |
+| **P0 — sebelum go-live** | A1, A2 (~~A3 FIXED SUB-2~~) | Checkout produksi & rekonsiliasi (uniqueness order sudah ditutup SUB-2) |
 | **P1 — integritas transaksi** | A4, A6, A7, A12 | Defense-in-depth, anti-abuse, dan locking user |
 | **P2 — integritas bisnis/data** | A13, A15 | Uniqueness default entitlement dan pengingat expiry |
 | **P3 — kebersihan/perf** | A9, A10a, A14, A16 | Robustness, konsistensi, dan overhead query lintas-page |
@@ -85,10 +85,10 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 
 - `python manage.py makemigrations --check --dry-run`: **PASS**, tidak ada perubahan migrasi yang belum dibuat.
 - `python manage.py check`: **PASS**, tidak ada system-check error.
-- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 27/27 test** setelah SUB-1.
-- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 52/52 test** setelah SUB-1.
+- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 30/30 test** setelah SUB-1+SUB-2.
+- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 55/55 test** setelah SUB-1+SUB-2.
 - Eksekusi test harus memakai `config.settings.test`; settings ini sengaja menonaktifkan `TimeoutMiddleware` yang dapat mengganggu autentikasi `force_login` pada Django test client.
-- Automated test saat ini sudah mencakup SUB-1 untuk A5/A11. Skenario A3, A4, A7, A12, dan A13 masih belum tercakup penuh.
+- Automated test saat ini sudah mencakup SUB-1 (A5/A11) dan SUB-2 (A3). Skenario A4, A7, A12, dan A13 masih belum tercakup penuh; A12/A13 perlu gate PostgreSQL 15 (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
 
 ---
 

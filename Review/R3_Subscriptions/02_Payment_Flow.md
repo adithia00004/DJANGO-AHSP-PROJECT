@@ -26,7 +26,7 @@
 | # | Test Case | Expected | Status | Catatan |
 |---|-----------|----------|--------|---------|
 | TC-1 | Create payment → Snap token generated | snap_token returned | `[x]` | `views.py:85-95` |
-| TC-2 | order_id uniqueness | Unique per transaction | `[~]` | **A3**: timestamp resolusi detik + two-step save → tabrakan |
+| TC-2 | order_id uniqueness | Unique per transaction | `[x]` | SUB-2: order_id dari UUID pk transaksi + single-insert; diuji `PaymentOrderIdUniquenessTests` |
 | TC-3 | Amount matches plan price | Server-side price, not client | `[x]` | diuji `test_create_payment_uses_server_side_effective_pricing` |
 | TC-4 | Duplicate payment prevention | Block if pending exists | `[ ]` | **A10a**: tidak ada dedup; user bisa buat banyak `pending` |
 | TC-5 | Midtrans API error handling | Graceful error message | `[x]` | `except MidtransError` → 500 + pesan generik |
@@ -56,7 +56,7 @@
 
 | ID | Severity | Deskripsi | Lokasi | Evidence |
 |----|----------|-----------|--------|----------|
-| **A3** | 🟠 MED | `generate_order_id()` = `f"AHSP-{user.id}-{int(time.time())}"` beresolusi **detik** → double-click/2 request dalam 1 detik menghasilkan `order_id` identik → `IntegrityError` (`unique=True`). Diperparah pola create dua-langkah: `create()` tanpa `order_id` (CharField default `''`), lalu set + `save()` lagi; dua create konkuren sama-sama menulis `''` → tabrakan, dan jika proses crash di antaranya, baris ber-`order_id=''` mengunci slot `unique` & memblokir checkout berikutnya. Semua berujung HTTP 500 generik. | `subscriptions/models.py:305-309`, `subscriptions/views.py:64-82` | Telaah kode |
+| **A3** | 🟢 FIXED (SUB-2) | `generate_order_id()` kini berbasis UUID pk transaksi (`f"AHSP-{user_id}-{id.hex}"`, unik per transaksi, tersedia sebelum save) menggantikan timestamp detik; `CreatePaymentView` membangun transaksi + set `order_id` sebelum **satu** `save()`, menghapus window `order_id=''`. Double-submit/konkuren tak lagi tabrakan. | `subscriptions/models.py:generate_order_id`, `subscriptions/views.py:CreatePaymentView` | Regression: `PaymentOrderIdUniquenessTests` (3/3) |
 | **A5** | 🟢 FIXED (SUB-1) | Notifikasi `refund` kini set `REFUND` + revoke subscription user; late `cancel/deny/expire` setelah aktivasi tidak lagi menimpa transaksi `success`. | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_after_success_revokes_access`, `test_late_deny_after_success_does_not_overwrite_success` |
 | **A6** | 🟠 MED | Tidak ada rate limiting pada `CreatePaymentView`; tiap hit membuat baris DB + memanggil Midtrans → rawan spam/abuse. | `subscriptions/views.py:41-115` | Telaah kode |
 | **A10a** | 🟡 LOW | Tidak ada pencegahan transaksi `pending` ganda untuk plan yang sama; user dapat membuat banyak baris `pending` (TC-4). | `subscriptions/views.py:64-80` | Telaah kode |
@@ -84,7 +84,7 @@
 |---|---------|---------------------|-----------|--------|
 | 1 | 2026-06-23 | Audit kode statis Payment Flow; temuan A3/A5/A6/A10a tercatat | - | DONE (audit) |
 | 1b | 2026-06-23 | Verifikasi independen (Codex + Claude): tambah A11 (replay re-activate) & A12 (lost update) | - | DONE (audit) |
-| 2 | - | Perbaikan A3 (order_id atomik) | - | TODO |
+| 2 | 2026-06-23 | SUB-2: order_id atomik (UUID pk) + hapus window `order_id=''` (A3) | branch `fix/subscriptions-sub2-order-id` | DONE |
 | 3 | 2026-06-23 | SUB-1: Kebijakan refund/transisi status (A5) + idempotensi replay setelah terminal (A11) | - | DONE |
 | 4 | - | Rate limit create_payment (A6) | - | TODO |
 
@@ -96,6 +96,6 @@
 - [x] Amount verified server-side
 - [x] Redirect handling correct
 - [x] Transaction model integrity (transisi status mundur A5 tertutup oleh SUB-1)
-- [~] order_id uniqueness robust (→ A3)
+- [x] order_id uniqueness robust (SUB-2: UUID pk + single-insert)
 - [~] Aktivasi idempotent & bebas lost-update (A11 tertutup; A12 masih pending)
 - [ ] Reviewer sign-off
