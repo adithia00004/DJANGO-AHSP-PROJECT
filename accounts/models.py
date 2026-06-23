@@ -134,6 +134,13 @@ class CustomUser(AbstractUser):
         self.subscription_end_date = base_date + timedelta(days=months * 30)
         self.subscription_status = self.SubscriptionStatus.PRO
         self.save(update_fields=['subscription_status', 'subscription_end_date'])
+
+    def revoke_subscription(self, revoked_at=None) -> None:
+        """Immediately revoke paid subscription access."""
+        revoked_at = revoked_at or timezone.now()
+        self.subscription_status = self.SubscriptionStatus.EXPIRED
+        self.subscription_end_date = revoked_at
+        self.save(update_fields=['subscription_status', 'subscription_end_date'])
     
     def check_and_expire(self) -> bool:
         """

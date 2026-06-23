@@ -170,6 +170,151 @@ class PaymentWebhookIdempotencyTests(TestCase):
         expected_end = timezone.now() + timedelta(days=30)
         self.assertLessEqual(abs((self.user.subscription_end_date - expected_end).days), 1)
 
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_refund_after_success_revokes_access(self, _mock_verify):
+        view = PaymentWebhookView.as_view()
+        webhook_url = reverse("subscriptions:webhook_midtrans")
+
+        success_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(success_request).status_code, 200)
+
+        refund_payload = {
+            **self.payload,
+            "transaction_status": "refund",
+            "transaction_id": "midtrans-tx-001-refund",
+        }
+        refund_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(refund_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(refund_request).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.payment.refresh_from_db()
+
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_REFUND)
+        self.assertEqual(self.user.subscription_status, "EXPIRED")
+        self.assertFalse(self.user.is_pro_active)
+        self.assertLessEqual(self.user.subscription_end_date, timezone.now())
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_late_deny_after_success_does_not_overwrite_success(self, _mock_verify):
+        view = PaymentWebhookView.as_view()
+        webhook_url = reverse("subscriptions:webhook_midtrans")
+
+        success_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(success_request).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.payment.refresh_from_db()
+        first_end_date = self.user.subscription_end_date
+        first_paid_at = self.payment.paid_at
+
+        deny_payload = {
+            **self.payload,
+            "transaction_status": "deny",
+            "transaction_id": "midtrans-tx-001-deny",
+        }
+        deny_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(deny_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(deny_request).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.payment.refresh_from_db()
+
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_SUCCESS)
+        self.assertEqual(self.payment.paid_at, first_paid_at)
+        self.assertEqual(self.user.subscription_status, "PRO")
+        self.assertEqual(self.user.subscription_end_date, first_end_date)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_refund_preserves_activation_marker(self, _mock_verify):
+        view = PaymentWebhookView.as_view()
+        webhook_url = reverse("subscriptions:webhook_midtrans")
+
+        success_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(success_request).status_code, 200)
+
+        self.payment.refresh_from_db()
+        first_paid_at = self.payment.paid_at
+
+        refund_payload = {
+            **self.payload,
+            "transaction_status": "refund",
+            "transaction_id": "midtrans-tx-001-refund",
+        }
+        refund_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(refund_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(refund_request).status_code, 200)
+
+        self.payment.refresh_from_db()
+
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_REFUND)
+        self.assertEqual(self.payment.paid_at, first_paid_at)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_replay_settlement_after_refund_does_not_reactivate(self, _mock_verify):
+        view = PaymentWebhookView.as_view()
+        webhook_url = reverse("subscriptions:webhook_midtrans")
+
+        success_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(success_request).status_code, 200)
+
+        refund_payload = {
+            **self.payload,
+            "transaction_status": "refund",
+            "transaction_id": "midtrans-tx-001-refund",
+        }
+        refund_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(refund_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(refund_request).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.payment.refresh_from_db()
+        revoked_end_date = self.user.subscription_end_date
+        first_paid_at = self.payment.paid_at
+
+        replay_request = self.factory.post(
+            webhook_url,
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+        self.assertEqual(view(replay_request).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.payment.refresh_from_db()
+
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_REFUND)
+        self.assertEqual(self.payment.paid_at, first_paid_at)
+        self.assertEqual(self.user.subscription_status, "EXPIRED")
+        self.assertEqual(self.user.subscription_end_date, revoked_end_date)
+
 
 class EntitlementPolicyEngineTests(TestCase):
     def setUp(self):

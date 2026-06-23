@@ -159,23 +159,36 @@ class PaymentWebhookView(View):
                 # Process based on status
                 if transaction_status in ['capture', 'settlement']:
                     if fraud_status == 'accept':
-                        already_success = (
-                            payment_tx.status == PaymentTransaction.STATUS_SUCCESS and
-                            payment_tx.paid_at is not None
-                        )
-                        if already_success:
+                        already_activated = payment_tx.paid_at is not None
+                        if already_activated:
                             logger.info(
-                                "Ignoring duplicate successful webhook for order %s",
+                                "Ignoring already-activated successful webhook for order %s",
                                 order_id
                             )
                         else:
                             self._handle_success(payment_tx)
                 elif transaction_status in ['cancel', 'deny']:
-                    payment_tx.status = PaymentTransaction.STATUS_FAILED
+                    if payment_tx.paid_at is not None:
+                        logger.warning(
+                            "Ignoring late %s webhook for already-activated order %s",
+                            transaction_status,
+                            order_id,
+                        )
+                    else:
+                        payment_tx.status = PaymentTransaction.STATUS_FAILED
                 elif transaction_status == 'expire':
-                    payment_tx.status = PaymentTransaction.STATUS_EXPIRED
+                    if payment_tx.paid_at is not None:
+                        logger.warning(
+                            "Ignoring late expire webhook for already-activated order %s",
+                            order_id,
+                        )
+                    else:
+                        payment_tx.status = PaymentTransaction.STATUS_EXPIRED
                 elif transaction_status == 'refund':
+                    was_activated = payment_tx.paid_at is not None
                     payment_tx.status = PaymentTransaction.STATUS_REFUND
+                    if was_activated:
+                        payment_tx.user.revoke_subscription()
                 # pending - keep as pending
 
                 payment_tx.save()
@@ -295,4 +308,3 @@ class CheckoutView(LoginRequiredMixin, View):
             'discount_amount_display': format_currency_idr(pricing.discount_amount),
             'midtrans_client_key': getattr(settings, 'MIDTRANS_CLIENT_KEY', ''),
         })
-
