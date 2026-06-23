@@ -193,7 +193,20 @@ class PaymentWebhookView(View):
                     was_activated = payment_tx.paid_at is not None
                     payment_tx.status = PaymentTransaction.STATUS_REFUND
                     if was_activated:
-                        payment_tx.user.revoke_subscription()
+                        # EC-1: revoke only when this was the user's sole paid
+                        # transaction. If another non-refunded SUCCESS payment
+                        # still justifies access, do not blanket-revoke it.
+                        has_other_paid = (
+                            PaymentTransaction.objects
+                            .filter(
+                                user=payment_tx.user,
+                                status=PaymentTransaction.STATUS_SUCCESS,
+                            )
+                            .exclude(pk=payment_tx.pk)
+                            .exists()
+                        )
+                        if not has_other_paid:
+                            payment_tx.user.revoke_subscription()
                 # pending - keep as pending
 
                 payment_tx.save()

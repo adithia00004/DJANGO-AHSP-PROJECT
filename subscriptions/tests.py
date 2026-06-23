@@ -1010,3 +1010,97 @@ class PendingPaymentReconciliationTests(TestCase):
 
         self.tx.refresh_from_db()
         self.assertEqual(self.tx.status, PaymentTransaction.STATUS_SUCCESS)
+
+
+class RefundRevocationScopeTests(TestCase):
+    """
+    ACC-1 / EC-1: refunding one paid transaction must not revoke access that a
+    different non-refunded paid transaction still justifies. Revoke only when the
+    refunded transaction was the user's sole paid purchase.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="refund_scope_user",
+            email="refund-scope@example.com",
+            password="Secret123!",
+        )
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+        self.payment = PaymentTransaction.objects.create(
+            order_id="AHSP-REFUND-SCOPE-1",
+            user=self.user,
+            plan=self.plan,
+            amount=self.plan.price,
+            duration_months_snapshot=self.plan.duration_months,
+            status=PaymentTransaction.STATUS_PENDING,
+        )
+        self.payload = {
+            "order_id": self.payment.order_id,
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+            "status_code": "200",
+            "gross_amount": str(int(self.plan.price)),
+            "signature_key": "dummy",
+            "transaction_id": "tx-refund-scope",
+            "payment_type": "bank_transfer",
+        }
+
+    def _post(self, payload):
+        request = self.factory.post(
+            reverse("subscriptions:webhook_midtrans"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        return PaymentWebhookView.as_view()(request)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_refund_revokes_when_sole_paid_transaction(self, _mock_verify):
+        self.assertEqual(self._post(self.payload).status_code, 200)
+
+        refund_payload = {
+            **self.payload,
+            "transaction_status": "refund",
+            "transaction_id": "tx-refund-scope-refund",
+        }
+        self.assertEqual(self._post(refund_payload).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.subscription_status, "EXPIRED")
+        self.assertFalse(self.user.is_pro_active)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_refund_keeps_access_when_other_paid_transaction_exists(self, _mock_verify):
+        # Activate the first purchase via the webhook.
+        self.assertEqual(self._post(self.payload).status_code, 200)
+
+        # A second, independent successful purchase still justifies access.
+        PaymentTransaction.objects.create(
+            order_id="AHSP-REFUND-SCOPE-2",
+            user=self.user,
+            plan=self.plan,
+            amount=self.plan.price,
+            duration_months_snapshot=self.plan.duration_months,
+            status=PaymentTransaction.STATUS_SUCCESS,
+            paid_at=timezone.now(),
+        )
+
+        refund_payload = {
+            **self.payload,
+            "transaction_status": "refund",
+            "transaction_id": "tx-refund-scope-refund",
+        }
+        self.assertEqual(self._post(refund_payload).status_code, 200)
+
+        self.user.refresh_from_db()
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_REFUND)
+        # Access preserved: the second paid transaction was not refunded.
+        self.assertEqual(self.user.subscription_status, "PRO")
+        self.assertTrue(self.user.is_pro_active)

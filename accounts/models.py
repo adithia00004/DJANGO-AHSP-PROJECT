@@ -1,5 +1,5 @@
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from datetime import timedelta
 
@@ -121,19 +121,34 @@ class CustomUser(AbstractUser):
         return True
     
     def activate_subscription(self, months: int) -> None:
-        """Activate or extend paid subscription."""
+        """Activate or extend paid subscription.
+
+        Computes the new end date from the row re-read under ``select_for_update``
+        rather than this (possibly stale) instance, so two payments for the same
+        user that succeed concurrently stack instead of overwriting each other
+        (audit finding A12). True cross-connection serialization is enforced by
+        the row lock on PostgreSQL; the re-read also fixes the stale-instance
+        lost update on any backend.
+        """
         now = timezone.now()
-        
-        # If already pro and not expired, extend from current end date
-        if self.is_pro_active and self.subscription_end_date:
-            base_date = self.subscription_end_date
-        else:
-            base_date = now
-        
-        # Calculate new end date (approximate months as 30 days)
-        self.subscription_end_date = base_date + timedelta(days=months * 30)
+
+        with transaction.atomic():
+            locked = type(self).objects.select_for_update().get(pk=self.pk)
+
+            # If already pro and not expired, extend from current end date.
+            if locked.is_pro_active and locked.subscription_end_date:
+                base_date = locked.subscription_end_date
+            else:
+                base_date = now
+
+            new_end_date = base_date + timedelta(days=months * 30)
+            locked.subscription_end_date = new_end_date
+            locked.subscription_status = self.SubscriptionStatus.PRO
+            locked.save(update_fields=['subscription_status', 'subscription_end_date'])
+
+        # Reflect the persisted state on the in-memory instance the caller holds.
+        self.subscription_end_date = new_end_date
         self.subscription_status = self.SubscriptionStatus.PRO
-        self.save(update_fields=['subscription_status', 'subscription_end_date'])
 
     def revoke_subscription(self, revoked_at=None) -> None:
         """Immediately revoke paid subscription access."""

@@ -293,6 +293,63 @@ class TrialLifetimePolicyTests(TestCase):
         self.assertLessEqual(user.trial_end_date, timezone.now())
 
 
+class ActivateSubscriptionAtomicityTests(TestCase):
+    """
+    ACC-1 (A12): activate_subscription must stack from the persisted row, not a
+    stale in-memory instance, so two payments for the same user do not overwrite
+    each other's extension.
+
+    (True cross-connection locking is enforced by select_for_update on
+    PostgreSQL; this SQLite-friendly test proves the re-read fixes the
+    stale-instance lost update. PG integration test tracked separately.)
+    """
+
+    def setUp(self):
+        self.user_model = get_user_model()
+
+    def test_activation_extends_from_db_not_stale_instance(self):
+        user = self.user_model.objects.create_user(
+            username="stacking_user",
+            email="stacking@example.com",
+            password="Secret123!",
+            subscription_status="EXPIRED",
+        )
+
+        # Two independent handles to the same row (two webhook handlers).
+        handle_a = self.user_model.objects.get(pk=user.pk)
+        handle_b = self.user_model.objects.get(pk=user.pk)
+
+        handle_a.activate_subscription(months=1)
+
+        # handle_b's in-memory subscription_end_date is still None (stale). The
+        # extension must read handle_a's committed value, not the stale None.
+        handle_b.activate_subscription(months=1)
+
+        user.refresh_from_db()
+        expected_end = timezone.now() + timedelta(days=60)
+        self.assertLessEqual(
+            abs((user.subscription_end_date - expected_end).days), 1
+        )
+        self.assertEqual(user.subscription_status, user.SubscriptionStatus.PRO)
+
+    def test_activation_from_expired_starts_from_now(self):
+        user = self.user_model.objects.create_user(
+            username="fresh_activation_user",
+            email="fresh-activation@example.com",
+            password="Secret123!",
+            subscription_status="EXPIRED",
+        )
+
+        user.activate_subscription(months=3)
+
+        user.refresh_from_db()
+        expected_end = timezone.now() + timedelta(days=90)
+        self.assertLessEqual(
+            abs((user.subscription_end_date - expected_end).days), 1
+        )
+        self.assertEqual(user.subscription_status, user.SubscriptionStatus.PRO)
+
+
 class TrialAccessGuardTests(TestCase):
     def setUp(self):
         self.user_model = get_user_model()
