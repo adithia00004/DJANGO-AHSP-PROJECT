@@ -1,6 +1,6 @@
 # R3.0 - Ringkasan Audit App `subscriptions`
 
-**Status:** `[~]` AUDIT KODE + VERIFIKASI RUNTIME; SUB-1 FIX SELESAI — perbaikan lain pending
+**Status:** `[~]` AUDIT + VERIFIKASI RUNTIME; **semua P0 go-live FIXED (SUB-1..4: A11/A5, A3, A1, A2)** — P1+ (A4/A6/A7/A12/A13/A14-16) pending
 **Tanggal audit:** 2026-06-23
 **Metode:** Telaah kode statis menyeluruh (read-only) atas seluruh berkas `subscriptions/*` + integrasi `accounts` (User model, middleware, mixins, signals) dan `config` (settings, URL routing), dilanjutkan verifikasi independen serta eksekusi automated test. **Bukan** UAT browser atau transaksi Midtrans nyata.
 **Auditor:** Claude Code; diverifikasi ulang oleh Codex pada 2026-06-23
@@ -28,7 +28,7 @@
 
 ## 2. Penilaian Umum
 
-Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 menutup replay setelah refund/terminal (A11) + kebijakan refund revoke/late terminal (A5); SUB-2 menutup uniqueness order id (A3); SUB-3 menutup checkout produksi (A1, Snap.js prod/sandbox). Sisa sebelum menerima pembayaran produksi nyata: **rekonsiliasi webhook (A2)**, verifikasi field webhook (A4), dan pembayaran sukses konkuren (A12).
+Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 menutup replay setelah refund/terminal (A11) + kebijakan refund revoke/late terminal (A5); SUB-2 menutup uniqueness order id (A3); SUB-3 menutup checkout produksi (A1, Snap.js prod/sandbox); SUB-4 menutup rekonsiliasi webhook terlewat (A2). **Semua blocker go-live (P0) tertutup.** Sisa pengerasan (bukan blocker): verifikasi field webhook (A4), pembayaran sukses konkuren (A12, perlu gate PG), serta P2/P3.
 
 ---
 
@@ -37,7 +37,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 | ID | Sev | Temuan | Dokumen detail |
 |----|-----|--------|----------------|
 | **A1** | 🟢 FIXED (SUB-3) | Host Snap.js checkout kini mengikuti `MIDTRANS_IS_PRODUCTION` (produksi vs sandbox) | [01](01_Checkout_Page.md), [03](03_Midtrans_Integration.md) |
-| **A2** | 🟠 MED | Tidak ada rekonsiliasi webhook gagal/terlewat → transaksi yang sudah dibayar dapat tetap `pending` tanpa batas (`get_transaction_status` dead code) | [03](03_Midtrans_Integration.md), [02](02_Payment_Flow.md) |
+| **A2** | 🟢 FIXED (SUB-4) | Reconcile (`reconcile_pending_payments`) memulihkan transaksi paid-but-pending via Status API + jalur aktivasi sama; Celery beat tiap 15 menit + command manual | [03](03_Midtrans_Integration.md), [02](02_Payment_Flow.md) |
 | **A3** | 🟢 FIXED (SUB-2) | `order_id` kini dari UUID pk transaksi + single-insert (hapus window `order_id=''`); double-click/konkuren tak lagi tabrakan | [02](02_Payment_Flow.md) |
 | **A4** | 🟠 MED | Field penentu aktivasi (`transaction_status`/`fraud_status`) tidak dilindungi signature; tak ada re-verifikasi via Status API | [05](05_Webhook_Security.md) |
 | **A5** | 🟢 FIXED (SUB-1) | `refund` susulan kini mencabut akses PRO; late `cancel`/`deny`/`expire` setelah success tidak menimpa record aktif | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
@@ -73,7 +73,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 
 | Prioritas | Temuan | Alasan |
 |-----------|--------|--------|
-| **P0 — sebelum go-live** | A2 (~~A1 SUB-3, A3 SUB-2 FIXED~~) | Tinggal rekonsiliasi webhook (A2); checkout produksi & uniqueness order sudah ditutup SUB-3/SUB-2 |
+| **P0 — sebelum go-live** | ✅ SELESAI (A1 SUB-3, A2 SUB-4, A3 SUB-2, A11 SUB-1) | Semua blocker go-live tertutup; sisa P1+ (A4/A12/...) bukan blocker langsung |
 | **P1 — integritas transaksi** | A4, A6, A7, A12 | Defense-in-depth, anti-abuse, dan locking user |
 | **P2 — integritas bisnis/data** | A13, A15 | Uniqueness default entitlement dan pengingat expiry |
 | **P3 — kebersihan/perf** | A9, A10a, A14, A16 | Robustness, konsistensi, dan overhead query lintas-page |
@@ -85,10 +85,10 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 
 - `python manage.py makemigrations --check --dry-run`: **PASS**, tidak ada perubahan migrasi yang belum dibuat.
 - `python manage.py check`: **PASS**, tidak ada system-check error.
-- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 32/32 test** setelah SUB-1..SUB-3.
-- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 57/57 test** setelah SUB-1..SUB-3.
+- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 38/38 test** setelah SUB-1..SUB-4.
+- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 63/63 test** setelah SUB-1..SUB-4.
 - Eksekusi test harus memakai `config.settings.test`; settings ini sengaja menonaktifkan `TimeoutMiddleware` yang dapat mengganggu autentikasi `force_login` pada Django test client.
-- Automated test saat ini sudah mencakup SUB-1 (A5/A11), SUB-2 (A3), dan SUB-3 (A1). Skenario A4, A7, A12, dan A13 masih belum tercakup penuh; A12/A13 perlu gate PostgreSQL 15 (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
+- Automated test saat ini sudah mencakup SUB-1 (A5/A11), SUB-2 (A3), SUB-3 (A1), dan SUB-4 (A2). Skenario A4, A7, A12, dan A13 masih belum tercakup penuh; A12/A13 perlu gate PostgreSQL 15 (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
 
 ---
 

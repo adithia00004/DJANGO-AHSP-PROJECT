@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **IN PROGRESS** — eksekusi M1 dimulai dari SUB-1.
+**Status keseluruhan:** **IN PROGRESS** — M1 sisi SUB selesai (SUB-1/2/3/4 DONE); tersisa **ACC-1** (A12, + EC-1) untuk menutup M1. Subscriptions+accounts 63/63.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -42,7 +42,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | SUB-1 | SUB | A11+A5 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 52/52; check PASS; makemigrations PASS | `e9475bed` (branch `fix/subscriptions-sub1-idempotent-activation`) |
 | SUB-2 | SUB | A3 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 55/55; check PASS; makemigrations no-changes | `3bbae422` (code) + `f4fa7a3d` (docs) |
 | SUB-3 | SUB | A1 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 2/2; full 57/57; check PASS | branch `fix/subscriptions-sub3-snap-toggle` (pending commit) |
-| SUB-4 ⇄ | SUB | A2 | P0 | PENDING | - | - | **SUB-1** | - |
+| SUB-4 ⇄ | SUB | A2 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: reconcile 6/6 + webhook 6/6; full 63/63; check PASS; makemigrations no-changes | branch `fix/subscriptions-sub4-reconcile` (pending commit) |
 | ACC-1 ⇄ | ACC | A12 | P1 | PENDING | - | - | **SUB-1** | - |
 | SUB-5 | SUB | A4 | P1 | PENDING | - | - | SUB-4 (reuse helper) | - |
 | SUB-6 | SUB | A6/A7/A8 | P1 | PENDING | - | - | Baseline | - |
@@ -69,8 +69,11 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 3 | 2026-06-23 | SUB-1 | `Review/R3_Subscriptions/00_Audit_Summary_20260623.md`, `02_Payment_Flow.md`, `05_Webhook_Security.md`, `09_Implementation_Execution_Tracker_20260623.md` | M | Update status dokumentasi: A5/A11 tertutup oleh SUB-1; A12 tetap pending. | PASS | `b165e752` |
 | 4 | 2026-06-23 | SUB-2 | `subscriptions/models.py`, `subscriptions/views.py` | M | `generate_order_id` kini berbasis UUID pk transaksi (bukan timestamp detik); `CreatePaymentView` membangun transaksi via constructor + set `order_id` sebelum satu `save()` (hapus pola `objects.create()` ber-`order_id=''` + save kedua). | PASS | `3bbae422` |
 | 5 | 2026-06-23 | SUB-2 | `subscriptions/tests.py` | M | Tambah `PaymentOrderIdUniquenessTests` (3 test): unik antar-transaksi waktu sama, single-insert non-empty order_id, double-create rapid menghasilkan order_id berbeda. | PASS | `3bbae422` |
-| 6 | 2026-06-23 | SUB-3 | `subscriptions/views.py`, `subscriptions/templates/subscriptions/checkout.html` | M | `CheckoutView` mengirim `midtrans_is_production` ke context; template memilih host Snap.js (`app.midtrans.com` vs `app.sandbox.midtrans.com`) berdasarkan flag, menggantikan host sandbox hardcoded. | PASS | _(pending)_ |
-| 7 | 2026-06-23 | SUB-3 | `subscriptions/tests.py` | M | Tambah `CheckoutSnapJsToggleTests` (2 test): render checkout memakai URL Snap.js produksi saat flag ON, sandbox saat OFF. | PASS | _(pending)_ |
+| 6 | 2026-06-23 | SUB-3 | `subscriptions/views.py`, `subscriptions/templates/subscriptions/checkout.html` | M | `CheckoutView` mengirim `midtrans_is_production` ke context; template memilih host Snap.js (`app.midtrans.com` vs `app.sandbox.midtrans.com`) berdasarkan flag, menggantikan host sandbox hardcoded. | PASS | `28fa972a` |
+| 7 | 2026-06-23 | SUB-3 | `subscriptions/tests.py` | M | Tambah `CheckoutSnapJsToggleTests` (2 test): render checkout memakai URL Snap.js produksi saat flag ON, sandbox saat OFF. | PASS | `28fa972a` |
+| 8 | 2026-06-23 | SUB-4 | `subscriptions/reconciliation.py`, `subscriptions/tasks.py`, `.../commands/reconcile_pending_payments.py` | A | Service reconcile (`reconcile_pending_payments` + jalur aktivasi bersama `mark_paid_and_activate`), Celery task wrapper dengan fallback import saat Celery tidak terpasang di test/dev lokal, dan management command. | PASS | _(pending)_ |
+| 9 | 2026-06-23 | SUB-4 | `subscriptions/views.py`, `config/celery.py` | M | `_handle_success` kini delegasi ke `mark_paid_and_activate` (satu jalur aktivasi webhook+reconcile); beat `reconcile-pending-payments` tiap 15 menit memanggil task (bukan command langsung). | PASS | _(pending)_ |
+| 10 | 2026-06-23 | SUB-4 | `subscriptions/tests.py` | M | Tambah `PendingPaymentReconciliationTests` (6 test). | PASS | _(pending)_ |
 
 ---
 
@@ -86,6 +89,11 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 2 | 2026-06-23 | SUB-1 | `CustomUser.revoke_subscription(revoked_at=None)` | Method (API baru `accounts`) | Mencabut akses PRO segera (set EXPIRED + `subscription_end_date=now`) untuk D-1; dipakai handler refund webhook. Lihat catatan EC-1 §7. |
 | 3 | 2026-06-23 | SUB-2 | `PaymentOrderIdUniquenessTests` (3 test) | Regression tests | Guard A3: order_id unik per transaksi (UUID pk), single-insert tanpa window `order_id=''`, rapid double-create tak tabrakan. |
 | 4 | 2026-06-23 | SUB-3 | `CheckoutSnapJsToggleTests` (2 test) | Regression tests | Guard A1: checkout memuat Snap.js produksi vs sandbox sesuai `MIDTRANS_IS_PRODUCTION`. |
+| 5 | 2026-06-23 | SUB-4 | `subscriptions/reconciliation.py` | Module | `reconcile_pending_payments()` + `mark_paid_and_activate()` (jalur aktivasi tunggal webhook+reconcile). Memakai `get_transaction_status` yang sebelumnya dead-code (A2). |
+| 6 | 2026-06-23 | SUB-4 | `subscriptions/tasks.py` (`reconcile_pending_payments_task`) | Celery task | Wrapper beat → service (beat tak panggil command langsung); import-safe di environment tanpa package Celery. |
+| 7 | 2026-06-23 | SUB-4 | `management/commands/reconcile_pending_payments.py` | Mgmt command | Jalur manual/runbook reconcile (`--older-than-minutes`, `--limit`). |
+| 8 | 2026-06-23 | SUB-4 | beat `reconcile-pending-payments` (`config/celery.py`) | Beat schedule | Jadwal tiap 15 menit memanggil `subscriptions.reconcile_pending_payments`. |
+| 9 | 2026-06-23 | SUB-4 | `PendingPaymentReconciliationTests` (6 test) | Regression tests | Activate settled, idempotent, leave-pending, skip-recent, task-delegasi, command. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -122,6 +130,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 8 | 2026-06-23 | SUB-2 | `check` + `makemigrations --check` | **PASS** | no changes (perubahan metode, bukan field) |
 | 9 | 2026-06-23 | SUB-3 | `test subscriptions.tests.CheckoutSnapJsToggleTests` | **2/2 PASS** | URL Snap.js prod saat flag ON, sandbox saat OFF |
 | 10 | 2026-06-23 | SUB-3 | `test subscriptions accounts` + `check` | **57/57 PASS** + check PASS | +2 dari 55; tanpa migrasi (template/context saja) |
+| 11 | 2026-06-23 | SUB-4 | `test PendingPaymentReconciliationTests + PaymentWebhookIdempotencyTests` | **12/12 PASS** | reconcile 6 + webhook 6 (refaktor `_handle_success` aman) |
+| 12 | 2026-06-23 | SUB-4 | `test subscriptions accounts` + `check` + `makemigrations --check` | **63/63 PASS** + check PASS + no changes | +6 dari 57; tanpa migrasi (service/task/command/beat saja) |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 
