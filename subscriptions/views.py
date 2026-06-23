@@ -3,6 +3,7 @@ Subscription payment views and webhook handlers.
 """
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse, HttpResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -29,6 +30,25 @@ def _is_managed_access_user(user) -> bool:
     Users with full-access (staff/superuser) should not go through checkout flow.
     """
     return bool(getattr(user, "has_full_access", False))
+
+
+def _settlement_payload_is_consistent(status_code, gross_amount, payment_tx) -> bool:
+    """Cross-check the SIGNED fields of a Midtrans notification against our record.
+
+    The webhook signature only covers order_id + status_code + gross_amount +
+    server_key — NOT transaction_status / fraud_status (audit finding A4). Before
+    a 'settlement'/'capture' body is trusted to grant access, confirm the signed
+    status_code is Midtrans' success code ('200') and the signed gross_amount
+    matches the stored amount. Amounts are compared as Decimal so a formatting
+    difference like '300000.00' vs '300000' is not a false mismatch.
+    """
+    if str(status_code) != "200":
+        return False
+    try:
+        signed_amount = Decimal(str(gross_amount))
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+    return signed_amount == Decimal(payment_tx.amount)
 
 
 class CreatePaymentView(LoginRequiredMixin, View):
@@ -164,14 +184,26 @@ class PaymentWebhookView(View):
                 # Process based on status
                 if transaction_status in ['capture', 'settlement']:
                     if fraud_status == 'accept':
-                        already_activated = payment_tx.paid_at is not None
-                        if already_activated:
-                            logger.info(
-                                "Ignoring already-activated successful webhook for order %s",
-                                order_id
+                        if not _settlement_payload_is_consistent(
+                            status_code, gross_amount, payment_tx
+                        ):
+                            # A4: signed fields don't match our record — do not
+                            # trust the (unsigned) settlement status. Leave the
+                            # transaction for the authoritative reconcile job.
+                            logger.warning(
+                                "Webhook settlement cross-check failed for order %s; "
+                                "not activating (gross=%s, status_code=%s, amount=%s)",
+                                order_id, gross_amount, status_code, payment_tx.amount,
                             )
                         else:
-                            self._handle_success(payment_tx)
+                            already_activated = payment_tx.paid_at is not None
+                            if already_activated:
+                                logger.info(
+                                    "Ignoring already-activated successful webhook for order %s",
+                                    order_id
+                                )
+                            else:
+                                self._handle_success(payment_tx)
                 elif transaction_status in ['cancel', 'deny']:
                     if payment_tx.paid_at is not None:
                         logger.warning(

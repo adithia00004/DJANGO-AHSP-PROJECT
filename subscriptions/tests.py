@@ -1104,3 +1104,88 @@ class RefundRevocationScopeTests(TestCase):
         # Access preserved: the second paid transaction was not refunded.
         self.assertEqual(self.user.subscription_status, "PRO")
         self.assertTrue(self.user.is_pro_active)
+
+
+class WebhookSettlementCrossCheckTests(TestCase):
+    """
+    SUB-5 (A4): a 'settlement'/'capture' webhook must cross-check the SIGNED
+    gross_amount and status_code against the stored transaction before granting
+    access, because transaction_status/fraud_status are not covered by the
+    Midtrans signature.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="xcheck_user",
+            email="xcheck@example.com",
+            password="Secret123!",
+        )
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+        self.payment = PaymentTransaction.objects.create(
+            order_id="AHSP-XCHECK-1",
+            user=self.user,
+            plan=self.plan,
+            amount=self.plan.price,
+            duration_months_snapshot=self.plan.duration_months,
+            status=PaymentTransaction.STATUS_PENDING,
+        )
+        self.base_payload = {
+            "order_id": self.payment.order_id,
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+            "status_code": "200",
+            "gross_amount": str(int(self.plan.price)),
+            "signature_key": "dummy",
+            "transaction_id": "tx-xcheck",
+            "payment_type": "bank_transfer",
+        }
+
+    def _post(self, payload):
+        request = self.factory.post(
+            reverse("subscriptions:webhook_midtrans"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        return PaymentWebhookView.as_view()(request)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_amount_mismatch_does_not_activate(self, _mock_verify):
+        payload = {**self.base_payload, "gross_amount": "1"}
+
+        self.assertEqual(self._post(payload).status_code, 200)
+
+        self.payment.refresh_from_db()
+        self.user.refresh_from_db()
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_PENDING)
+        self.assertIsNone(self.payment.paid_at)
+        self.assertFalse(self.user.is_pro_active)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_amount_format_difference_still_activates(self, _mock_verify):
+        # Decimal normalization: "300000.00" must equal stored 300000.
+        payload = {**self.base_payload, "gross_amount": "300000.00"}
+
+        self.assertEqual(self._post(payload).status_code, 200)
+
+        self.payment.refresh_from_db()
+        self.user.refresh_from_db()
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_SUCCESS)
+        self.assertEqual(self.user.subscription_status, "PRO")
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_wrong_status_code_does_not_activate(self, _mock_verify):
+        # transaction_status says settlement, but signed status_code is not 200.
+        payload = {**self.base_payload, "status_code": "201"}
+
+        self.assertEqual(self._post(payload).status_code, 200)
+
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, PaymentTransaction.STATUS_PENDING)
+        self.assertIsNone(self.payment.paid_at)
