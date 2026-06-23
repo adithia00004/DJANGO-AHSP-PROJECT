@@ -34,7 +34,7 @@
 | TC-7 | Status: deny/cancel/expire | subscription NOT activated | `[x]` | pending → terminal; late terminal setelah aktivasi diabaikan |
 | TC-8 | Status: pending | No change, await next | `[x]` | komentar eksplisit "keep as pending" |
 | TC-9 | Refund notification | Handle gracefully | `[x]` | SUB-1: set `REFUND` + revoke akses; marker `paid_at` tetap ada |
-| TC-10 | Request body tampering | Signature mismatch → reject | `[~]` | **A4**: `transaction_status`/`fraud_status` tak ikut ditandatangani |
+| TC-10 | Request body tampering | Signature mismatch → reject | `[x]` | SUB-5: settlement di-cross-check ke field bertanda tangan (`status_code`/`gross_amount`); body tampering pada `transaction_status` tak meng-aktivasi |
 | TC-11 | CSRF exempt justified | Webhook dari external service | `[x]` | `@method_decorator(csrf_exempt)` |
 | TC-12 | Rate limiting pada webhook endpoint | Prevent abuse | `[ ]` | **A6**: belum ada |
 | TC-13 | Logging webhook events | Audit trail for debugging | `[x]` | `logger.warning/info/exception` + simpan `midtrans_response` |
@@ -46,7 +46,7 @@
 
 | ID | Severity | Deskripsi | Lokasi | Evidence |
 |----|----------|-----------|--------|----------|
-| **A4** | 🟠 MED | Signature = `SHA512(order_id + status_code + gross_amount + server_key)`, tetapi keputusan aktivasi diputuskan oleh `transaction_status` & `fraud_status` yang **tidak ikut ditandatangani** dan tidak di-cross-check terhadap `status_code` maupun `gross_amount` vs `amount` tersimpan. Pesan tertandatangani sah bisa diubah pada field keputusan tanpa menggagalkan verifikasi. Eksploitasi langsung butuh akses ke notifikasi tertandatangani (server-to-server HTTPS → risiko rendah), tetapi menyimpang dari praktik aman Midtrans. | `subscriptions/views.py:155-181`, `subscriptions/midtrans.py:129-143` | Telaah kode |
+| **A4** | 🟢 FIXED (SUB-5) | Sebelum aktivasi `capture/settlement`, webhook kini cross-check field **bertanda tangan** (`status_code=='200'` + `gross_amount`==`amount` via Decimal-normalize) terhadap record (`_settlement_payload_is_consistent`). Body tampering pada `transaction_status`/`fraud_status` (yang tak ditandatangani) tak lagi cukup untuk meng-aktivasi. Jalur otoritatif API tetap dipakai reconcile (SUB-4) untuk kasus recovery. | `subscriptions/views.py:_settlement_payload_is_consistent` | Regression: `WebhookSettlementCrossCheckTests` (3/3) |
 | **A5** | 🟢 FIXED (SUB-1) | `refund` susulan mencabut akses PRO dan late `cancel/deny/expire` tidak lagi menimpa transaksi yang sudah aktif. (Detail di [02 Payment Flow](02_Payment_Flow.md).) | `subscriptions/views.py`, `accounts/models.py` | Regression SUB-1 |
 | **A6** | 🟠 MED | Endpoint webhook publik tanpa rate limiting (TC-12). | `subscriptions/views.py:118-189` | Telaah kode |
 | **A7** | 🟡 LOW | Perbandingan signature `==` (non constant-time). | `subscriptions/midtrans.py:143` | Telaah kode |
@@ -77,7 +77,7 @@
 | 1 | 2026-06-23 | Audit kode statis Webhook Security; temuan A4/A5/A6/A7/A8 tercatat | - | DONE (audit) |
 | 1b | 2026-06-23 | Verifikasi independen: A8→INFO (403 dipertahankan), tambah A11 (replay re-activate, HIGH) & A12 (lost update) | - | DONE (audit) |
 | 1c | 2026-06-23 | SUB-1: idempotensi aktivasi berbasis `paid_at`, refund revoke, dan late terminal guard (A5/A11) | - | DONE |
-| 2 | - | Re-verifikasi status via API / cross-check field (A4) | - | TODO |
+| 2 | 2026-06-23 | SUB-5: cross-check field bertanda tangan (status_code/gross_amount-Decimal) sebelum aktivasi (A4) | branch `fix/subscriptions-sub5-webhook-verify` | DONE |
 | 3 | - | Rate limit webhook (A6) | - | TODO |
 | 4 | - | Constant-time compare (A7) | - | TODO |
 
@@ -85,7 +85,7 @@
 
 ## Checklist Sign-off
 
-- [~] Signature verification bulletproof (algoritma ✓ / cakupan field ✗ → A4 / compare non-CT → A7)
+- [~] Signature verification bulletproof (algoritma ✓ / cakupan field ✓ cross-check SUB-5 / compare non-CT → A7)
 - [x] Replay protection untuk duplicate/replay terminal (A11 tertutup oleh SUB-1)
 - [x] Status transitions correct untuk refund + late terminal setelah success (A5 tertutup oleh SUB-1)
 - [x] Aktivasi bebas lost-update saat konkuren (A12 tertutup ACC-1; lock lintas-koneksi perlu gate PG)

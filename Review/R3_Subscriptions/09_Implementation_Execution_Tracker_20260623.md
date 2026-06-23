@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **M1 (go-live) SELESAI** — SUB-1/2/3/4 + ACC-1 DONE; semua blocker P0 + A12/EC-1 tertutup. Subscriptions+accounts **67/67**. Lanjut M2 (SUB-5 A4, SUB-6 A6/A7/A8). Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
+**Status keseluruhan:** **M1 SELESAI; M2 berjalan** — SUB-1..4 + ACC-1 + **SUB-5 (A4)** DONE; semua P0 + A12/A4 tertutup. Subscriptions+accounts **70/70**. Sisa M2: SUB-6 (A6/A7/A8). Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -43,8 +43,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | SUB-2 | SUB | A3 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 55/55; check PASS; makemigrations no-changes | `3bbae422` (code) + `f4fa7a3d` (docs) |
 | SUB-3 | SUB | A1 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 2/2; full 57/57; check PASS | branch `fix/subscriptions-sub3-snap-toggle` (pending commit) |
 | SUB-4 ⇄ | SUB | A2 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: reconcile 6/6 + webhook 6/6; full 63/63; check PASS; makemigrations no-changes | `b6e6060d` (code) + `a20010a9` (docs) |
-| ACC-1 ⇄ | ACC | A12 + EC-1 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 67/67; check PASS; makemigrations no-changes. **PG gate A12 pending** | branch `fix/accounts-acc1-atomic-activation` (pending commit) |
-| SUB-5 | SUB | A4 | P1 | PENDING | - | - | SUB-4 (reuse helper) | - |
+| ACC-1 ⇄ | ACC | A12 + EC-1 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 67/67; check PASS; makemigrations no-changes. **PG gate A12 pending** | `05f17150` (code) + `dbc307a8` (docs) |
+| SUB-5 | SUB | A4 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3 + webhook/refund 11/11; full 70/70; check PASS; no migrations | branch `fix/subscriptions-sub5-webhook-verify` (pending commit) |
 | SUB-6 | SUB | A6/A7/A8 | P1 | PENDING | - | - | Baseline | - |
 | SUB-7 | SUB | A13 | P2 | PENDING | - | - | data dedupe | - |
 | ACC-2 | ACC | A15 | P2 | PENDING | - | - | D-3 (✅) | - |
@@ -74,9 +74,11 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 8 | 2026-06-23 | SUB-4 | `subscriptions/reconciliation.py`, `subscriptions/tasks.py`, `.../commands/reconcile_pending_payments.py` | A | Service reconcile (`reconcile_pending_payments` + jalur aktivasi bersama `mark_paid_and_activate`), Celery task wrapper dengan fallback import saat Celery tidak terpasang di test/dev lokal, dan management command. | PASS | `b6e6060d` |
 | 9 | 2026-06-23 | SUB-4 | `subscriptions/views.py`, `config/celery.py` | M | `_handle_success` kini delegasi ke `mark_paid_and_activate` (satu jalur aktivasi webhook+reconcile); beat `reconcile-pending-payments` tiap 15 menit memanggil task (bukan command langsung). | PASS | `b6e6060d` |
 | 10 | 2026-06-23 | SUB-4 | `subscriptions/tests.py` | M | Tambah `PendingPaymentReconciliationTests` (6 test). | PASS | `b6e6060d` |
-| 11 | 2026-06-23 | ACC-1 | `accounts/models.py` | M | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic`, hitung end_date dari nilai terkunci (cegah lost-update A12 + stale-instance). | PASS | _(pending)_ |
-| 12 | 2026-06-23 | ACC-1 (EC-1) | `subscriptions/views.py` | M | Handler refund hanya `revoke_subscription` bila tak ada transaksi SUCCESS lain milik user (jangan cabut akses yang dijustifikasi pembelian lain). | PASS | _(pending)_ |
-| 13 | 2026-06-23 | ACC-1 | `accounts/tests.py`, `subscriptions/tests.py` | M | Tambah `ActivateSubscriptionAtomicityTests` (2) + `RefundRevocationScopeTests` (2). | PASS | _(pending)_ |
+| 11 | 2026-06-23 | ACC-1 | `accounts/models.py` | M | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic`, hitung end_date dari nilai terkunci (cegah lost-update A12 + stale-instance). | PASS | `05f17150` |
+| 12 | 2026-06-23 | ACC-1 (EC-1) | `subscriptions/views.py` | M | Handler refund hanya `revoke_subscription` bila tak ada transaksi SUCCESS lain milik user (jangan cabut akses yang dijustifikasi pembelian lain). | PASS | `05f17150` |
+| 13 | 2026-06-23 | ACC-1 | `accounts/tests.py`, `subscriptions/tests.py` | M | Tambah `ActivateSubscriptionAtomicityTests` (2) + `RefundRevocationScopeTests` (2). | PASS | `05f17150` |
+| 14 | 2026-06-23 | SUB-5 | `subscriptions/views.py` | M | Helper `_settlement_payload_is_consistent`: sebelum aktivasi, cross-check field **bertanda tangan** (`status_code=='200'` + `gross_amount`==`amount` via Decimal) terhadap record; bila tak konsisten, tidak aktivasi (A4). | PASS | _(pending)_ |
+| 15 | 2026-06-23 | SUB-5 | `subscriptions/tests.py` | M | Tambah `WebhookSettlementCrossCheckTests` (3 test): amount mismatch tak aktivasi, beda format Decimal tetap aktivasi, status_code salah tak aktivasi. | PASS | _(pending)_ |
 
 ---
 
@@ -99,6 +101,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 9 | 2026-06-23 | SUB-4 | `PendingPaymentReconciliationTests` (6 test) | Regression tests | Activate settled, idempotent, leave-pending, skip-recent, task-delegasi, command. |
 | 10 | 2026-06-23 | ACC-1 | `ActivateSubscriptionAtomicityTests` (2 test) | Regression tests | Guard A12: aktivasi menumpuk dari nilai DB (bukan stale instance); fresh activation dari now. |
 | 11 | 2026-06-23 | ACC-1 | `RefundRevocationScopeTests` (2 test) | Regression tests | Guard EC-1: refund mencabut bila satu-satunya tx sukses; mempertahankan akses bila ada tx sukses lain. |
+| 12 | 2026-06-23 | SUB-5 | `_settlement_payload_is_consistent` (helper) + `WebhookSettlementCrossCheckTests` (3 test) | Helper + tests | Guard A4: cross-check field bertanda tangan (status_code/gross_amount-Decimal) sebelum aktivasi webhook. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -139,6 +142,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 12 | 2026-06-23 | SUB-4 | `test subscriptions accounts` + `check` + `makemigrations --check` | **63/63 PASS** + check PASS + no changes | +6 dari 57; tanpa migrasi (service/task/command/beat saja) |
 | 13 | 2026-06-23 | ACC-1 | `test ActivateSubscriptionAtomicityTests + RefundRevocationScopeTests + PaymentWebhookIdempotencyTests` | **10/10 PASS** | A12 + EC-1 + webhook regresi aman |
 | 14 | 2026-06-23 | ACC-1 | `test subscriptions accounts` + `check` + `makemigrations --check` | **67/67 PASS** + check PASS + no changes | +4 dari 63; tanpa migrasi (metode+query saja) |
+| 15 | 2026-06-23 | SUB-5 | `test WebhookSettlementCrossCheckTests + PaymentWebhookIdempotencyTests + RefundRevocationScopeTests` | **11/11 PASS** | cross-check + regresi webhook/refund aman |
+| 16 | 2026-06-23 | SUB-5 | `test subscriptions accounts` + `check` + `makemigrations --check` | **70/70 PASS** + check PASS + no changes | +3 dari 67; tanpa migrasi (helper+guard saja) |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 
