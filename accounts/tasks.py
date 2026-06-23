@@ -2,7 +2,14 @@
 Celery tasks for subscription management.
 Scheduled daily to check and expire subscriptions.
 """
-from celery import shared_task
+try:
+    from celery import shared_task
+except ImportError:  # pragma: no cover - exercised only when celery is absent
+    def shared_task(*decorator_args, **decorator_kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
