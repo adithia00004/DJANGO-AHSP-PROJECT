@@ -36,10 +36,10 @@ def subscription_context(request):
     from subscriptions.entitlements import (
         FEATURE_EXPORT_EXCEL_WORD,
         FEATURE_EXPORT_PDF,
-        get_feature_access,
+        get_request_feature_access,
     )
-    pdf_access = get_feature_access(user, FEATURE_EXPORT_PDF)
-    excel_word_access = get_feature_access(user, FEATURE_EXPORT_EXCEL_WORD)
+    pdf_access = get_request_feature_access(request, FEATURE_EXPORT_PDF)
+    excel_word_access = get_request_feature_access(request, FEATURE_EXPORT_EXCEL_WORD)
 
     return {
         'export_pdf_allowed': pdf_access.allowed,

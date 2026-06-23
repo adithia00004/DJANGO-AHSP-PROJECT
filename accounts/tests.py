@@ -196,6 +196,33 @@ class SubscriptionContextTests(SimpleTestCase):
         self.assertEqual(context["subscription_status"], "ADMIN")
         self.assertFalse(context["show_upgrade_banner"])
 
+    def test_subscription_context_uses_per_request_feature_cache(self):
+        from subscriptions.entitlements import (
+            FEATURE_EXPORT_EXCEL_WORD,
+            FEATURE_EXPORT_PDF,
+        )
+
+        admin_user = DummyUser(
+            is_authenticated=True,
+            has_full_access=True,
+            subscription_status="TRIAL",
+            is_subscription_active=True,
+            is_trial_active=True,
+            is_pro_active=True,
+            can_edit=True,
+            can_export_clean=True,
+            days_until_expiry=3,
+        )
+        request = SimpleNamespace(user=admin_user)
+
+        subscription_context(request)
+
+        # ACC-4: the context processor resolved both export features through the
+        # per-request cache, so they are memoized on the request.
+        cache = getattr(request, "_feature_access_cache", {})
+        self.assertIn(FEATURE_EXPORT_PDF, cache)
+        self.assertIn(FEATURE_EXPORT_EXCEL_WORD, cache)
+
 
 class AppContactContextTests(SimpleTestCase):
     @override_settings(SUPPORT_EMAIL="helpdesk@ahsp.test")

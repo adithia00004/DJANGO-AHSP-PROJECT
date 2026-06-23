@@ -9,7 +9,7 @@ import re
 from urllib.parse import urlencode
 
 from django.http import HttpResponseRedirect, JsonResponse
-from subscriptions.entitlements import FEATURE_WRITE_ACCESS, get_feature_access
+from subscriptions.entitlements import FEATURE_WRITE_ACCESS, get_request_feature_access
 
 
 class SubscriptionMiddleware:
@@ -64,8 +64,9 @@ class SubscriptionMiddleware:
         if any(pattern.match(path) for pattern in self.excluded_patterns):
             return self.get_response(request)
         
-        # Check write entitlement via centralized policy engine.
-        decision = get_feature_access(request.user, FEATURE_WRITE_ACCESS)
+        # Check write entitlement via centralized policy engine (A14: per-request
+        # memoized so a feature resolved elsewhere in the request isn't recomputed).
+        decision = get_request_feature_access(request, FEATURE_WRITE_ACCESS)
         if not decision.allowed:
             # Check if this is an API request (expects JSON)
             if self._is_api_request(request):

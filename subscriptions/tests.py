@@ -1396,3 +1396,23 @@ class CheckoutActiveSubscriptionTests(TestCase):
         response = self._get_checkout(user)
 
         self.assertEqual(response.status_code, 200)
+
+
+class RequestFeatureAccessCacheTests(SimpleTestCase):
+    """SUB-10 (A14): get_request_feature_access memoizes per request so the same
+    feature is not recomputed within a single request."""
+
+    @patch("subscriptions.entitlements.get_feature_access")
+    def test_same_feature_resolved_once_per_request(self, mock_gfa):
+        from subscriptions.entitlements import get_request_feature_access
+
+        request = RequestFactory().get("/")
+        request.user = object()
+
+        get_request_feature_access(request, FEATURE_WRITE_ACCESS)
+        get_request_feature_access(request, FEATURE_WRITE_ACCESS)
+        self.assertEqual(mock_gfa.call_count, 1)
+
+        # A different feature is a distinct cache key → resolved separately.
+        get_request_feature_access(request, FEATURE_EXPORT_PDF)
+        self.assertEqual(mock_gfa.call_count, 2)

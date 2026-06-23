@@ -252,3 +252,24 @@ def get_feature_access(user, feature_code: str) -> FeatureAccessDecision:
 
 def has_feature_access(user, feature_code: str) -> bool:
     return get_feature_access(user, feature_code).allowed
+
+
+def get_request_feature_access(request, feature_code: str) -> FeatureAccessDecision:
+    """Per-request memoized wrapper around :func:`get_feature_access` (A14).
+
+    The global subscription context processor resolves export features on every
+    authenticated render, and the write-gate middleware resolves write access on
+    every write request. Caching the decision on the request object means a
+    feature resolved more than once within a single request — across these
+    request-aware call sites — only hits the entitlement lookup (and its
+    PaymentTransaction query) once.
+    """
+    cache = getattr(request, "_feature_access_cache", None)
+    if cache is None:
+        cache = {}
+        request._feature_access_cache = cache
+    if feature_code not in cache:
+        cache[feature_code] = get_feature_access(
+            getattr(request, "user", None), feature_code
+        )
+    return cache[feature_code]
