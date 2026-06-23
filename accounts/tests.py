@@ -223,6 +223,66 @@ class SubscriptionContextTests(SimpleTestCase):
         self.assertIn(FEATURE_EXPORT_PDF, cache)
         self.assertIn(FEATURE_EXPORT_EXCEL_WORD, cache)
 
+    def test_stale_pro_shows_effective_expired_badge_and_banner(self):
+        # subscription_status is still 'PRO' but there is no active PRO window
+        # (daily expiry task hasn't run yet) → badge/banner must reflect the
+        # effective EXPIRED state (A16).
+        user = DummyUser(
+            is_authenticated=True,
+            has_full_access=False,
+            subscription_status="PRO",
+            is_subscription_active=False,
+            is_trial_active=False,
+            is_pro_active=False,
+            can_edit=False,
+            can_export_clean=False,
+            days_until_expiry=0,
+        )
+        request = SimpleNamespace(user=user)
+
+        context = subscription_context(request)
+
+        self.assertEqual(context["subscription_status"], "EXPIRED")
+        self.assertTrue(context["show_upgrade_banner"])
+
+    def test_active_pro_shows_pro_badge_without_banner(self):
+        user = DummyUser(
+            is_authenticated=True,
+            has_full_access=False,
+            subscription_status="PRO",
+            is_subscription_active=True,
+            is_trial_active=False,
+            is_pro_active=True,
+            can_edit=True,
+            can_export_clean=True,
+            days_until_expiry=30,
+        )
+        request = SimpleNamespace(user=user)
+
+        context = subscription_context(request)
+
+        self.assertEqual(context["subscription_status"], "PRO")
+        self.assertFalse(context["show_upgrade_banner"])
+
+    def test_active_trial_shows_trial_badge_and_banner(self):
+        user = DummyUser(
+            is_authenticated=True,
+            has_full_access=False,
+            subscription_status="TRIAL",
+            is_subscription_active=True,
+            is_trial_active=True,
+            is_pro_active=False,
+            can_edit=True,
+            can_export_clean=False,
+            days_until_expiry=10,
+        )
+        request = SimpleNamespace(user=user)
+
+        context = subscription_context(request)
+
+        self.assertEqual(context["subscription_status"], "TRIAL")
+        self.assertTrue(context["show_upgrade_banner"])
+
 
 class AppContactContextTests(SimpleTestCase):
     @override_settings(SUPPORT_EMAIL="helpdesk@ahsp.test")

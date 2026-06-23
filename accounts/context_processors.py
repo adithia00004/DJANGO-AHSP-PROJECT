@@ -41,11 +41,23 @@ def subscription_context(request):
     pdf_access = get_request_feature_access(request, FEATURE_EXPORT_PDF)
     excel_word_access = get_request_feature_access(request, FEATURE_EXPORT_EXCEL_WORD)
 
+    # A16: derive the displayed status from the EFFECTIVE entitlement state, not
+    # the stored subscription_status which can be stale (e.g. a PRO whose
+    # subscription lapsed before the daily expiry task flips it to EXPIRED).
+    if user.has_full_access:
+        effective_status = 'ADMIN'
+    elif user.is_pro_active:
+        effective_status = 'PRO'
+    elif user.is_trial_active:
+        effective_status = 'TRIAL'
+    else:
+        effective_status = 'EXPIRED'
+
     return {
         'export_pdf_allowed': pdf_access.allowed,
         'export_pdf_watermark': pdf_access.add_watermark,
         'export_excel_word_allowed': excel_word_access.allowed,
-        'subscription_status': 'ADMIN' if user.has_full_access else user.subscription_status,
+        'subscription_status': effective_status,
         'is_subscription_active': user.is_subscription_active,
         'is_trial_active': user.is_trial_active,
         'is_pro_active': user.is_pro_active,
@@ -55,9 +67,8 @@ def subscription_context(request):
         'subscription_days_left': user.days_until_expiry,  # alias for templates
         'show_upgrade_banner': (
             (not user.has_full_access) and (
-                user.subscription_status == 'TRIAL' or
-                user.subscription_status == 'EXPIRED' or
-                (user.is_subscription_active and user.days_until_expiry <= 7)
+                effective_status in ('TRIAL', 'EXPIRED') or
+                (effective_status == 'PRO' and user.days_until_expiry <= 7)
             )
         ),
     }
