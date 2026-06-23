@@ -7,6 +7,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.db import DatabaseError
 from django.http import JsonResponse
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -1315,3 +1316,30 @@ class CreatePaymentRateLimitTests(TestCase):
         throttled = self._create()
         self.assertEqual(throttled.status_code, 429)
         self.assertEqual(json.loads(throttled.content)["code"], "RATE_LIMIT_EXCEEDED")
+
+
+class EntitlementDbErrorFallbackTests(TestCase):
+    """SUB-8 (A9): a DB error during entitlement lookup is logged (not silently
+    swallowed) and the request falls back to the in-code matrix."""
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.pro_user = user_model.objects.create_user(
+            username="entitlement_db_user",
+            email="entitlement-db@example.com",
+            password="Secret123!",
+            subscription_status="PRO",
+            subscription_end_date=timezone.now() + timedelta(days=30),
+        )
+
+    @patch("subscriptions.entitlements.SubscriptionFeature.objects")
+    def test_db_error_is_logged_and_falls_back(self, mock_objects):
+        mock_objects.filter.side_effect = DatabaseError("boom")
+
+        with self.assertLogs("subscriptions.entitlements", level="WARNING") as cm:
+            decision = get_feature_access(self.pro_user, FEATURE_WRITE_ACCESS)
+
+        self.assertEqual(decision.source, "fallback")
+        # PRO fallback for write_access is ALLOW.
+        self.assertTrue(decision.allowed)
+        self.assertTrue(any("fallback matrix" in line for line in cm.output))

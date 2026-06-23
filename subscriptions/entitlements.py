@@ -4,8 +4,11 @@ Centralized subscription feature policy engine.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
+
+from django.db import DatabaseError
 
 from .models import (
     PaymentTransaction,
@@ -13,6 +16,9 @@ from .models import (
     SubscriptionFeature,
     SubscriptionPlan,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 FEATURE_WRITE_ACCESS = "write_access"
@@ -223,10 +229,17 @@ def get_feature_access(user, feature_code: str) -> FeatureAccessDecision:
                     access_level=row.access_level,
                     source="status",
                 )
-    except Exception:
-        # Fallback mode keeps policy behavior deterministic even when DB access
-        # is unavailable (e.g. SimpleTestCase with mocked users).
-        pass
+    except DatabaseError:
+        # Fall back to the in-code matrix if the entitlement tables are
+        # unreachable (transient DB error). Log so the failure is visible
+        # instead of being silently swallowed (A9). Mocked users without a pk
+        # are already handled by the early return above, so this only fires on
+        # a real database error.
+        logger.warning(
+            "Entitlement DB lookup failed for feature '%s'; using fallback matrix.",
+            feature_code,
+            exc_info=True,
+        )
 
     fallback_level = _fallback_access_level(subscription_status, feature_code)
     return _level_to_decision(
