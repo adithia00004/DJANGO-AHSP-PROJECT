@@ -55,7 +55,7 @@
 
 | ID | Severity | Deskripsi | Lokasi | Evidence |
 |----|----------|-----------|--------|----------|
-| **A14** | 🟠 MED | `subscription_context` adalah context processor **global** (terdaftar di `TEMPLATES`), jalan tiap render terotentikasi dan memanggil `get_feature_access` **dua kali** (PDF + Excel/Word). Tiap panggilan: lookup `SubscriptionFeature` + `_latest_success_plan_for_user` (query `PaymentTransaction`) + lookup `PlanFeatureEntitlement`. **Tanpa memoization per-request** (tak ada cache di `entitlements.py`). Akibat: ~beberapa query ekstra per halaman, di **seluruh** app — plus middleware memanggil `get_feature_access` sekali lagi pada request write. | `accounts/context_processors.py:36-53`, `config/settings/base.py:146`, `subscriptions/entitlements.py:163-237` | Telaah kode + grep cache |
+| **A14** | 🟢 FIXED (SUB-10/ACC-4) | Ditambah `get_request_feature_access(request, feature_code)` yang memoize keputusan entitlement per-request (cache di `request._feature_access_cache`). Middleware (WRITE_ACCESS) dan context processor (PDF/Excel-Word) kini memakainya → fitur yang sama tak di-resolve berulang dalam satu request (mis. middleware + cek lain). Memo plan-lookup lebih dalam = optimisasi lanjut opsional. | `subscriptions/entitlements.py:get_request_feature_access`, `accounts/middleware.py`, `accounts/context_processors.py` | Regression: `RequestFeatureAccessCacheTests` + context-cache test |
 | **A15** | 🟢 FIXED (ACC-2) | `send_expiry_reminder` kini benar-benar mengirim email (`send_mail`) ke user trial/PRO yang expired ≤3 hari — salam personal + sisa hari + link `/pricing/` + support email. Bukan lagi stub. | `accounts/tasks.py:send_expiry_reminder` | Regression: `ExpiryReminderEmailTests` (3/3) |
 | **A16** | 🟡 LOW | `subscription_status` tersimpan bisa **stale** (`PRO`/`TRIAL`) di jendela antara momen lapse dan task harian `check_subscription_expiry` (00:05). Entitlement dinormalisasi benar saat runtime (gating aman), tetapi context processor memakai field mentah: badge tampil `PRO` dan `show_upgrade_banner=False` untuk user yang efektif sudah expired → UX membingungkan (badge PRO tapi write ditolak). | `accounts/context_processors.py:48,56-62`, `accounts/tasks.py:13-47` | Telaah kode |
 | **A17** | ℹ️ INFO | Pada export multi-step `detail_project`, flag watermark dibekukan ke `session.metadata` saat `export_init`. Bila entitlement berubah (mis. trial→expired) antara init dan finalize, hasil memakai flag lama. Edge case, dampak rendah. | `detail_project/views_export.py:56-66,448-453` | Telaah kode |
@@ -66,7 +66,7 @@
 
 | # | Rekomendasi | Prioritas | Effort | Terkait |
 |---|-------------|-----------|--------|---------|
-| REC-1 | Memoize keputusan entitlement per-request: hitung matrix sekali (mis. attach ke `request`, atau cache `(user.pk, feature_code)` dalam siklus request) dan pakai ulang di middleware + context processor. | P3 | Med | A14 |
+| REC-1 | Memoize keputusan entitlement per-request: hitung matrix sekali (mis. attach ke `request`, atau cache `(user.pk, feature_code)` dalam siklus request) dan pakai ulang di middleware + context processor. | P3 | Med | A14 (`[DONE]` SUB-10/ACC-4) |
 | REC-2 | Implementasikan pengiriman email pada `send_expiry_reminder` (pakai template + `support_email`), atau nonaktifkan jadwal bila belum siap agar tak memberi rasa aman palsu. | P2 | Med | A15 |
 | REC-3 | Turunkan badge & banner dari status **efektif** (`is_pro_active`/`is_trial_active`) alih-alih `subscription_status` mentah; atau jalankan `check_and_expire()` lazily saat akses. | P3 | Low | A16 |
 | REC-4 | (Opsional) Re-evaluasi entitlement saat `export_finalize`, bukan hanya saat init. | P4 | Low | A17 |
@@ -88,6 +88,6 @@
 - [x] Kontrak integrasi C-1..C-9 terverifikasi
 - [x] Tidak ada penulis status langganan liar / cek entitlement ad-hoc
 - [x] Navigasi pricing/checkout/upgrade konsisten
-- [~] Performa lintas-page (→ A14)
+- [x] Performa lintas-page (A14 memo per-request tertutup SUB-10/ACC-4)
 - [x] Kelengkapan lifecycle (reminder email A15 tertutup ACC-2)
 - [ ] Reviewer sign-off

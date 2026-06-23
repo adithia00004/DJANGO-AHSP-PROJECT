@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **M1+M2 SELESAI; M4 berjalan; SUB-7 DITUNDA** (owner: kerjakan M4 dulu; SUB-7/A13 butuh PG-gate) — SUB-1..6 + ACC-1 + ACC-2 + SUB-8 + **SUB-9 (A10a/b)** DONE. Subscriptions+accounts **82/82**. Sisa: **SUB-7 (A13, PG, DITUNDA)**, SUB-10+ACC-4 (A14), ACC-3 (A16). Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
+**Status keseluruhan:** **M1+M2 SELESAI; M4 hampir tuntas; SUB-7 DITUNDA** — SUB-1..6 + ACC-1/ACC-2 + SUB-8/9 + **SUB-10/ACC-4 (A14)** DONE. Subscriptions+accounts **84/84**. Sisa: **ACC-3 (A16)** = M4 terakhir; **SUB-7 (A13, PG-gate, DITUNDA)**. Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -49,9 +49,9 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | ACC-2 | ACC | A15 | P2 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 79/79; check PASS; no migrations | `486c24a4` (code) + `073b58d7` (docs) |
 | SUB-7 | SUB | A13 | P2 | PENDING | - | - | data dedupe | - |
 | SUB-8 | SUB | A9 | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 12/12 (incl. entitlement/middleware regresi); full 80/80; check PASS; no migrations | `70268184` (code) + `44f8ef0d` (docs); ACC-2 follow-up `01c940c2` |
-| SUB-9 | SUB | A10a/A10b | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 11/11; full 82/82; check PASS; no migrations | branch `fix/subscriptions-sub9-pending-dedup` (pending commit) |
-| SUB-10 ⇄ | SUB | A14 (helper) | P3 | PENDING | - | - | - | - |
-| ACC-4 ⇄ | ACC | A14 (sites) | P3 | PENDING | - | - | **SUB-10** | - |
+| SUB-9 | SUB | A10a/A10b | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 11/11; full 82/82; check PASS; no migrations | `d2cd396b` (code) + `d0dc155d` (docs) |
+| SUB-10 ⇄ | SUB | A14 (helper) | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 84/84; check PASS; no migrations | branch `fix/a14-entitlement-memoization` (pending commit) |
+| ACC-4 ⇄ | ACC | A14 (sites) | P3 | DONE | 2026-06-23 | 2026-06-23 | (digabung dgn SUB-10 di branch yang sama) | branch `fix/a14-entitlement-memoization` (pending commit) |
 | ACC-3 | ACC | A16 | P3 | PENDING | - | - | - | - |
 
 **Milestone:** M1 (go-live) = SUB-1, SUB-2, SUB-3, SUB-4, ACC-1 · M2 = SUB-5, SUB-6 · M3 = SUB-7, ACC-2 · M4 = SUB-8, SUB-9, SUB-10, ACC-4, ACC-3.
@@ -87,8 +87,11 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 21 | 2026-06-23 | ACC-2 | `accounts/tasks.py` | M | Follow-up gate: import `shared_task` dibuat aman saat package Celery tidak terpasang di test/dev lokal, konsisten dengan `subscriptions/tasks.py`. | PASS | `01c940c2` |
 | 22 | 2026-06-23 | SUB-8 | `subscriptions/entitlements.py` | M | `except Exception: pass` → `except DatabaseError` + `logger.warning(exc_info)` (A9). Mock tanpa pk sudah ditangani early-return; narrowing aman. | PASS | `70268184` |
 | 23 | 2026-06-23 | SUB-8 | `subscriptions/tests.py` | M | Tambah `EntitlementDbErrorFallbackTests` (1 test): DB error di-log + fallback matrix. | PASS | `70268184` |
-| 24 | 2026-06-23 | SUB-9 | `subscriptions/views.py` | M | A10a: `CreatePaymentView` reuse transaksi `pending` ≤30 menit dgn `amount` cocok + `snap_token` (hindari row & call Midtrans ganda). A10b: `CheckoutView` cek `is_pro_active` (bukan `status=='PRO' and is_subscription_active`). | PASS | _(pending)_ |
-| 25 | 2026-06-23 | SUB-9 | `subscriptions/tests.py` | M | Update test SUB-2 rapid-create→`reuses_recent_pending` (A10a); tambah `CheckoutActiveSubscriptionTests` (2 test, A10b). | PASS | _(pending)_ |
+| 24 | 2026-06-23 | SUB-9 | `subscriptions/views.py` | M | A10a: `CreatePaymentView` reuse transaksi `pending` ≤30 menit dgn `amount` cocok + `snap_token` (hindari row & call Midtrans ganda). A10b: `CheckoutView` cek `is_pro_active` (bukan `status=='PRO' and is_subscription_active`). | PASS | `d2cd396b` |
+| 25 | 2026-06-23 | SUB-9 | `subscriptions/tests.py` | M | Update test SUB-2 rapid-create→`reuses_recent_pending` (A10a); tambah `CheckoutActiveSubscriptionTests` (2 test, A10b). | PASS | `d2cd396b` |
+| 26 | 2026-06-23 | SUB-10 | `subscriptions/entitlements.py` | M | Tambah `get_request_feature_access(request, feature_code)`: memoize keputusan entitlement per-request (cache di `request._feature_access_cache`) (A14). | PASS | _(pending)_ |
+| 27 | 2026-06-23 | ACC-4 | `accounts/middleware.py`, `accounts/context_processors.py` | M | Konsumsi `get_request_feature_access` di middleware (WRITE_ACCESS) + context processor (PDF/Excel-Word) → tak recompute fitur sama per-request (A14). | PASS | _(pending)_ |
+| 28 | 2026-06-23 | SUB-10/ACC-4 | `subscriptions/tests.py`, `accounts/tests.py` | M | Tambah `RequestFeatureAccessCacheTests` (dedup same-feature) + test context processor mengisi `_feature_access_cache`. | PASS | _(pending)_ |
 
 ---
 
@@ -116,6 +119,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 14 | 2026-06-23 | ACC-2 | `ExpiryReminderEmailTests` (3 test) | Regression tests | Guard A15: email reminder benar-benar terkirim utk user expiring ≤3 hari (PRO/trial), bukan stub. |
 | 15 | 2026-06-23 | SUB-8 | `EntitlementDbErrorFallbackTests` (1 test) + `logger` di `entitlements.py` | Test + logger | Guard A9: DB error di-log (tak ditelan diam-diam) lalu fallback. |
 | 16 | 2026-06-23 | SUB-9 | `CheckoutActiveSubscriptionTests` (2 test) + reuse-block `CreatePaymentView` | Guard + tests | Guard A10a (reuse pending) + A10b (PRO-active redirect, trial-active lolos). |
+| 17 | 2026-06-23 | SUB-10 | `get_request_feature_access` (helper) + `RequestFeatureAccessCacheTests` | Helper + test | A14: memoization keputusan entitlement per-request (cache di `request`). |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -166,6 +170,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 22 | 2026-06-23 | SUB-8 | `test subscriptions accounts` + `check` + `makemigrations` | **80/80 PASS** + check PASS + no changes | +1 dari 79; tanpa migrasi |
 | 23 | 2026-06-23 | SUB-9 | `test PaymentOrderIdUniquenessTests + CheckoutActiveSubscriptionTests + PaymentPricingIntegrityTests + SubscriptionRolePolicyTests + ExpiredUserRenewalFlowTests` | **11/11 PASS** | A10a reuse + A10b + regresi create/checkout |
 | 24 | 2026-06-23 | SUB-9 | `test subscriptions accounts` + `check` + `makemigrations` | **82/82 PASS** + check PASS + no changes | +2 dari 80; tanpa migrasi (view+test saja) |
+| 25 | 2026-06-23 | SUB-10/ACC-4 | `test RequestFeatureAccessCacheTests + SubscriptionContextTests + SubscriptionMiddlewareTests + TrialAccessGuardTests` | **10/10 PASS** | memo + regresi middleware/context aman |
+| 26 | 2026-06-23 | SUB-10/ACC-4 | `test subscriptions accounts` + `check` + `makemigrations` | **84/84 PASS** + check PASS + no changes | +2 dari 82; tanpa migrasi (helper+wiring) |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 
