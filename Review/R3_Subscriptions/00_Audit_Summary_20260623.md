@@ -1,0 +1,102 @@
+# R3.0 - Ringkasan Audit App `subscriptions`
+
+**Status:** `[~]` AUDIT KODE + VERIFIKASI RUNTIME; SUB-1 FIX SELESAI — perbaikan lain pending
+**Tanggal audit:** 2026-06-23
+**Metode:** Telaah kode statis menyeluruh (read-only) atas seluruh berkas `subscriptions/*` + integrasi `accounts` (User model, middleware, mixins, signals) dan `config` (settings, URL routing), dilanjutkan verifikasi independen serta eksekusi automated test. **Bukan** UAT browser atau transaksi Midtrans nyata.
+**Auditor:** Claude Code; diverifikasi ulang oleh Codex pada 2026-06-23
+
+---
+
+## 1. Cakupan
+
+| Komponen | Berkas |
+|----------|--------|
+| Models | `subscriptions/models.py` |
+| Views | `subscriptions/views.py` |
+| Midtrans client | `subscriptions/midtrans.py` |
+| Pricing service | `subscriptions/pricing_service.py` |
+| Entitlement engine | `subscriptions/entitlements.py` |
+| Admin | `subscriptions/admin.py` |
+| URL | `subscriptions/urls.py` + `config/urls.py` |
+| Template | `subscriptions/templates/subscriptions/checkout.html` |
+| Seed command | `subscriptions/management/commands/seed_plans.py` |
+| Migrasi | `subscriptions/migrations/0001..0005` |
+| Integrasi | `accounts/models.py`, `accounts/middleware.py`, `accounts/mixins.py`, `accounts/signals.py`, `config/settings/base.py` |
+| Test | `subscriptions/tests.py` |
+
+---
+
+## 2. Penilaian Umum
+
+Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 sudah menutup celah replay setelah refund/terminal (A11) serta kebijakan refund revoke/late terminal (A5). Namun checkout produksi, rekonsiliasi, order id, verifikasi webhook, dan pembayaran sukses konkuren masih memiliki celah yang harus ditutup sebelum menerima pembayaran produksi nyata.
+
+---
+
+## 3. Daftar Temuan (Severity)
+
+| ID | Sev | Temuan | Dokumen detail |
+|----|-----|--------|----------------|
+| **A1** | 🔴 HIGH | `checkout.html` meng-hardcode Snap.js **sandbox** → produksi tidak berfungsi | [01](01_Checkout_Page.md), [03](03_Midtrans_Integration.md) |
+| **A2** | 🟠 MED | Tidak ada rekonsiliasi webhook gagal/terlewat → transaksi yang sudah dibayar dapat tetap `pending` tanpa batas (`get_transaction_status` dead code) | [03](03_Midtrans_Integration.md), [02](02_Payment_Flow.md) |
+| **A3** | 🟠 MED | `order_id` rawan tabrakan (timestamp detik) + pola two-step save (`order_id=''`) → 500 intermittent saat double-click/konkuren | [02](02_Payment_Flow.md) |
+| **A4** | 🟠 MED | Field penentu aktivasi (`transaction_status`/`fraud_status`) tidak dilindungi signature; tak ada re-verifikasi via Status API | [05](05_Webhook_Security.md) |
+| **A5** | 🟢 FIXED (SUB-1) | `refund` susulan kini mencabut akses PRO; late `cancel`/`deny`/`expire` setelah success tidak menimpa record aktif | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
+| **A6** | 🟠 MED | Tidak ada rate-limit di `create_payment`; proteksi abuse webhook juga belum ada, tetapi sebaiknya diterapkan di edge/WAF agar notifikasi sah tidak terblokir | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
+| **A7** | 🟡 LOW | Perbandingan signature tidak constant-time (`==`, bukan `hmac.compare_digest`) | [05](05_Webhook_Security.md), [03](03_Midtrans_Integration.md) |
+| **A8** | ℹ️ INFO | Respons 404 untuk order bertanda tangan sah tetapi tidak dikenal dapat memicu retry; 403 untuk signature tidak sah sudah tepat dan tidak boleh diganti 200 | [05](05_Webhook_Security.md) |
+| **A9** | 🟡 LOW | `except Exception: pass` di entitlements menelan error DB tanpa log | [04](04_Entitlement_System.md) |
+| **A10a** | 🟡 LOW | Tak ada pencegahan transaksi `pending` ganda (TC-4) | [02](02_Payment_Flow.md) |
+| **A10b** | ℹ️ INFO | Cek `subscription_status=='PRO' and is_subscription_active` ekuivalen dengan `is_pro_active` untuk user non-staff; penggantian hanya penyederhanaan/refactor | [01](01_Checkout_Page.md) |
+| **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis `paid_at`; replay `settlement` setelah refund tidak mengaktifkan/memperpanjang subscription ulang | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
+| **A12** | 🟠 MED | Dua transaksi berbeda milik user yang sama dapat sukses bersamaan; row-lock hanya mengunci transaksi, bukan user, sehingga update `subscription_end_date` berisiko lost update | `subscriptions/views.py:146-181`, `accounts/models.py:123-136` |
+| **A13** | 🟠 MED | UniqueConstraint entitlement `(feature, plan, status)` tidak mencegah beberapa default row dengan `plan=NULL` di PostgreSQL | `subscriptions/models.py:212-219` |
+| **A14** | 🟠 MED | Context processor global `subscription_context` memanggil `get_feature_access` **2×** tiap render terotentikasi tanpa memoization per-request → overhead query repo-wide (tiap halaman) | [07](07_Cross_App_Integration_20260623.md) |
+| **A15** | 🟠 MED | Task terjadwal `accounts.send_expiry_reminder` adalah **stub** (`TODO: Implement actual email sending`) → tak ada email pengingat dikirim; user lapse tanpa peringatan | [07](07_Cross_App_Integration_20260623.md) |
+| **A16** | 🟡 LOW | `subscription_status` tersimpan bisa stale (PRO/TRIAL) antara saat lapse dan task harian 00:05 → badge & `show_upgrade_banner` di context processor pakai field mentah (gating tetap benar) | [07](07_Cross_App_Integration_20260623.md) |
+| **A17** | ℹ️ INFO | Keputusan watermark export multi-step `detail_project` dibekukan saat `export_init`; perubahan entitlement mid-session tak tercermin di finalize | [07](07_Cross_App_Integration_20260623.md) |
+
+---
+
+## 4. Yang Sudah Baik (jangan diubah)
+
+- **Harga server-side + snapshot immutable** (`amount`, `base/discount/duration_months_snapshot`, detail promo dibekukan saat create) — diuji `PaymentPricingIntegrityTests`.
+- **Webhook idempotent untuk duplicate success dan replay setelah refund** via `select_for_update` + marker `paid_at` — diuji `PaymentWebhookIdempotencyTests`; batas konkuren multi-transaksi masih dicatat pada A12.
+- **Aktivasi memakai `duration_months_snapshot`**, tahan perubahan/penghapusan plan (FK `SET_NULL` + fallback).
+- **Entitlement data-driven** dengan override per-plan, normalisasi status (`TRIAL_PENDING`/stale-PRO→EXPIRED), dan fallback matrix — sudah PASS di [04](04_Entitlement_System.md).
+- **Promo terjadwal** dengan CheckConstraint DB (`end>start`, `value>0`, `percent≤100`) + validasi timezone-aware.
+- **F9 renewal flow**: middleware mengecualikan `/subscriptions/payment/` agar user EXPIRED bisa membayar — diuji `ExpiredUserRenewalFlowTests`.
+- **CSRF**: webhook `csrf_exempt` (benar untuk eksternal); `create_payment` tetap dilindungi CsrfViewMiddleware + token AJAX.
+
+---
+
+## 5. Prioritas Tindakan
+
+| Prioritas | Temuan | Alasan |
+|-----------|--------|--------|
+| **P0 — sebelum go-live** | A1, A2, A3 | Checkout produksi, rekonsiliasi, dan uniqueness order |
+| **P1 — integritas transaksi** | A4, A6, A7, A12 | Defense-in-depth, anti-abuse, dan locking user |
+| **P2 — integritas bisnis/data** | A13, A15 | Uniqueness default entitlement dan pengingat expiry |
+| **P3 — kebersihan/perf** | A9, A10a, A14, A16 | Robustness, konsistensi, dan overhead query lintas-page |
+| **Informational** | A8, A10b, A17 | Klarifikasi respons webhook, penyederhanaan kode, edge-case watermark |
+
+---
+
+## 6. Hasil Verifikasi Runtime
+
+- `python manage.py makemigrations --check --dry-run`: **PASS**, tidak ada perubahan migrasi yang belum dibuat.
+- `python manage.py check`: **PASS**, tidak ada system-check error.
+- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 27/27 test** setelah SUB-1.
+- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 52/52 test** setelah SUB-1.
+- Eksekusi test harus memakai `config.settings.test`; settings ini sengaja menonaktifkan `TimeoutMiddleware` yang dapat mengganggu autentikasi `force_login` pada Django test client.
+- Automated test saat ini sudah mencakup SUB-1 untuk A5/A11. Skenario A3, A4, A7, A12, dan A13 masih belum tercakup penuh.
+
+---
+
+## 7. Catatan Tindak Lanjut
+
+- Temuan ini **belum diperbaiki** (audit read-only). Setiap dokumen per-halaman memuat rekomendasi + status `[ ]`/`[~]` per test case.
+- Dokumen [04 Entitlement](04_Entitlement_System.md) tetap berstatus PASS; A9 ditambahkan sebagai follow-up minor non-blocking.
+- Halaman pricing kini ditangani oleh app `pages` (route `subscriptions/pricing/` hanya redirect 302) — lihat [06](06_Subscriptions_Pricing_Page.md).
+- A8 dikalibrasi: pertahankan 403 untuk signature tidak sah; keputusan mengubah 404 menjadi 200 hanya berlaku untuk order tidak dikenal yang signature-nya valid dan harus disertai logging/alerting.
+- A10b diturunkan menjadi informational karena tidak mengubah perilaku efektif saat ini.
+- A11-A13 merupakan temuan tambahan dari verifikasi independen dan belum tercakup dalam dokumen detail per-halaman.

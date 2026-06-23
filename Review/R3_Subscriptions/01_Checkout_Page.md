@@ -1,7 +1,9 @@
 # R3.1 - Review Checkout Page
 
-**Status:** `[ ]` BELUM DIREVIEW
-**Terakhir diperbarui:** -
+**Status:** `[~]` AUDIT KODE (STATIC) — 1 temuan HIGH (A1), 1 LOW (A10b); perbaikan pending
+**Terakhir diperbarui:** 2026-06-23 (Claude Code, telaah kode statis)
+
+> Legenda status test: `[x]` terverifikasi via kode/test · `[~]` sebagian / ada temuan / perlu UAT runtime · `[ ]` perlu eksekusi live
 
 ---
 
@@ -12,7 +14,7 @@
 | URL | `/subscriptions/checkout/<plan_id>/` |
 | View | `subscriptions.views.CheckoutView` |
 | Template | `subscriptions/templates/subscriptions/checkout.html` |
-| Auth Required | Ya (login_required) |
+| Auth Required | Ya (`LoginRequiredMixin`) |
 | Integrasi | Midtrans Snap JS |
 
 ---
@@ -21,34 +23,37 @@
 
 ### Test Cases
 
-| # | Test Case | Expected | Status |
-|---|-----------|----------|--------|
-| TC-1 | Akses checkout dengan plan valid | Form checkout tampil | `[ ]` |
-| TC-2 | Akses checkout dengan plan_id invalid | 404 / error message | `[ ]` |
-| TC-3 | Akses checkout plan non-aktif | Error / redirect | `[ ]` |
-| TC-4 | Detail plan (nama, harga, durasi) tampil | Data akurat dari DB | `[ ]` |
-| TC-5 | Tombol "Bayar Sekarang" | Trigger Midtrans Snap popup | `[ ]` |
-| TC-6 | Anonymous user akses checkout | Redirect ke login | `[ ]` |
-| TC-7 | User sudah PRO akses checkout | Handled gracefully | `[ ]` |
-| TC-8 | Responsive - Mobile | Checkout usable di mobile | `[ ]` |
-| TC-9 | CSRF protection | Token present | `[ ]` |
-| TC-10 | Harga tidak bisa dimanipulasi client-side | Harga dari server | `[ ]` |
+| # | Test Case | Expected | Status | Catatan |
+|---|-----------|----------|--------|---------|
+| TC-1 | Akses checkout dengan plan valid | Form checkout tampil | `[x]` | `views.py:278` render OK |
+| TC-2 | Akses checkout dengan plan_id invalid | 404 / error message | `[x]` | `get_object_or_404` |
+| TC-3 | Akses checkout plan non-aktif | Error / redirect | `[x]` | filter `is_active=True` → 404 |
+| TC-4 | Detail plan (nama, harga, durasi) tampil | Data akurat dari DB | `[x]` | termasuk harga efektif promo |
+| TC-5 | Tombol "Bayar Sekarang" | Trigger Midtrans Snap popup | `[~]` | **A1**: Snap.js hardcoded sandbox → gagal di produksi |
+| TC-6 | Anonymous user akses checkout | Redirect ke login | `[x]` | `LoginRequiredMixin` |
+| TC-7 | User sudah PRO akses checkout | Handled gracefully | `[~]` | **A10b**: cek pakai `subscription_status=='PRO' and is_subscription_active`, idealnya `is_pro_active` |
+| TC-8 | Responsive - Mobile | Checkout usable di mobile | `[ ]` | perlu UAT runtime |
+| TC-9 | CSRF protection | Token present | `[x]` | `X-CSRFToken` + `{{ csrf_token }}` di template |
+| TC-10 | Harga tidak bisa dimanipulasi client-side | Harga dari server | `[x]` | `resolve_effective_plan_pricing(plan)` server-side |
+| TC-11 | Staff/admin akses checkout | Diblok dengan pesan | `[x]` | `_is_managed_access_user` → redirect dashboard (diuji `test_checkout_blocks_staff_user`) |
 
 ---
 
 ## Temuan (Findings)
 
-| # | Severity | Deskripsi | Langkah Reproduksi | Evidence |
-|---|----------|-----------|---------------------|----------|
-| - | - | Belum ada temuan | - | - |
+| ID | Severity | Deskripsi | Lokasi | Evidence |
+|----|----------|-----------|--------|----------|
+| **A1** | 🔴 HIGH | Template memuat Snap.js **sandbox** secara statis: `https://app.sandbox.midtrans.com/snap/snap.js`. Backend (`midtrans.py`) sudah memilih URL berdasarkan `MIDTRANS_IS_PRODUCTION`, tetapi frontend tidak. Saat produksi (`client_key` produksi), popup pembayaran gagal/tak konsisten karena tetap memuat Snap sandbox. **Blocker go-live.** | `subscriptions/templates/subscriptions/checkout.html:121` | Telaah kode + `config/settings/base.py:519` |
+| **A10b** | 🟡 LOW | Cek "sudah punya langganan aktif" memakai `request.user.subscription_status == 'PRO' and request.user.is_subscription_active`. Properti `is_subscription_active` juga `True` untuk TRIAL aktif, jadi logika bergantung pada gabungan dua cek; lebih tepat & ringkas memakai `is_pro_active`. | `subscriptions/views.py:286` | Telaah kode |
 
 ---
 
 ## Rekomendasi
 
-| # | Rekomendasi | Prioritas | Effort |
-|---|-------------|-----------|--------|
-| - | Belum ada rekomendasi | - | - |
+| # | Rekomendasi | Prioritas | Effort | Terkait |
+|---|-------------|-----------|--------|---------|
+| REC-1 | Kirim flag `midtrans_is_production` ke context view, lalu pilih URL Snap.js di template (`app.midtrans.com` vs `app.sandbox.midtrans.com`). Pertimbangkan juga memuat skrip dari satu sumber config agar tak ada string ganda. | P0 | Low | A1 |
+| REC-2 | Ganti cek duplikasi langganan ke `request.user.is_pro_active`. | P3 | Low | A10b |
 
 ---
 
@@ -56,14 +61,16 @@
 
 | # | Tanggal | Deskripsi Perbaikan | Commit/PR | Status |
 |---|---------|---------------------|-----------|--------|
-| - | - | Belum ada perbaikan | - | - |
+| 1 | 2026-06-23 | Audit kode statis Checkout Page; temuan A1/A10b tercatat | - | DONE (audit) |
+| 2 | - | Perbaikan A1 (Snap.js prod/sandbox) | - | TODO |
+| 3 | - | Perbaikan A10b (`is_pro_active`) | - | TODO |
 
 ---
 
 ## Checklist Sign-off
 
-- [ ] Fungsional OK
-- [ ] Keamanan OK (price tampering, CSRF)
-- [ ] Performa OK
-- [ ] UX/UI OK
+- [x] Fungsional OK (render, 404, detail plan)
+- [~] Keamanan OK (price tampering ✓ / CSRF ✓ / Snap.js prod ✗ → A1)
+- [ ] Performa OK (perlu UAT)
+- [ ] UX/UI OK (perlu UAT mobile)
 - [ ] Reviewer sign-off

@@ -1,7 +1,9 @@
 # R3.3 - Review Midtrans Integration
 
-**Status:** `[ ]` BELUM DIREVIEW
-**Terakhir diperbarui:** -
+**Status:** `[~]` AUDIT KODE (STATIC) — 1 HIGH (A1), 1 MED (A2), 1 LOW (A7); perbaikan pending
+**Terakhir diperbarui:** 2026-06-23 (Claude Code, telaah kode statis)
+
+> Legenda status test: `[x]` terverifikasi via kode/test · `[~]` sebagian / ada temuan / perlu UAT runtime · `[ ]` perlu eksekusi live
 
 ---
 
@@ -10,7 +12,7 @@
 | Atribut | Detail |
 |---------|--------|
 | File | `subscriptions/midtrans.py` |
-| Functions | `create_snap_token()`, `verify_signature()` |
+| Functions | `create_snap_token()`, `verify_signature()`, `get_transaction_status()` |
 | Env Vars | `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_IS_PRODUCTION` |
 
 ---
@@ -19,32 +21,36 @@
 
 ### Test Cases
 
-| # | Test Case | Expected | Status |
-|---|-----------|----------|--------|
-| TC-1 | Server key tidak di-expose ke frontend | Hanya client key di template | `[ ]` |
-| TC-2 | Sandbox vs Production toggle | `MIDTRANS_IS_PRODUCTION` env var | `[ ]` |
-| TC-3 | Snap token request format | Sesuai Midtrans API spec | `[ ]` |
-| TC-4 | Signature verification algorithm | SHA512 sesuai Midtrans docs | `[ ]` |
-| TC-5 | Invalid signature rejection | Request ditolak | `[ ]` |
-| TC-6 | Timeout handling | Graceful pada network timeout | `[ ]` |
-| TC-7 | Error response dari Midtrans | Logged + user-friendly error | `[ ]` |
-| TC-8 | Idempotency pada retry | Tidak double-charge | `[ ]` |
+| # | Test Case | Expected | Status | Catatan |
+|---|-----------|----------|--------|---------|
+| TC-1 | Server key tidak di-expose ke frontend | Hanya client key di template | `[x]` | hanya `MIDTRANS_CLIENT_KEY` masuk context |
+| TC-2 | Sandbox vs Production toggle | `MIDTRANS_IS_PRODUCTION` env var | `[~]` | **A1**: backend toggle benar (`midtrans.py:44-51`), tetapi **frontend Snap.js hardcoded sandbox** |
+| TC-3 | Snap token request format | Sesuai Midtrans API spec | `[x]` | `transaction_details`/`item_details`/`callbacks` lengkap |
+| TC-4 | Signature verification algorithm | SHA512 sesuai Midtrans docs | `[x]` | `SHA512(order_id+status_code+gross_amount+server_key)` |
+| TC-5 | Invalid signature rejection | Request ditolak | `[x]` | webhook → 403 (diuji `test_duplicate_success_callback_is_idempotent` mem-bypass dengan mock) |
+| TC-6 | Timeout handling | Graceful pada network timeout | `[x]` | `timeout=30` + `except RequestException` |
+| TC-7 | Error response dari Midtrans | Logged + user-friendly error | `[x]` | `logger.error` + `MidtransError` |
+| TC-8 | Idempotency pada retry | Tidak double-charge | `[~]` | webhook idempotent ✓, tetapi **A2**: tak ada recovery bila webhook terlewat |
 
 ---
 
 ## Temuan (Findings)
 
-| # | Severity | Deskripsi | Langkah Reproduksi | Evidence |
-|---|----------|-----------|---------------------|----------|
-| - | - | Belum ada temuan | - | - |
+| ID | Severity | Deskripsi | Lokasi | Evidence |
+|----|----------|-----------|--------|----------|
+| **A1** | 🔴 HIGH | Toggle produksi tidak lengkap: `MidtransClient` memilih base URL sesuai `MIDTRANS_IS_PRODUCTION`, tetapi template checkout memuat Snap.js sandbox secara statis (lihat detail di [01](01_Checkout_Page.md)). | `subscriptions/midtrans.py:44-51` + `templates/subscriptions/checkout.html:121` | Telaah kode |
+| **A2** | 🟠 MED | `get_transaction_status()` didefinisikan tetapi **tidak pernah dipanggil** di seluruh codebase (diverifikasi grep). Aktivasi 100% bergantung pada satu webhook; bila webhook gagal terkirim (downtime/timeout), transaksi yang sudah dibayar **selamanya `pending`** dan user tak pernah jadi PRO. Tidak ada job/cron rekonsiliasi. | `subscriptions/midtrans.py:145-163` | Telaah kode + grep |
+| **A7** | 🟡 LOW | `verify_signature` membandingkan dengan `==` (bukan constant-time). Praktik aman: `hmac.compare_digest`. Dampak rendah (server-to-server HTTPS), tetapi mudah dikeraskan. | `subscriptions/midtrans.py:143` | Telaah kode |
 
 ---
 
 ## Rekomendasi
 
-| # | Rekomendasi | Prioritas | Effort |
-|---|-------------|-----------|--------|
-| - | Belum ada rekomendasi | - | - |
+| # | Rekomendasi | Prioritas | Effort | Terkait |
+|---|-------------|-----------|--------|---------|
+| REC-1 | Lengkapi toggle produksi di frontend (lihat REC-1 doc [01](01_Checkout_Page.md)). | P0 | Low | A1 |
+| REC-2 | Buat management command `reconcile_pending_payments` (cron) yang memanggil `get_transaction_status` untuk transaksi `pending` berumur > X menit, lalu jalankan jalur aktivasi yang sama. Sekaligus memakai method yang kini dead code. | P0 | Med | A2 |
+| REC-3 | Ganti `==` dengan `hmac.compare_digest` di `verify_signature`. | P1 | Low | A7 |
 
 ---
 
@@ -52,15 +58,17 @@
 
 | # | Tanggal | Deskripsi Perbaikan | Commit/PR | Status |
 |---|---------|---------------------|-----------|--------|
-| - | - | Belum ada perbaikan | - | - |
+| 1 | 2026-06-23 | Audit kode statis Midtrans client; temuan A1/A2/A7 tercatat | - | DONE (audit) |
+| 2 | - | Reconcile command (A2) | - | TODO |
+| 3 | - | Constant-time signature (A7) | - | TODO |
 
 ---
 
 ## Checklist Sign-off
 
-- [ ] Server key secure
-- [ ] Signature verification correct
-- [ ] Production/sandbox toggle works
-- [ ] Error handling robust
-- [ ] No double-charge risk
+- [x] Server key secure
+- [x] Signature verification correct (algoritma)
+- [~] Production/sandbox toggle works (backend ✓ / frontend ✗ → A1)
+- [x] Error handling robust
+- [~] No double-charge risk (idempotent ✓ / recovery webhook terlewat ✗ → A2)
 - [ ] Reviewer sign-off
