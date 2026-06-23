@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **M1 + M2 SELESAI** — SUB-1..6 + ACC-1 DONE; semua P0 + P1 webhook/pricing (A4/A6/A7/A8/A12) tertutup. Subscriptions+accounts **76/76**. Lanjut M3 (SUB-7 A13 + ACC-2 A15). Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
+**Status keseluruhan:** **M1 + M2 SELESAI; M3 berjalan** — SUB-1..6 + ACC-1 + **ACC-2 (A15)** DONE. Subscriptions+accounts **79/79**. Sisa M3: **SUB-7 (A13, butuh gate PG15)**. Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -45,7 +45,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | SUB-4 ⇄ | SUB | A2 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: reconcile 6/6 + webhook 6/6; full 63/63; check PASS; makemigrations no-changes | `b6e6060d` (code) + `a20010a9` (docs) |
 | ACC-1 ⇄ | ACC | A12 + EC-1 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 67/67; check PASS; makemigrations no-changes. **PG gate A12 pending** | `05f17150` (code) + `dbc307a8` (docs) |
 | SUB-5 | SUB | A4 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3 + webhook/refund 11/11; full 70/70; check PASS; no migrations | `184c0659` (code) + `55e951f7` (docs) |
-| SUB-6 | SUB | A6/A7/A8 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 76/76; check PASS; no migrations | branch `fix/subscriptions-sub6-webhook-hardening` (pending commit) |
+| SUB-6 | SUB | A6/A7/A8 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 76/76; check PASS; no migrations | `9999e7a4` (code) + `37dee3b3` (docs) |
+| ACC-2 | ACC | A15 | P2 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 79/79; check PASS; no migrations | branch `fix/accounts-acc2-expiry-reminder` (pending commit) |
 | SUB-7 | SUB | A13 | P2 | PENDING | - | - | data dedupe | - |
 | ACC-2 | ACC | A15 | P2 | PENDING | - | - | D-3 (✅) | - |
 | SUB-8 | SUB | A9 | P3 | PENDING | - | - | - | - |
@@ -79,9 +80,11 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 13 | 2026-06-23 | ACC-1 | `accounts/tests.py`, `subscriptions/tests.py` | M | Tambah `ActivateSubscriptionAtomicityTests` (2) + `RefundRevocationScopeTests` (2). | PASS | `05f17150` |
 | 14 | 2026-06-23 | SUB-5 | `subscriptions/views.py` | M | Helper `_settlement_payload_is_consistent`: sebelum aktivasi, cross-check field **bertanda tangan** (`status_code=='200'` + `gross_amount`==`amount` via Decimal) terhadap record; bila tak konsisten, tidak aktivasi (A4). | PASS | `184c0659` |
 | 15 | 2026-06-23 | SUB-5 | `subscriptions/tests.py` | M | Tambah `WebhookSettlementCrossCheckTests` (3 test): amount mismatch tak aktivasi, beda format Decimal tetap aktivasi, status_code salah tak aktivasi. | PASS | `184c0659` |
-| 16 | 2026-06-23 | SUB-6 | `subscriptions/midtrans.py` | M | `verify_signature` kini pakai `hmac.compare_digest` (constant-time) + tolak signature non-str (A7). | PASS | _(pending)_ |
-| 17 | 2026-06-23 | SUB-6 | `subscriptions/views.py` | M | A8: webhook order valid-sig tak dikenal balas **200**+log (bukan 404). A6: `CreatePaymentView` di-throttle per-user via cache (5/60s) → 429 `RATE_LIMIT_EXCEEDED`. | PASS | _(pending)_ |
-| 18 | 2026-06-23 | SUB-6 | `subscriptions/tests.py` | M | Tambah `SignatureVerificationTests`(3)/`WebhookUnknownOrderTests`(2)/`CreatePaymentRateLimitTests`(1); isolasi cache test lama (DummyCache 2 kelas RequestFactory + `cache.clear()` full-stack) agar counter rate-limit tak bocor lintas-test. | PASS | _(pending)_ |
+| 16 | 2026-06-23 | SUB-6 | `subscriptions/midtrans.py` | M | `verify_signature` kini pakai `hmac.compare_digest` (constant-time) + tolak signature non-str (A7). | PASS | `9999e7a4` |
+| 17 | 2026-06-23 | SUB-6 | `subscriptions/views.py` | M | A8: webhook order valid-sig tak dikenal balas **200**+log (bukan 404). A6: `CreatePaymentView` di-throttle per-user via cache (5/60s) → 429 `RATE_LIMIT_EXCEEDED`. | PASS | `9999e7a4` |
+| 18 | 2026-06-23 | SUB-6 | `subscriptions/tests.py` | M | Tambah `SignatureVerificationTests`(3)/`WebhookUnknownOrderTests`(2)/`CreatePaymentRateLimitTests`(1); isolasi cache test lama (DummyCache 2 kelas RequestFactory + `cache.clear()` full-stack) agar counter rate-limit tak bocor lintas-test. | PASS | `9999e7a4` |
+| 19 | 2026-06-23 | ACC-2 | `accounts/tasks.py` | M | `send_expiry_reminder` kini benar-benar kirim email (`send_mail`) ke user trial/PRO yang expired ≤3 hari (link `/pricing/` + support email), bukan stub log (A15). | PASS | _(pending)_ |
+| 20 | 2026-06-23 | ACC-2 | `accounts/tests.py` | M | Tambah `ExpiryReminderEmailTests` (3 test): PRO/trial dalam window dapat email; di luar window tak dapat. | PASS | _(pending)_ |
 
 ---
 
@@ -106,6 +109,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 11 | 2026-06-23 | ACC-1 | `RefundRevocationScopeTests` (2 test) | Regression tests | Guard EC-1: refund mencabut bila satu-satunya tx sukses; mempertahankan akses bila ada tx sukses lain. |
 | 12 | 2026-06-23 | SUB-5 | `_settlement_payload_is_consistent` (helper) + `WebhookSettlementCrossCheckTests` (3 test) | Helper + tests | Guard A4: cross-check field bertanda tangan (status_code/gross_amount-Decimal) sebelum aktivasi webhook. |
 | 13 | 2026-06-23 | SUB-6 | konstanta `CREATE_PAYMENT_MAX_ATTEMPTS/WINDOW_SECONDS` + `SignatureVerificationTests`/`WebhookUnknownOrderTests`/`CreatePaymentRateLimitTests` (6 test) | Rate-limit + tests | Guard A6/A7/A8: throttle create_payment, constant-time signature, 200-untuk-valid-sig-unknown. |
+| 14 | 2026-06-23 | ACC-2 | `ExpiryReminderEmailTests` (3 test) | Regression tests | Guard A15: email reminder benar-benar terkirim utk user expiring ≤3 hari (PRO/trial), bukan stub. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -150,6 +154,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 16 | 2026-06-23 | SUB-5 | `test subscriptions accounts` + `check` + `makemigrations --check` | **70/70 PASS** + check PASS + no changes | +3 dari 67; tanpa migrasi (helper+guard saja) |
 | 17 | 2026-06-23 | SUB-6 | `test SignatureVerificationTests + WebhookUnknownOrderTests + CreatePaymentRateLimitTests` | **6/6 PASS** | A7/A8/A6 targeted |
 | 18 | 2026-06-23 | SUB-6 | `test subscriptions accounts` | sempat **FAILED 4** (polusi cache rate-limit lintas-test) → **76/76 PASS** setelah isolasi cache | +6 dari 70; tanpa migrasi. Pelajaran: LocMemCache test persisten + reuse PK user |
+| 19 | 2026-06-23 | ACC-2 | `test ExpiryReminderEmailTests` | **3/3 PASS** | email reminder window 3 hari (locmem outbox) |
+| 20 | 2026-06-23 | ACC-2 | `test subscriptions accounts` + `check` + `makemigrations` | **79/79 PASS** + check PASS + no changes | +3 dari 76; tanpa migrasi (task body saja) |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 

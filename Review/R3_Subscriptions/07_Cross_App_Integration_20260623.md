@@ -56,7 +56,7 @@
 | ID | Severity | Deskripsi | Lokasi | Evidence |
 |----|----------|-----------|--------|----------|
 | **A14** | 🟠 MED | `subscription_context` adalah context processor **global** (terdaftar di `TEMPLATES`), jalan tiap render terotentikasi dan memanggil `get_feature_access` **dua kali** (PDF + Excel/Word). Tiap panggilan: lookup `SubscriptionFeature` + `_latest_success_plan_for_user` (query `PaymentTransaction`) + lookup `PlanFeatureEntitlement`. **Tanpa memoization per-request** (tak ada cache di `entitlements.py`). Akibat: ~beberapa query ekstra per halaman, di **seluruh** app — plus middleware memanggil `get_feature_access` sekali lagi pada request write. | `accounts/context_processors.py:36-53`, `config/settings/base.py:146`, `subscriptions/entitlements.py:163-237` | Telaah kode + grep cache |
-| **A15** | 🟠 MED | `accounts.send_expiry_reminder` dijadwalkan harian 09:00 (`config/celery.py:74-77`) tetapi **body-nya stub**: hanya `logger.info`, dengan `# TODO: Implement actual email sending`. Tak ada email pengingat terkirim → user trial/PRO lapse tanpa peringatan (silent churn). | `accounts/tasks.py:50-84` | Telaah kode |
+| **A15** | 🟢 FIXED (ACC-2) | `send_expiry_reminder` kini benar-benar mengirim email (`send_mail`) ke user trial/PRO yang expired ≤3 hari — salam personal + sisa hari + link `/pricing/` + support email. Bukan lagi stub. | `accounts/tasks.py:send_expiry_reminder` | Regression: `ExpiryReminderEmailTests` (3/3) |
 | **A16** | 🟡 LOW | `subscription_status` tersimpan bisa **stale** (`PRO`/`TRIAL`) di jendela antara momen lapse dan task harian `check_subscription_expiry` (00:05). Entitlement dinormalisasi benar saat runtime (gating aman), tetapi context processor memakai field mentah: badge tampil `PRO` dan `show_upgrade_banner=False` untuk user yang efektif sudah expired → UX membingungkan (badge PRO tapi write ditolak). | `accounts/context_processors.py:48,56-62`, `accounts/tasks.py:13-47` | Telaah kode |
 | **A17** | ℹ️ INFO | Pada export multi-step `detail_project`, flag watermark dibekukan ke `session.metadata` saat `export_init`. Bila entitlement berubah (mis. trial→expired) antara init dan finalize, hasil memakai flag lama. Edge case, dampak rendah. | `detail_project/views_export.py:56-66,448-453` | Telaah kode |
 
@@ -89,5 +89,5 @@
 - [x] Tidak ada penulis status langganan liar / cek entitlement ad-hoc
 - [x] Navigasi pricing/checkout/upgrade konsisten
 - [~] Performa lintas-page (→ A14)
-- [~] Kelengkapan lifecycle (reminder → A15)
+- [x] Kelengkapan lifecycle (reminder email A15 tertutup ACC-2)
 - [ ] Reviewer sign-off
