@@ -215,6 +215,10 @@ class PlanFeatureEntitlement(models.Model):
             models.UniqueConstraint(
                 fields=["feature", "plan", "subscription_status"],
                 name="uniq_entitlement_feature_plan_status",
+                # A13: treat NULL plan as a single value so the status-level
+                # default matrix (plan IS NULL) cannot be duplicated on
+                # PostgreSQL (default NULLS DISTINCT would allow duplicates).
+                nulls_distinct=False,
             )
         ]
 
