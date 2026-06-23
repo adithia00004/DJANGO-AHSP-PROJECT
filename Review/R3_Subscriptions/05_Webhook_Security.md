@@ -52,7 +52,7 @@
 | **A7** | 🟢 FIXED (SUB-6) | `verify_signature` kini `hmac.compare_digest` (constant-time) + tolak signature non-`str`. | `subscriptions/midtrans.py:verify_signature` | Regression: `SignatureVerificationTests` (3/3) |
 | **A8** | 🟢 FIXED (SUB-6) | Webhook untuk order **bertanda tangan sah namun tak dikenal** kini balas **200**+log (Midtrans berhenti retry); **403 untuk signature tidak sah dipertahankan**. | `subscriptions/views.py` | Regression: `WebhookUnknownOrderTests` (2/2) |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi sekarang berbasis `paid_at is not None`; replay `settlement` setelah `refund` tidak mengaktifkan/memperpanjang ulang. | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_replay_settlement_after_refund_does_not_reactivate` |
-| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini mengunci baris user (`select_for_update`) dan menghitung dari nilai terkunci → pembayaran konkuren menumpuk. (Detail di [02 Payment Flow](02_Payment_Flow.md).) Lock lintas-koneksi penuh perlu gate PostgreSQL 15. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` |
+| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini mengunci baris user (`select_for_update`) dan menghitung dari nilai terkunci → pembayaran konkuren menumpuk. (Detail di [02 Payment Flow](02_Payment_Flow.md).) Lock lintas-koneksi **terverifikasi di PG15** (SUB-7). | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` + PG concurrency |
 
 ---
 
@@ -88,7 +88,7 @@
 - [x] Signature verification bulletproof (algoritma ✓ / cakupan field ✓ cross-check SUB-5 / compare constant-time ✓ SUB-6)
 - [x] Replay protection untuk duplicate/replay terminal (A11 tertutup oleh SUB-1)
 - [x] Status transitions correct untuk refund + late terminal setelah success (A5 tertutup oleh SUB-1)
-- [x] Aktivasi bebas lost-update saat konkuren (A12 tertutup ACC-1; lock lintas-koneksi perlu gate PG)
+- [x] Aktivasi bebas lost-update saat konkuren (A12 tertutup ACC-1; lock lintas-koneksi terverifikasi PG15 — SUB-7)
 - [x] No CSRF vulnerability (exempt beralasan)
 - [x] Logging adequate
 - [x] Rate limiting (`create_payment` app-level SUB-6; webhook→edge/WAF D-2)

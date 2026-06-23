@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **M1+M2+M4 SELESAI; hanya SUB-7 (A13) DITUNDA** — SUB-1..6 + SUB-8/9/10 + ACC-1/2/3/4 DONE → semua temuan A1–A12 + A14–A16 (+ A8/A10b INFO) tertutup. Subscriptions+accounts **87/87**. Sisa: **SUB-7 (A13)** + verifikasi PG15 untuk A12/A13 sebelum go-live. (A17 = INFO/P4 opsional.)
+**Status keseluruhan:** **SELESAI — semua temuan A1–A16 FIXED & terverifikasi.** SUB-1..10 + ACC-1/2/3/4 DONE. **SUB-7 (A13) tuntas via Jalur B (PG15):** SQLite suite **90 (87 + 3 PG di-skip)**, integrasi PG **3/3** (A13 constraint + A12 lock konkuren) via `config.settings.test_pg`. `makemigrations --check` (base) bersih. **Caveat go-live PG A12/A13 TERTUTUP.** Sisa hanya **A17 (INFO/P4 opsional)**.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -47,7 +47,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | SUB-5 | SUB | A4 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3 + webhook/refund 11/11; full 70/70; check PASS; no migrations | `184c0659` (code) + `55e951f7` (docs) |
 | SUB-6 | SUB | A6/A7/A8 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 76/76; check PASS; no migrations | `9999e7a4` (code) + `37dee3b3` (docs) |
 | ACC-2 | ACC | A15 | P2 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 79/79; check PASS; no migrations | `486c24a4` (code) + `073b58d7` (docs) |
-| SUB-7 | SUB | A13 | P2 | PENDING | - | - | data dedupe | - |
+| SUB-7 ⇄ | SUB | A13 (+A12 PG verify) | P2 | DONE | 2026-06-23 | 2026-06-23 | PASS: PG integrasi 3/3 (test_pg); SQLite 90 (3 skip); makemigrations(base) bersih | branch `fix/sub7-a13-pg-gate` (pending commit) |
 | SUB-8 | SUB | A9 | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 12/12 (incl. entitlement/middleware regresi); full 80/80; check PASS; no migrations | `70268184` (code) + `44f8ef0d` (docs); ACC-2 follow-up `01c940c2` |
 | SUB-9 | SUB | A10a/A10b | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 11/11; full 82/82; check PASS; no migrations | `d2cd396b` (code) + `d0dc155d` (docs) |
 | SUB-10 ⇄ | SUB | A14 (helper) | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 84/84; check PASS; no migrations | `521a828a` (code) + `8a5a5c99` (docs) |
@@ -92,8 +92,12 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 26 | 2026-06-23 | SUB-10 | `subscriptions/entitlements.py` | M | Tambah `get_request_feature_access(request, feature_code)`: memoize keputusan entitlement per-request (cache di `request._feature_access_cache`) (A14). | PASS | `521a828a` |
 | 27 | 2026-06-23 | ACC-4 | `accounts/middleware.py`, `accounts/context_processors.py` | M | Konsumsi `get_request_feature_access` di middleware (WRITE_ACCESS) + context processor (PDF/Excel-Word) → tak recompute fitur sama per-request (A14). | PASS | `521a828a` |
 | 28 | 2026-06-23 | SUB-10/ACC-4 | `subscriptions/tests.py`, `accounts/tests.py` | M | Tambah `RequestFeatureAccessCacheTests` (dedup same-feature) + test context processor mengisi `_feature_access_cache`. | PASS | `521a828a` |
-| 29 | 2026-06-23 | ACC-3 | `accounts/context_processors.py` | M | Badge & `show_upgrade_banner` kini dari status **efektif** (`is_pro_active`/`is_trial_active`), bukan `subscription_status` mentah → user lapse tak tampil PRO sebelum task harian (A16). | PASS | _(pending)_ |
-| 30 | 2026-06-23 | ACC-3 | `accounts/tests.py` | M | Tambah 3 test di `SubscriptionContextTests`: stale-PRO→badge EXPIRED+banner, active-PRO→PRO tanpa banner, active-trial→TRIAL+banner. | PASS | _(pending)_ |
+| 29 | 2026-06-23 | ACC-3 | `accounts/context_processors.py` | M | Badge & `show_upgrade_banner` kini dari status **efektif** (`is_pro_active`/`is_trial_active`), bukan `subscription_status` mentah → user lapse tak tampil PRO sebelum task harian (A16). | PASS | `3a78661f` |
+| 30 | 2026-06-23 | ACC-3 | `accounts/tests.py` | M | Tambah 3 test di `SubscriptionContextTests`: stale-PRO→badge EXPIRED+banner, active-PRO→PRO tanpa banner, active-trial→TRIAL+banner. | PASS | `3a78661f` |
+| 31 | 2026-06-23 | SUB-7 | `subscriptions/models.py` | M | `UniqueConstraint(...)` tambah `nulls_distinct=False` (A13). Di SQLite di-skip diam-diam (`_unique_supported`=False → no error); di PG15 jadi `NULLS NOT DISTINCT`. | PASS | _(pending)_ |
+| 32 | 2026-06-23 | SUB-7 | `migrations/0006_..._and_more.py` | A | Migrasi: dedupe baris `plan=NULL` duplikat (keep MAX id) → Remove+Add constraint baru. | PASS | _(pending)_ |
+| 33 | 2026-06-23 | SUB-7 | `config/settings/test_pg.py` | A | Settings test PostgreSQL 15 (inherit test + DATABASES base + TEST db) untuk gate backend-specific. | PASS | _(pending)_ |
+| 34 | 2026-06-23 | SUB-7 | `subscriptions/tests_pg.py` | A | Test PG-only (`skipUnless` postgres): A13 duplicate plan=NULL ditolak + distinct status lolos; A12 konkurensi 2-thread menumpuk di bawah row-lock. | PASS | _(pending)_ |
 
 ---
 
@@ -123,6 +127,9 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 16 | 2026-06-23 | SUB-9 | `CheckoutActiveSubscriptionTests` (2 test) + reuse-block `CreatePaymentView` | Guard + tests | Guard A10a (reuse pending) + A10b (PRO-active redirect, trial-active lolos). |
 | 17 | 2026-06-23 | SUB-10 | `get_request_feature_access` (helper) + `RequestFeatureAccessCacheTests` | Helper + test | A14: memoization keputusan entitlement per-request (cache di `request`). |
 | 18 | 2026-06-23 | ACC-3 | 3 test di `SubscriptionContextTests` (badge status efektif) | Regression tests | A16: stale-PRO tampil EXPIRED+banner; active PRO/trial benar. |
+| 19 | 2026-06-23 | SUB-7 | `config/settings/test_pg.py` | Settings module | Jalur test PostgreSQL 15 (gate A12/A13). |
+| 20 | 2026-06-23 | SUB-7 | `subscriptions/migrations/0006_...py` | Migrasi | A13 constraint `nulls_distinct=False` + dedupe data. |
+| 21 | 2026-06-23 | SUB-7 | `subscriptions/tests_pg.py` (`EntitlementNullPlanUniquePgTests` + `ActivateSubscriptionConcurrencyPgTests`) | PG integration tests | Guard A13 (NULLS NOT DISTINCT) + A12 (row-lock konkurensi) di PG15. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -177,6 +184,9 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 26 | 2026-06-23 | SUB-10/ACC-4 | `test subscriptions accounts` + `check` + `makemigrations` | **84/84 PASS** + check PASS + no changes | +2 dari 82; tanpa migrasi (helper+wiring) |
 | 27 | 2026-06-23 | ACC-3 | `test accounts.tests.SubscriptionContextTests` | **5/5 PASS** | badge status efektif + regresi admin banner |
 | 28 | 2026-06-23 | ACC-3 | `test subscriptions accounts` + `check` + `makemigrations` | **87/87 PASS** + check PASS + no changes | +3 dari 84; tanpa migrasi (context processor) |
+| 29 | 2026-06-23 | SUB-7 | `test subscriptions.tests_pg --settings=config.settings.test_pg` | **3/3 PASS (PG15)** | A13 duplicate rejected + A12 konkurensi menumpuk di row-lock |
+| 30 | 2026-06-23 | SUB-7 | `test subscriptions accounts --settings=config.settings.test` (SQLite) | **90 PASS (skipped=3)** | tests_pg di-skip di SQLite; tanpa regresi |
+| 31 | 2026-06-23 | SUB-7 | `makemigrations --check --dry-run` (**base**, migrasi nyata) | **No changes** | migrasi 0006 menangkap perubahan model. **CATATAN: `--settings=config.settings.test` PALSU (MIGRATION_MODULES disabled) — gunakan base untuk cek migrasi.** |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 
@@ -189,6 +199,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | # | Tanggal | Item | Temuan/Deviasi | Tindakan |
 |---|---------|------|----------------|----------|
 | EC-1 | 2026-06-23 | SUB-1 | **Revoke bersifat account-wide.** `revoke_subscription()` set `subscription_end_date=now` + EXPIRED untuk SELURUH akun. Bila user punya >1 transaksi sukses dengan masa berlaku tumpang-tindih (mis. renewal mendekati expiry), refund pada SATU order ikut mencabut sisa masa berlaku order lain. **Eksposur rendah**: `CheckoutView` memblok checkout saat `is_subscription_active`, jadi overlap umumnya hanya via renewal-near-expiry atau direct `create_payment`. **Bukan regresi SUB-1** (D-1 diimplementasikan sesuai spec) dan **bukan blocker**. | Track sebagai **refinement D-1** (kaitkan ke A12/ACC-1): saat revoke, pertimbangkan recompute `subscription_end_date` dari transaksi sukses non-refund tersisa, bukan blanket EXPIRED. **RESOLVED di ACC-1 (2026-06-23):** handler refund hanya `revoke_subscription` bila tak ada transaksi SUCCESS lain milik user → akses yang dijustifikasi pembelian lain tidak ikut tercabut; diuji `RefundRevocationScopeTests` (2/2). |
+| P-1 | 2026-06-23 | SUB-7 | **Gate `makemigrations --check --settings=config.settings.test` selama M1–M4 efektif no-op** — `config/settings/test.py` memakai `MIGRATION_MODULES = DisableMigrations()` (test build skema dari model, bukan migrasi). Untungnya M1–M4 tak ada perubahan model (semua "no migrations"), jadi tak ada migrasi terlewat. | SUB-7 (perubahan model pertama) di-cek via `--settings=config.settings.base` (migrasi nyata) + verifikasi PG. **Aturan ke depan: cek migrasi pakai base, bukan test.** |
+| P-2 | 2026-06-23 | SUB-7 | Keputusan owner **Jalur B** (PG-gate) dieksekusi: PG15 reachable (15.15, CAN_CREATEDB), `config.settings.test_pg` dibuat, A13+A12 diverifikasi langsung di PG. | A12/A13 caveat go-live TERTUTUP. |
 
 ---
 

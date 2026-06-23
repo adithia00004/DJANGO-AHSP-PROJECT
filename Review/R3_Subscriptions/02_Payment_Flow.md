@@ -61,7 +61,7 @@
 | **A6** | 🟢 FIXED (SUB-6) | `CreatePaymentView` di-throttle per-user via cache (5/60s → 429 `RATE_LIMIT_EXCEEDED`) sebelum membuat baris/memanggil Midtrans. | `subscriptions/views.py:CreatePaymentView` | Regression: `CreatePaymentRateLimitTests` |
 | **A10a** | 🟢 FIXED (SUB-9) | `CreatePaymentView` me-reuse transaksi `pending` yang masih segar (≤30 menit), ber-`amount` sesuai harga efektif terkini, dan ber-`snap_token` — alih-alih menumpuk baris + call Midtrans baru tiap klik. | `subscriptions/views.py:CreatePaymentView` | Regression: `test_rapid_double_create_reuses_recent_pending` |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis marker `paid_at is not None`, bukan `status`. Replay `settlement` setelah `refund` tidak mengaktifkan ulang karena `paid_at` tetap dipertahankan. Detail webhook di [05](05_Webhook_Security.md). | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_preserves_activation_marker`, `test_replay_settlement_after_refund_does_not_reactivate` |
-| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic` dan menghitung `subscription_end_date` dari nilai terkunci → dua pembayaran konkuren menumpuk, bukan saling menimpa. **Catatan:** serialisasi lintas-koneksi penuh perlu gate PostgreSQL 15; test SQLite membuktikan perbaikan stale-instance. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` (2/2) |
+| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic` dan menghitung `subscription_end_date` dari nilai terkunci → dua pembayaran konkuren menumpuk, bukan saling menimpa. **Terverifikasi di PG15** (SUB-7: `ActivateSubscriptionConcurrencyPgTests` — 2 thread menumpuk di bawah row-lock); test SQLite membuktikan perbaikan stale-instance. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` (2/2) + PG concurrency (1/1) |
 
 ---
 
@@ -99,5 +99,5 @@
 - [x] Redirect handling correct
 - [x] Transaction model integrity (transisi status mundur A5 tertutup oleh SUB-1)
 - [x] order_id uniqueness robust (SUB-2: UUID pk + single-insert)
-- [x] Aktivasi idempotent & bebas lost-update (A11 + A12 tertutup; lock lintas-koneksi A12 perlu gate PG)
+- [x] Aktivasi idempotent & bebas lost-update (A11 + A12 tertutup; lock lintas-koneksi A12 terverifikasi PG15 — SUB-7)
 - [ ] Reviewer sign-off
