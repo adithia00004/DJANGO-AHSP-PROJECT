@@ -15,6 +15,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
 from django.db import transaction as db_transaction
+from django.core.cache import cache
 
 from .models import SubscriptionPlan, PaymentTransaction
 from .midtrans import midtrans_client, MidtransError
@@ -51,6 +52,13 @@ def _settlement_payload_is_consistent(status_code, gross_amount, payment_tx) -> 
     return signed_amount == Decimal(payment_tx.amount)
 
 
+# A6: anti-abuse limit for payment creation. Each call writes a row and hits the
+# Midtrans API, so cap per-user attempts. (Webhook rate-limiting is handled at the
+# edge/WAF per decision D-2 so legitimate burst notifications aren't dropped.)
+CREATE_PAYMENT_MAX_ATTEMPTS = 5
+CREATE_PAYMENT_WINDOW_SECONDS = 60
+
+
 class CreatePaymentView(LoginRequiredMixin, View):
     """
     Create a new payment transaction and get Midtrans Snap token.
@@ -67,6 +75,17 @@ class CreatePaymentView(LoginRequiredMixin, View):
                     'error': 'Akun admin/staff tidak memerlukan checkout langganan.',
                     'code': 'ADMIN_CHECKOUT_BLOCKED'
                 }, status=403)
+
+            # A6: throttle payment creation per user to prevent spam.
+            rate_key = f"subs:create_payment:{request.user.id}"
+            attempts = cache.get(rate_key, 0)
+            if attempts >= CREATE_PAYMENT_MAX_ATTEMPTS:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Terlalu banyak permintaan pembayaran. Silakan coba lagi sebentar lagi.',
+                    'code': 'RATE_LIMIT_EXCEEDED',
+                }, status=429)
+            cache.set(rate_key, attempts + 1, CREATE_PAYMENT_WINDOW_SECONDS)
 
             data = json.loads(request.body)
             plan_id = data.get('plan_id')
@@ -173,8 +192,14 @@ class PaymentWebhookView(View):
                 try:
                     payment_tx = PaymentTransaction.objects.select_for_update().get(order_id=order_id)
                 except PaymentTransaction.DoesNotExist:
-                    logger.warning(f"Transaction not found: {order_id}")
-                    return HttpResponse(status=404)
+                    # A8: signature already verified above, so this is a validly
+                    # signed notification for an order we don't have. Acknowledge
+                    # with 200 so Midtrans stops retrying; log for investigation.
+                    logger.warning(
+                        "Webhook for unknown order %s (valid signature); acknowledging",
+                        order_id,
+                    )
+                    return HttpResponse(status=200)
 
                 # Update transaction metadata for audit trail
                 payment_tx.midtrans_transaction_id = data.get('transaction_id', '')

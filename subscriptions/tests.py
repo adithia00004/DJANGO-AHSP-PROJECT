@@ -1,3 +1,4 @@
+import hashlib
 import json
 from unittest.mock import patch
 from datetime import datetime, timedelta
@@ -7,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.http import JsonResponse
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -27,6 +28,13 @@ from subscriptions.models import PlanFeatureEntitlement, SubscriptionFeature
 from subscriptions.pricing_service import resolve_effective_plan_pricing
 from subscriptions.views import CheckoutView, CreatePaymentView, PaymentWebhookView
 from subscriptions.reconciliation import reconcile_pending_payments
+from subscriptions.midtrans import MidtransClient
+
+
+# Tests that exercise create_payment but are not about throttling disable the
+# cache so the shared LocMemCache rate-limit counter (SUB-6 / A6) cannot leak
+# between tests. CreatePaymentRateLimitTests opts back into a real cache.
+DUMMY_CACHE = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 
 
 class SubscriptionRolePolicyTests(TestCase):
@@ -635,6 +643,7 @@ class ScheduledPromotionPricingServiceTests(TestCase):
         self.assertIn("end_at", ctx.exception.message_dict)
 
 
+@override_settings(CACHES=DUMMY_CACHE)
 class PaymentPricingIntegrityTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -718,6 +727,11 @@ class ExpiredUserRenewalFlowTests(TestCase):
     """
 
     def setUp(self):
+        from django.core.cache import cache
+
+        # Full-stack client test keeps the real cache; clear stale rate-limit
+        # counters (SUB-6 / A6) so prior tests don't push this over the limit.
+        cache.clear()
         user_model = get_user_model()
         self.expired_user = user_model.objects.create_user(
             username="expired_buyer",
@@ -770,6 +784,7 @@ class ExpiredUserRenewalFlowTests(TestCase):
         self.assertEqual(payload.get("code"), "SUBSCRIPTION_EXPIRED")
 
 
+@override_settings(CACHES=DUMMY_CACHE)
 class PaymentOrderIdUniquenessTests(TestCase):
     """
     SUB-2 (A3): order_id must be collision-free and set in a single insert.
@@ -1189,3 +1204,114 @@ class WebhookSettlementCrossCheckTests(TestCase):
         self.payment.refresh_from_db()
         self.assertEqual(self.payment.status, PaymentTransaction.STATUS_PENDING)
         self.assertIsNone(self.payment.paid_at)
+
+
+@override_settings(MIDTRANS_SERVER_KEY="test-server-key")
+class SignatureVerificationTests(SimpleTestCase):
+    """SUB-6 (A7): verify_signature must use a constant-time comparison and
+    reject malformed/missing signatures."""
+
+    def setUp(self):
+        self.client_obj = MidtransClient()
+
+    def _expected(self, order_id, status_code, gross_amount):
+        raw = f"{order_id}{status_code}{gross_amount}test-server-key"
+        return hashlib.sha512(raw.encode()).hexdigest()
+
+    def test_valid_signature_accepted(self):
+        sig = self._expected("order-1", "200", "300000")
+        self.assertTrue(
+            self.client_obj.verify_signature("order-1", "200", "300000", sig)
+        )
+
+    def test_tampered_signature_rejected(self):
+        self.assertFalse(
+            self.client_obj.verify_signature("order-1", "200", "300000", "deadbeef")
+        )
+
+    def test_missing_signature_rejected(self):
+        self.assertFalse(
+            self.client_obj.verify_signature("order-1", "200", "300000", None)
+        )
+
+
+class WebhookUnknownOrderTests(TestCase):
+    """SUB-6 (A8): a validly-signed notification for an unknown order returns 200
+    (after logging) so Midtrans stops retrying. 403 for bad signature is unchanged."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=True)
+    def test_unknown_order_valid_signature_returns_200(self, _mock_verify):
+        payload = {
+            "order_id": "AHSP-DOES-NOT-EXIST",
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+            "status_code": "200",
+            "gross_amount": "300000",
+            "signature_key": "dummy",
+        }
+        request = self.factory.post(
+            reverse("subscriptions:webhook_midtrans"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        response = PaymentWebhookView.as_view()(request)
+        self.assertEqual(response.status_code, 200)
+
+    @patch("subscriptions.views.midtrans_client.verify_signature", return_value=False)
+    def test_bad_signature_still_returns_403(self, _mock_verify):
+        payload = {"order_id": "AHSP-X", "signature_key": "wrong"}
+        request = self.factory.post(
+            reverse("subscriptions:webhook_midtrans"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        response = PaymentWebhookView.as_view()(request)
+        self.assertEqual(response.status_code, 403)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class CreatePaymentRateLimitTests(TestCase):
+    """SUB-6 (A6): create_payment is throttled per user to prevent spam."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.factory = RequestFactory()
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="rate_limit_user",
+            email="rate-limit@example.com",
+            password="Secret123!",
+        )
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+
+    def _create(self):
+        request = self.factory.post(
+            reverse("subscriptions:create_payment"),
+            data=json.dumps({"plan_id": self.plan.id}),
+            content_type="application/json",
+        )
+        request.user = self.user
+        return CreatePaymentView.as_view()(request)
+
+    @patch("subscriptions.views.midtrans_client.create_snap_token")
+    def test_create_payment_throttled_after_limit(self, mock_snap_token):
+        mock_snap_token.return_value = {"token": "t", "redirect_url": ""}
+
+        for _ in range(5):
+            self.assertEqual(self._create().status_code, 200)
+
+        throttled = self._create()
+        self.assertEqual(throttled.status_code, 429)
+        self.assertEqual(json.loads(throttled.content)["code"], "RATE_LIMIT_EXCEEDED")

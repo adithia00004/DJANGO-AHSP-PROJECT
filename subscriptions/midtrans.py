@@ -5,6 +5,7 @@ Uses Midtrans Snap API for payment processing.
 Documentation: https://docs.midtrans.com/
 """
 import hashlib
+import hmac
 import json
 import logging
 import time
@@ -140,7 +141,10 @@ class MidtransClient:
         """
         raw_string = f"{order_id}{status_code}{gross_amount}{self.server_key}"
         expected_signature = hashlib.sha512(raw_string.encode()).hexdigest()
-        return signature == expected_signature
+        if not isinstance(signature, str):
+            return False
+        # Constant-time comparison to avoid leaking the signature via timing.
+        return hmac.compare_digest(signature, expected_signature)
     
     def get_transaction_status(self, order_id: str) -> Optional[Dict]:
         """
