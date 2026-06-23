@@ -39,7 +39,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 
 | Item | Paket | Temuan | Prio | Status | Mulai | Selesai | Gate/Dependency | Branch/Commit |
 |------|-------|--------|------|--------|-------|---------|-----------------|---------------|
-| SUB-1 | SUB | A11+A5 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 52/52; check PASS; makemigrations PASS | `fix/subscriptions-sub1-idempotent-activation` |
+| SUB-1 | SUB | A11+A5 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 52/52; check PASS; makemigrations PASS | `e9475bed` (branch `fix/subscriptions-sub1-idempotent-activation`) |
 | SUB-2 | SUB | A3 | P0 | PENDING | - | - | Baseline | - |
 | SUB-3 | SUB | A1 | P0 | PENDING | - | - | Baseline | - |
 | SUB-4 ⇄ | SUB | A2 | P0 | PENDING | - | - | **SUB-1** | - |
@@ -64,9 +64,9 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 
 | # | Tanggal | Item | File(s) | Aksi | Ringkasan perubahan | Test | Commit |
 |---|---------|------|---------|------|---------------------|------|--------|
-| 1 | 2026-06-23 | SUB-1 | `subscriptions/views.py`, `accounts/models.py` | M | Webhook aktivasi kini idempotent berbasis `paid_at`; late `cancel/deny/expire` setelah aktivasi diabaikan; handler `refund` mengubah transaksi ke REFUND dan revoke subscription user tanpa menghapus marker aktivasi. | PASS | - |
-| 2 | 2026-06-23 | SUB-1 | `subscriptions/tests.py` | M | Tambah regression test untuk refund revoke, preservasi `paid_at`, replay settlement pasca-refund, dan late deny setelah success. | PASS | - |
-| 3 | 2026-06-23 | SUB-1 | `Review/R3_Subscriptions/00_Audit_Summary_20260623.md`, `02_Payment_Flow.md`, `05_Webhook_Security.md`, `09_Implementation_Execution_Tracker_20260623.md` | M | Update status dokumentasi: A5/A11 tertutup oleh SUB-1; A12 tetap pending. | PASS | - |
+| 1 | 2026-06-23 | SUB-1 | `subscriptions/views.py`, `accounts/models.py` | M | Webhook aktivasi kini idempotent berbasis `paid_at`; late `cancel/deny/expire` setelah aktivasi diabaikan; handler `refund` mengubah transaksi ke REFUND dan revoke subscription user tanpa menghapus marker aktivasi. | PASS | `e9475bed` |
+| 2 | 2026-06-23 | SUB-1 | `subscriptions/tests.py` | M | Tambah regression test untuk refund revoke, preservasi `paid_at`, replay settlement pasca-refund, dan late deny setelah success. | PASS | `e9475bed` |
+| 3 | 2026-06-23 | SUB-1 | `Review/R3_Subscriptions/00_Audit_Summary_20260623.md`, `02_Payment_Flow.md`, `05_Webhook_Security.md`, `09_Implementation_Execution_Tracker_20260623.md` | M | Update status dokumentasi: A5/A11 tertutup oleh SUB-1; A12 tetap pending. | PASS | `b165e752` |
 
 ---
 
