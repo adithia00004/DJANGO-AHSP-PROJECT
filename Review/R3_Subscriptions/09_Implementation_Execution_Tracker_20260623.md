@@ -40,8 +40,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | Item | Paket | Temuan | Prio | Status | Mulai | Selesai | Gate/Dependency | Branch/Commit |
 |------|-------|--------|------|--------|-------|---------|-----------------|---------------|
 | SUB-1 | SUB | A11+A5 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 52/52; check PASS; makemigrations PASS | `e9475bed` (branch `fix/subscriptions-sub1-idempotent-activation`) |
-| SUB-2 | SUB | A3 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 55/55; check PASS; makemigrations no-changes | branch `fix/subscriptions-sub2-order-id` (pending commit) |
-| SUB-3 | SUB | A1 | P0 | PENDING | - | - | Baseline | - |
+| SUB-2 | SUB | A3 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 55/55; check PASS; makemigrations no-changes | `3bbae422` (code) + `f4fa7a3d` (docs) |
+| SUB-3 | SUB | A1 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 2/2; full 57/57; check PASS | branch `fix/subscriptions-sub3-snap-toggle` (pending commit) |
 | SUB-4 ⇄ | SUB | A2 | P0 | PENDING | - | - | **SUB-1** | - |
 | ACC-1 ⇄ | ACC | A12 | P1 | PENDING | - | - | **SUB-1** | - |
 | SUB-5 | SUB | A4 | P1 | PENDING | - | - | SUB-4 (reuse helper) | - |
@@ -67,8 +67,10 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 1 | 2026-06-23 | SUB-1 | `subscriptions/views.py`, `accounts/models.py` | M | Webhook aktivasi kini idempotent berbasis `paid_at`; late `cancel/deny/expire` setelah aktivasi diabaikan; handler `refund` mengubah transaksi ke REFUND dan revoke subscription user tanpa menghapus marker aktivasi. | PASS | `e9475bed` |
 | 2 | 2026-06-23 | SUB-1 | `subscriptions/tests.py` | M | Tambah regression test untuk refund revoke, preservasi `paid_at`, replay settlement pasca-refund, dan late deny setelah success. | PASS | `e9475bed` |
 | 3 | 2026-06-23 | SUB-1 | `Review/R3_Subscriptions/00_Audit_Summary_20260623.md`, `02_Payment_Flow.md`, `05_Webhook_Security.md`, `09_Implementation_Execution_Tracker_20260623.md` | M | Update status dokumentasi: A5/A11 tertutup oleh SUB-1; A12 tetap pending. | PASS | `b165e752` |
-| 4 | 2026-06-23 | SUB-2 | `subscriptions/models.py`, `subscriptions/views.py` | M | `generate_order_id` kini berbasis UUID pk transaksi (bukan timestamp detik); `CreatePaymentView` membangun transaksi via constructor + set `order_id` sebelum satu `save()` (hapus pola `objects.create()` ber-`order_id=''` + save kedua). | PASS | _(pending)_ |
-| 5 | 2026-06-23 | SUB-2 | `subscriptions/tests.py` | M | Tambah `PaymentOrderIdUniquenessTests` (3 test): unik antar-transaksi waktu sama, single-insert non-empty order_id, double-create rapid menghasilkan order_id berbeda. | PASS | _(pending)_ |
+| 4 | 2026-06-23 | SUB-2 | `subscriptions/models.py`, `subscriptions/views.py` | M | `generate_order_id` kini berbasis UUID pk transaksi (bukan timestamp detik); `CreatePaymentView` membangun transaksi via constructor + set `order_id` sebelum satu `save()` (hapus pola `objects.create()` ber-`order_id=''` + save kedua). | PASS | `3bbae422` |
+| 5 | 2026-06-23 | SUB-2 | `subscriptions/tests.py` | M | Tambah `PaymentOrderIdUniquenessTests` (3 test): unik antar-transaksi waktu sama, single-insert non-empty order_id, double-create rapid menghasilkan order_id berbeda. | PASS | `3bbae422` |
+| 6 | 2026-06-23 | SUB-3 | `subscriptions/views.py`, `subscriptions/templates/subscriptions/checkout.html` | M | `CheckoutView` mengirim `midtrans_is_production` ke context; template memilih host Snap.js (`app.midtrans.com` vs `app.sandbox.midtrans.com`) berdasarkan flag, menggantikan host sandbox hardcoded. | PASS | _(pending)_ |
+| 7 | 2026-06-23 | SUB-3 | `subscriptions/tests.py` | M | Tambah `CheckoutSnapJsToggleTests` (2 test): render checkout memakai URL Snap.js produksi saat flag ON, sandbox saat OFF. | PASS | _(pending)_ |
 
 ---
 
@@ -83,6 +85,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 1 | 2026-06-23 | SUB-1 | `test_refund_after_success_revokes_access`; `test_refund_preserves_activation_marker`; `test_replay_settlement_after_refund_does_not_reactivate`; `test_late_deny_after_success_does_not_overwrite_success` | Regression tests | Guard A11/A5 agar refund mencabut akses, replay sukses tidak mengaktifkan ulang, dan terminal webhook terlambat tidak menimpa success. |
 | 2 | 2026-06-23 | SUB-1 | `CustomUser.revoke_subscription(revoked_at=None)` | Method (API baru `accounts`) | Mencabut akses PRO segera (set EXPIRED + `subscription_end_date=now`) untuk D-1; dipakai handler refund webhook. Lihat catatan EC-1 §7. |
 | 3 | 2026-06-23 | SUB-2 | `PaymentOrderIdUniquenessTests` (3 test) | Regression tests | Guard A3: order_id unik per transaksi (UUID pk), single-insert tanpa window `order_id=''`, rapid double-create tak tabrakan. |
+| 4 | 2026-06-23 | SUB-3 | `CheckoutSnapJsToggleTests` (2 test) | Regression tests | Guard A1: checkout memuat Snap.js produksi vs sandbox sesuai `MIDTRANS_IS_PRODUCTION`. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -117,6 +120,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 6 | 2026-06-23 | SUB-2 | `test subscriptions.tests.PaymentOrderIdUniquenessTests` | **3/3 PASS** | unik antar-tx, single-insert, double-create |
 | 7 | 2026-06-23 | SUB-2 | `test subscriptions accounts --settings=config.settings.test` | **55/55 PASS** | +3 dari baseline 52 (SUB-1) |
 | 8 | 2026-06-23 | SUB-2 | `check` + `makemigrations --check` | **PASS** | no changes (perubahan metode, bukan field) |
+| 9 | 2026-06-23 | SUB-3 | `test subscriptions.tests.CheckoutSnapJsToggleTests` | **2/2 PASS** | URL Snap.js prod saat flag ON, sandbox saat OFF |
+| 10 | 2026-06-23 | SUB-3 | `test subscriptions accounts` + `check` | **57/57 PASS** + check PASS | +2 dari 55; tanpa migrasi (template/context saja) |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 

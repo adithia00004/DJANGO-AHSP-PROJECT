@@ -24,7 +24,7 @@
 | # | Test Case | Expected | Status | Catatan |
 |---|-----------|----------|--------|---------|
 | TC-1 | Server key tidak di-expose ke frontend | Hanya client key di template | `[x]` | hanya `MIDTRANS_CLIENT_KEY` masuk context |
-| TC-2 | Sandbox vs Production toggle | `MIDTRANS_IS_PRODUCTION` env var | `[~]` | **A1**: backend toggle benar (`midtrans.py:44-51`), tetapi **frontend Snap.js hardcoded sandbox** |
+| TC-2 | Sandbox vs Production toggle | `MIDTRANS_IS_PRODUCTION` env var | `[x]` | SUB-3: backend ✓ (`midtrans.py:44-51`) + frontend Snap.js kini ikut flag; diuji `CheckoutSnapJsToggleTests` |
 | TC-3 | Snap token request format | Sesuai Midtrans API spec | `[x]` | `transaction_details`/`item_details`/`callbacks` lengkap |
 | TC-4 | Signature verification algorithm | SHA512 sesuai Midtrans docs | `[x]` | `SHA512(order_id+status_code+gross_amount+server_key)` |
 | TC-5 | Invalid signature rejection | Request ditolak | `[x]` | webhook → 403 (diuji `test_duplicate_success_callback_is_idempotent` mem-bypass dengan mock) |
@@ -38,7 +38,7 @@
 
 | ID | Severity | Deskripsi | Lokasi | Evidence |
 |----|----------|-----------|--------|----------|
-| **A1** | 🔴 HIGH | Toggle produksi tidak lengkap: `MidtransClient` memilih base URL sesuai `MIDTRANS_IS_PRODUCTION`, tetapi template checkout memuat Snap.js sandbox secara statis (lihat detail di [01](01_Checkout_Page.md)). | `subscriptions/midtrans.py:44-51` + `templates/subscriptions/checkout.html:121` | Telaah kode |
+| **A1** | 🟢 FIXED (SUB-3) | Toggle produksi kini lengkap: backend (`MidtransClient`) dan frontend (template checkout via `midtrans_is_production`) sama-sama mengikuti `MIDTRANS_IS_PRODUCTION`. Detail di [01](01_Checkout_Page.md). | `subscriptions/midtrans.py:44-51`, `templates/subscriptions/checkout.html`, `views.py:CheckoutView` | Regression: `CheckoutSnapJsToggleTests` |
 | **A2** | 🟠 MED | `get_transaction_status()` didefinisikan tetapi **tidak pernah dipanggil** di seluruh codebase (diverifikasi grep). Aktivasi 100% bergantung pada satu webhook; bila webhook gagal terkirim (downtime/timeout), transaksi yang sudah dibayar **selamanya `pending`** dan user tak pernah jadi PRO. Tidak ada job/cron rekonsiliasi. | `subscriptions/midtrans.py:145-163` | Telaah kode + grep |
 | **A7** | 🟡 LOW | `verify_signature` membandingkan dengan `==` (bukan constant-time). Praktik aman: `hmac.compare_digest`. Dampak rendah (server-to-server HTTPS), tetapi mudah dikeraskan. | `subscriptions/midtrans.py:143` | Telaah kode |
 
@@ -59,6 +59,7 @@
 | # | Tanggal | Deskripsi Perbaikan | Commit/PR | Status |
 |---|---------|---------------------|-----------|--------|
 | 1 | 2026-06-23 | Audit kode statis Midtrans client; temuan A1/A2/A7 tercatat | - | DONE (audit) |
+| 1b | 2026-06-23 | SUB-3: lengkapi toggle produksi di frontend Snap.js (A1) | branch `fix/subscriptions-sub3-snap-toggle` | DONE |
 | 2 | - | Reconcile command (A2) | - | TODO |
 | 3 | - | Constant-time signature (A7) | - | TODO |
 
@@ -68,7 +69,7 @@
 
 - [x] Server key secure
 - [x] Signature verification correct (algoritma)
-- [~] Production/sandbox toggle works (backend ✓ / frontend ✗ → A1)
+- [x] Production/sandbox toggle works (backend ✓ / frontend ✓ SUB-3)
 - [x] Error handling robust
 - [~] No double-charge risk (idempotent ✓ / recovery webhook terlewat ✗ → A2)
 - [ ] Reviewer sign-off
