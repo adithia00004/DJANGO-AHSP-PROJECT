@@ -59,7 +59,7 @@ Evidence test suite:
 | # | Severity | Deskripsi | Lokasi | Evidence |
 |---|----------|-----------|--------|----------|
 | F-1 | **RESOLVED (was HIGH)** | Trial belum aktif sempat diperlakukan sebagai `EXPIRED`, sehingga bisa lolos export PDF watermark. Kini dipetakan ke status internal `TRIAL_PENDING` (deny semua export). | `subscriptions/entitlements.py:23`, `subscriptions/entitlements.py:57`, `subscriptions/entitlements.py:157` | Regression test PASS 2026-02-17: `test_pdf_export_blocks_trial_pending_user` |
-| A9 | 🟡 LOW (audit 2026-06-23) | `get_feature_access` membungkus query entitlement dengan `except Exception: pass` yang menelan **semua** error DB tanpa logging, lalu diam-diam jatuh ke fallback matrix. Perilaku fallback umumnya aman, tetapi error transien/nyata jadi tak terlihat saat operasi. | `subscriptions/entitlements.py:226-229` | Telaah kode statis |
+| A9 | 🟢 FIXED (SUB-8) | `except Exception: pass` dipersempit ke `except DatabaseError` + `logger.warning(exc_info=True)` sebelum fallback. Mock tanpa pk sudah ditangani early-return, jadi narrowing aman (terverifikasi 12/12 regresi entitlement/middleware). | `subscriptions/entitlements.py:get_feature_access` | Regression: `EntitlementDbErrorFallbackTests` (1/1) |
 | A13 | 🟠 MED (audit 2026-06-23, verifikasi independen) | `UniqueConstraint(feature, plan, subscription_status)` **tidak** mencegah beberapa baris default status-level (`plan=NULL`) untuk feature+status yang sama. Terkonfirmasi **PostgreSQL 15** (default `NULLS DISTINCT` → `NULL ≠ NULL` pada unique index). Mitigasi app-level via `get_or_create` ada, tetapi safety-net DB tak efektif → risiko duplikat default dengan `access_level` bertentangan; `base_qs.filter(plan__isnull=True).first()` lalu non-deterministik. | `subscriptions/models.py:212-219`, migrasi `0002` | Telaah kode + `docker-compose.yml` (postgres:15-alpine) + Django 5.2 |
 
 ---
@@ -70,7 +70,7 @@ Evidence test suite:
 |---|-------------|-----------|--------|---------|
 | REC-1 | Pertahankan normalisasi status efektif (`TRIAL_PENDING`) agar trial belum aktif tidak mendapatkan hak export | P0 | Low | F-1 (`[DONE]`) |
 | REC-2 | Pertahankan regression tests entitlement + decorator gating dalam pipeline CI | P1 | Low | F-1 (`[DONE]`) |
-| REC-3 | Persempit `except Exception` menjadi error DB spesifik (mis. `DatabaseError`/`OperationalError`) dan tambahkan `logger.warning` sebelum fallback, agar kegagalan terlihat. | P3 | Low | A9 (`[TODO]`) |
+| REC-3 | Persempit `except Exception` menjadi error DB spesifik (mis. `DatabaseError`/`OperationalError`) dan tambahkan `logger.warning` sebelum fallback, agar kegagalan terlihat. | P3 | Low | A9 (`[DONE]` SUB-8) |
 | REC-4 | Set `nulls_distinct=False` pada `UniqueConstraint` (didukung Django 5.2 + PG15 → `NULLS NOT DISTINCT`) agar default status-level `plan=NULL` benar-benar unik per feature+status. Bersihkan duplikat eksisting lebih dulu bila ada. | P2 | Low | A13 (`[TODO]`) |
 
 ---
@@ -83,6 +83,7 @@ Evidence test suite:
 | 2 | 2026-02-17 | Perbaikan status normalisasi trial belum aktif (`TRIAL_PENDING`) untuk menutup celah export PDF | - | DONE |
 | 3 | 2026-02-17 | Tambah regression tests decorator gating (PDF/Excel/Word) | - | DONE |
 | 4 | 2026-06-23 | Audit + verifikasi independen: tambah A9 (except-pass) & A13 (UniqueConstraint NULL plan di PG15) | - | DONE (audit) |
+| 5 | 2026-06-23 | SUB-8: `except DatabaseError` + `logger.warning` (A9) | branch `fix/subscriptions-sub8-entitlement-except` | DONE |
 
 ---
 

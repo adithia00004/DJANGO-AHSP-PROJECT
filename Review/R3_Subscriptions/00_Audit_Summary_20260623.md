@@ -28,7 +28,7 @@
 
 ## 2. Penilaian Umum
 
-Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 menutup replay setelah refund/terminal (A11) + kebijakan refund revoke/late terminal (A5); SUB-2 menutup uniqueness order id (A3); SUB-3 menutup checkout produksi (A1, Snap.js prod/sandbox); SUB-4 menutup rekonsiliasi webhook terlewat (A2); ACC-1 menutup lost-update aktivasi konkuren (A12) + refund account-wide (EC-1). **Semua P0 (go-live) + P1 (A4/A6/A7/A8/A12) tertutup; M1 & M2 selesai.** SUB-5 menutup verifikasi field webhook (A4); SUB-6 menutup rate-limit `create_payment`/constant-time/respons webhook (A6/A7/A8); ACC-2 menutup pengingat expiry (A15, email reminder nyata). Sisa (bukan blocker): uniqueness entitlement (A13), kebersihan (A9/A10a), perf/lifecycle (A14/A16). A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15.
+Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 menutup replay setelah refund/terminal (A11) + kebijakan refund revoke/late terminal (A5); SUB-2 menutup uniqueness order id (A3); SUB-3 menutup checkout produksi (A1, Snap.js prod/sandbox); SUB-4 menutup rekonsiliasi webhook terlewat (A2); ACC-1 menutup lost-update aktivasi konkuren (A12) + refund account-wide (EC-1). **Semua P0 (go-live) + P1 (A4/A6/A7/A8/A12) tertutup; M1 & M2 selesai.** SUB-5 menutup verifikasi field webhook (A4); SUB-6 menutup rate-limit `create_payment`/constant-time/respons webhook (A6/A7/A8); ACC-2 menutup pengingat expiry (A15, email reminder nyata). SUB-8 menutup logging error entitlement (A9). Sisa (bukan blocker): uniqueness entitlement (A13, DITUNDA—butuh PG-gate), kebersihan (A10a), perf/lifecycle (A14/A16). A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15.
 
 ---
 
@@ -44,7 +44,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 | **A6** | 🟢 FIXED (SUB-6) | `create_payment` di-throttle app-level (5/60s→429); rate-limit webhook → edge/WAF (D-2, di luar kode) | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
 | **A7** | 🟢 FIXED (SUB-6) | `verify_signature` pakai `hmac.compare_digest` (constant-time) + tolak signature non-`str` | [05](05_Webhook_Security.md), [03](03_Midtrans_Integration.md) |
 | **A8** | 🟢 FIXED (SUB-6) | Order valid-sig tak dikenal → 200+log (Midtrans berhenti retry); 403 bad-sig dipertahankan | [05](05_Webhook_Security.md) |
-| **A9** | 🟡 LOW | `except Exception: pass` di entitlements menelan error DB tanpa log | [04](04_Entitlement_System.md) |
+| **A9** | 🟢 FIXED (SUB-8) | `except Exception: pass` → `except DatabaseError` + `logger.warning` sebelum fallback | [04](04_Entitlement_System.md) |
 | **A10a** | 🟡 LOW | Tak ada pencegahan transaksi `pending` ganda (TC-4) | [02](02_Payment_Flow.md) |
 | **A10b** | ℹ️ INFO | Cek `subscription_status=='PRO' and is_subscription_active` ekuivalen dengan `is_pro_active` untuk user non-staff; penggantian hanya penyederhanaan/refactor | [01](01_Checkout_Page.md) |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis `paid_at`; replay `settlement` setelah refund tidak mengaktifkan/memperpanjang subscription ulang | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
@@ -76,7 +76,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 | **P0 — sebelum go-live** | ✅ SELESAI (A1 SUB-3, A2 SUB-4, A3 SUB-2, A11 SUB-1) | Semua blocker go-live tertutup; sisa P1+ (A4/A12/...) bukan blocker langsung |
 | **P1 — integritas transaksi** | ✅ SELESAI (A4 SUB-5, A6/A7/A8 SUB-6, A12 ACC-1) | Semua P1 webhook/pricing tertutup |
 | **P2 — integritas bisnis/data** | A13 (~~A15 ACC-2 FIXED~~) | Uniqueness default entitlement (A13, butuh gate PG15) |
-| **P3 — kebersihan/perf** | A9, A10a, A14, A16 | Robustness, konsistensi, dan overhead query lintas-page |
+| **P3 — kebersihan/perf** | A10a, A14, A16 (~~A9 SUB-8 FIXED~~) | Konsistensi & overhead query lintas-page |
 | **Informational** | A10b, A17 (~~A8 FIXED SUB-6~~) | Penyederhanaan kode, edge-case watermark |
 
 ---
@@ -85,10 +85,10 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 
 - `python manage.py makemigrations --check --dry-run`: **PASS**, tidak ada perubahan migrasi yang belum dibuat.
 - `python manage.py check`: **PASS**, tidak ada system-check error.
-- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 49/49 test** (subscriptions; ACC-2 menambah test di app accounts).
-- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 79/79 test** setelah SUB-1..SUB-6 + ACC-1 + ACC-2.
+- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 50/50 test** (subscriptions; ACC-2 menambah test di app accounts).
+- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 80/80 test** setelah SUB-1..SUB-6 + ACC-1 + ACC-2 + SUB-8.
 - Eksekusi test harus memakai `config.settings.test`; settings ini sengaja menonaktifkan `TimeoutMiddleware` yang dapat mengganggu autentikasi `force_login` pada Django test client.
-- Automated test saat ini sudah mencakup SUB-1 (A5/A11), SUB-2 (A3), SUB-3 (A1), SUB-4 (A2), ACC-1 (A12/EC-1), SUB-5 (A4), SUB-6 (A6/A7/A8), dan ACC-2 (A15). Skenario A13 + A14/A16 belum tercakup; **A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15** (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
+- Automated test saat ini sudah mencakup SUB-1 (A5/A11), SUB-2 (A3), SUB-3 (A1), SUB-4 (A2), ACC-1 (A12/EC-1), SUB-5 (A4), SUB-6 (A6/A7/A8), ACC-2 (A15), dan SUB-8 (A9). Skenario A13 + A14/A16 belum tercakup; **A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15** (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
 
 ---
 

@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **M1 + M2 SELESAI; M3 berjalan** — SUB-1..6 + ACC-1 + **ACC-2 (A15)** DONE. Subscriptions+accounts **79/79**. Sisa M3: **SUB-7 (A13, butuh gate PG15)**. Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
+**Status keseluruhan:** **M1+M2 SELESAI; M3/M4 berjalan; SUB-7 DITUNDA** (owner: kerjakan M4 dulu; SUB-7/A13 butuh PG-gate) — SUB-1..6 + ACC-1 + ACC-2 + **SUB-8 (A9)** DONE. Subscriptions+accounts **80/80**. Sisa: **SUB-7 (A13, PG)**, SUB-9 (A10a/b), SUB-10+ACC-4 (A14), ACC-3 (A16). Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -46,10 +46,9 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | ACC-1 ⇄ | ACC | A12 + EC-1 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 67/67; check PASS; makemigrations no-changes. **PG gate A12 pending** | `05f17150` (code) + `dbc307a8` (docs) |
 | SUB-5 | SUB | A4 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3 + webhook/refund 11/11; full 70/70; check PASS; no migrations | `184c0659` (code) + `55e951f7` (docs) |
 | SUB-6 | SUB | A6/A7/A8 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 76/76; check PASS; no migrations | `9999e7a4` (code) + `37dee3b3` (docs) |
-| ACC-2 | ACC | A15 | P2 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 79/79; check PASS; no migrations | branch `fix/accounts-acc2-expiry-reminder` (pending commit) |
+| ACC-2 | ACC | A15 | P2 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 79/79; check PASS; no migrations | `486c24a4` (code) + `073b58d7` (docs) |
 | SUB-7 | SUB | A13 | P2 | PENDING | - | - | data dedupe | - |
-| ACC-2 | ACC | A15 | P2 | PENDING | - | - | D-3 (✅) | - |
-| SUB-8 | SUB | A9 | P3 | PENDING | - | - | - | - |
+| SUB-8 | SUB | A9 | P3 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 12/12 (incl. entitlement/middleware regresi); full 80/80; check PASS; no migrations | branch `fix/subscriptions-sub8-entitlement-except` (pending commit) |
 | SUB-9 | SUB | A10a/A10b | P3 | PENDING | - | - | - | - |
 | SUB-10 ⇄ | SUB | A14 (helper) | P3 | PENDING | - | - | - | - |
 | ACC-4 ⇄ | ACC | A14 (sites) | P3 | PENDING | - | - | **SUB-10** | - |
@@ -83,8 +82,11 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 16 | 2026-06-23 | SUB-6 | `subscriptions/midtrans.py` | M | `verify_signature` kini pakai `hmac.compare_digest` (constant-time) + tolak signature non-str (A7). | PASS | `9999e7a4` |
 | 17 | 2026-06-23 | SUB-6 | `subscriptions/views.py` | M | A8: webhook order valid-sig tak dikenal balas **200**+log (bukan 404). A6: `CreatePaymentView` di-throttle per-user via cache (5/60s) → 429 `RATE_LIMIT_EXCEEDED`. | PASS | `9999e7a4` |
 | 18 | 2026-06-23 | SUB-6 | `subscriptions/tests.py` | M | Tambah `SignatureVerificationTests`(3)/`WebhookUnknownOrderTests`(2)/`CreatePaymentRateLimitTests`(1); isolasi cache test lama (DummyCache 2 kelas RequestFactory + `cache.clear()` full-stack) agar counter rate-limit tak bocor lintas-test. | PASS | `9999e7a4` |
-| 19 | 2026-06-23 | ACC-2 | `accounts/tasks.py` | M | `send_expiry_reminder` kini benar-benar kirim email (`send_mail`) ke user trial/PRO yang expired ≤3 hari (link `/pricing/` + support email), bukan stub log (A15). | PASS | _(pending)_ |
-| 20 | 2026-06-23 | ACC-2 | `accounts/tests.py` | M | Tambah `ExpiryReminderEmailTests` (3 test): PRO/trial dalam window dapat email; di luar window tak dapat. | PASS | _(pending)_ |
+| 19 | 2026-06-23 | ACC-2 | `accounts/tasks.py` | M | `send_expiry_reminder` kini benar-benar kirim email (`send_mail`) ke user trial/PRO yang expired ≤3 hari (link `/pricing/` + support email), bukan stub log (A15). | PASS | `486c24a4` |
+| 20 | 2026-06-23 | ACC-2 | `accounts/tests.py` | M | Tambah `ExpiryReminderEmailTests` (3 test): PRO/trial dalam window dapat email; di luar window tak dapat. | PASS | `486c24a4` |
+| 21 | 2026-06-23 | ACC-2 | `accounts/tasks.py` | M | Follow-up gate: import `shared_task` dibuat aman saat package Celery tidak terpasang di test/dev lokal, konsisten dengan `subscriptions/tasks.py`. | PASS | `01c940c2` |
+| 22 | 2026-06-23 | SUB-8 | `subscriptions/entitlements.py` | M | `except Exception: pass` → `except DatabaseError` + `logger.warning(exc_info)` (A9). Mock tanpa pk sudah ditangani early-return; narrowing aman. | PASS | _(pending)_ |
+| 23 | 2026-06-23 | SUB-8 | `subscriptions/tests.py` | M | Tambah `EntitlementDbErrorFallbackTests` (1 test): DB error di-log + fallback matrix. | PASS | _(pending)_ |
 
 ---
 
@@ -110,6 +112,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 12 | 2026-06-23 | SUB-5 | `_settlement_payload_is_consistent` (helper) + `WebhookSettlementCrossCheckTests` (3 test) | Helper + tests | Guard A4: cross-check field bertanda tangan (status_code/gross_amount-Decimal) sebelum aktivasi webhook. |
 | 13 | 2026-06-23 | SUB-6 | konstanta `CREATE_PAYMENT_MAX_ATTEMPTS/WINDOW_SECONDS` + `SignatureVerificationTests`/`WebhookUnknownOrderTests`/`CreatePaymentRateLimitTests` (6 test) | Rate-limit + tests | Guard A6/A7/A8: throttle create_payment, constant-time signature, 200-untuk-valid-sig-unknown. |
 | 14 | 2026-06-23 | ACC-2 | `ExpiryReminderEmailTests` (3 test) | Regression tests | Guard A15: email reminder benar-benar terkirim utk user expiring ≤3 hari (PRO/trial), bukan stub. |
+| 15 | 2026-06-23 | SUB-8 | `EntitlementDbErrorFallbackTests` (1 test) + `logger` di `entitlements.py` | Test + logger | Guard A9: DB error di-log (tak ditelan diam-diam) lalu fallback. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -156,6 +159,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 18 | 2026-06-23 | SUB-6 | `test subscriptions accounts` | sempat **FAILED 4** (polusi cache rate-limit lintas-test) → **76/76 PASS** setelah isolasi cache | +6 dari 70; tanpa migrasi. Pelajaran: LocMemCache test persisten + reuse PK user |
 | 19 | 2026-06-23 | ACC-2 | `test ExpiryReminderEmailTests` | **3/3 PASS** | email reminder window 3 hari (locmem outbox) |
 | 20 | 2026-06-23 | ACC-2 | `test subscriptions accounts` + `check` + `makemigrations` | **79/79 PASS** + check PASS + no changes | +3 dari 76; tanpa migrasi (task body saja) |
+| 21 | 2026-06-23 | SUB-8 | `test EntitlementDbErrorFallbackTests + EntitlementPolicyEngineTests + SubscriptionMiddlewareTests + TrialAccessGuardTests` | **12/12 PASS** | narrowing tak merusak fallback mock/real |
+| 22 | 2026-06-23 | SUB-8 | `test subscriptions accounts` + `check` + `makemigrations` | **80/80 PASS** + check PASS + no changes | +1 dari 79; tanpa migrasi |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 
