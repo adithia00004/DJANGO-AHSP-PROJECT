@@ -3,6 +3,7 @@ Subscription payment views and webhook handlers.
 """
 import json
 import logging
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse, HttpResponse
 from django.views import View
@@ -99,7 +100,32 @@ class CreatePaymentView(LoginRequiredMixin, View):
             # Get the plan
             plan = get_object_or_404(SubscriptionPlan, id=plan_id, is_active=True)
             pricing = resolve_effective_plan_pricing(plan)
-            
+
+            # A10a: reuse a recent, still-priced pending transaction for this plan
+            # instead of piling up new rows (and a redundant Midtrans call) on
+            # repeated clicks. Bounded to 30 minutes so the reused Snap token is
+            # fresh, and to the current effective amount so a changed promo never
+            # reuses a stale price.
+            existing = (
+                PaymentTransaction.objects.filter(
+                    user=request.user,
+                    plan=plan,
+                    status=PaymentTransaction.STATUS_PENDING,
+                    amount=pricing.final_price,
+                    created_at__gte=timezone.now() - timedelta(minutes=30),
+                )
+                .exclude(snap_token="")
+                .order_by("-created_at")
+                .first()
+            )
+            if existing:
+                return JsonResponse({
+                    'success': True,
+                    'snap_token': existing.snap_token,
+                    'order_id': existing.order_id,
+                    'reused': True,
+                })
+
             # Build the transaction with order_id set BEFORE the first save so
             # the row is inserted once, already unique. The previous two-step
             # pattern (create() with empty order_id, then save() again) left a
@@ -359,8 +385,9 @@ class CheckoutView(LoginRequiredMixin, View):
             messages.info(request, 'Akun admin/staff memiliki akses penuh dan tidak memerlukan checkout.')
             return redirect('dashboard:dashboard')
         
-        # Check if user already has active subscription
-        if request.user.subscription_status == 'PRO' and request.user.is_subscription_active:
+        # Check if user already has an active PRO subscription (A10b: a single
+        # is_pro_active check; trial-active users are still allowed to upgrade).
+        if request.user.is_pro_active:
             messages.info(request, 'Anda sudah memiliki langganan aktif.')
             return redirect('dashboard:dashboard')
         

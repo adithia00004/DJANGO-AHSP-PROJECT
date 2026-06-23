@@ -846,7 +846,7 @@ class PaymentOrderIdUniquenessTests(TestCase):
         self.assertFalse(PaymentTransaction.objects.filter(order_id="").exists())
 
     @patch("subscriptions.views.midtrans_client.create_snap_token")
-    def test_rapid_double_create_produces_distinct_order_ids(self, mock_snap_token):
+    def test_rapid_double_create_reuses_recent_pending(self, mock_snap_token):
         mock_snap_token.return_value = {"token": "snap-x", "redirect_url": ""}
 
         order_ids = []
@@ -861,8 +861,11 @@ class PaymentOrderIdUniquenessTests(TestCase):
             self.assertEqual(response.status_code, 200)
             order_ids.append(json.loads(response.content)["order_id"])
 
-        self.assertEqual(len(set(order_ids)), 2)
-        self.assertEqual(PaymentTransaction.objects.filter(user=self.user).count(), 2)
+        # A10a: the second click reuses the first pending transaction (no new row,
+        # no extra Midtrans call) instead of colliding or piling up.
+        self.assertEqual(len(set(order_ids)), 1)
+        self.assertEqual(PaymentTransaction.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(mock_snap_token.call_count, 1)
 
 
 class CheckoutSnapJsToggleTests(TestCase):
@@ -1343,3 +1346,53 @@ class EntitlementDbErrorFallbackTests(TestCase):
         # PRO fallback for write_access is ALLOW.
         self.assertTrue(decision.allowed)
         self.assertTrue(any("fallback matrix" in line for line in cm.output))
+
+
+class CheckoutActiveSubscriptionTests(TestCase):
+    """SUB-9 (A10b): checkout redirects a PRO-active user (single is_pro_active
+    check) but still lets a trial-active user through to upgrade."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user_model = get_user_model()
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+
+    def _get_checkout(self, user):
+        request = self.factory.get(
+            reverse("subscriptions:checkout", args=[self.plan.id])
+        )
+        request.user = user
+        return CheckoutView.as_view()(request, plan_id=self.plan.id)
+
+    @patch("subscriptions.views.messages.info")
+    def test_pro_active_user_is_redirected(self, _mock_info):
+        user = self.user_model.objects.create_user(
+            username="active_pro_checkout",
+            email="active-pro-checkout@example.com",
+            password="Secret123!",
+            subscription_status="PRO",
+            subscription_end_date=timezone.now() + timedelta(days=30),
+        )
+
+        response = self._get_checkout(user)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("dashboard:dashboard"))
+
+    def test_trial_active_user_can_reach_checkout(self):
+        user = self.user_model.objects.create_user(
+            username="active_trial_checkout",
+            email="active-trial-checkout@example.com",
+            password="Secret123!",
+            subscription_status="TRIAL",
+            trial_end_date=timezone.now() + timedelta(days=5),
+        )
+
+        response = self._get_checkout(user)
+
+        self.assertEqual(response.status_code, 200)
