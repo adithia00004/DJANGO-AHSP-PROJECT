@@ -18,6 +18,7 @@ from django.db import transaction as db_transaction
 from .models import SubscriptionPlan, PaymentTransaction
 from .midtrans import midtrans_client, MidtransError
 from .pricing_service import format_currency_idr, resolve_effective_plan_pricing
+from .reconciliation import mark_paid_and_activate
 
 
 logger = logging.getLogger(__name__)
@@ -206,24 +207,13 @@ class PaymentWebhookView(View):
             return HttpResponse(status=500)
     
     def _handle_success(self, transaction: PaymentTransaction):
-        """Handle successful payment."""
-        transaction.status = PaymentTransaction.STATUS_SUCCESS
-        transaction.paid_at = timezone.now()
-        
-        # Activate user subscription using immutable duration snapshot when available.
-        duration_months = transaction.duration_months_snapshot or getattr(
-            transaction.plan,
-            "duration_months",
-            0,
-        )
-        if duration_months > 0:
-            transaction.user.activate_subscription(
-                months=duration_months
-            )
-            logger.info(
-                f"Subscription activated for {transaction.user.email}: "
-                f"{duration_months} months"
-            )
+        """Handle successful payment via the shared, idempotent activation path.
+
+        The ``paid_at`` guard in ``post`` ensures this only runs once; the actual
+        state change lives in ``mark_paid_and_activate`` so the webhook and the
+        reconciliation job grant access through exactly the same code.
+        """
+        mark_paid_and_activate(transaction)
 
 
 class PaymentFinishView(LoginRequiredMixin, View):

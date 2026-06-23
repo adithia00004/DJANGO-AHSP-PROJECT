@@ -75,6 +75,12 @@ app.conf.beat_schedule = {
         'task': 'accounts.send_expiry_reminder',
         'schedule': crontab(hour=9, minute=0),  # 09:00 daily
     },
+
+    # Reconcile paid-but-pending payments every 15 minutes (recover missed webhooks)
+    'reconcile-pending-payments': {
+        'task': 'subscriptions.reconcile_pending_payments',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 # Configure timezone

@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.http import JsonResponse
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -25,6 +26,7 @@ from subscriptions.entitlements import (
 from subscriptions.models import PlanFeatureEntitlement, SubscriptionFeature
 from subscriptions.pricing_service import resolve_effective_plan_pricing
 from subscriptions.views import CheckoutView, CreatePaymentView, PaymentWebhookView
+from subscriptions.reconciliation import reconcile_pending_payments
 
 
 class SubscriptionRolePolicyTests(TestCase):
@@ -892,3 +894,119 @@ class CheckoutSnapJsToggleTests(TestCase):
         self.assertIn(
             b"https://app.sandbox.midtrans.com/snap/snap.js", response.content
         )
+
+
+class PendingPaymentReconciliationTests(TestCase):
+    """
+    SUB-4 (A2): recover paid-but-pending transactions when a webhook is missed.
+
+    The reconcile service re-fetches Midtrans status and runs the same idempotent
+    activation path as the webhook (`mark_paid_and_activate`).
+    """
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="reconcile_user",
+            email="reconcile@example.com",
+            password="Secret123!",
+        )
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+        self.tx = PaymentTransaction.objects.create(
+            order_id="AHSP-RECON-1",
+            user=self.user,
+            plan=self.plan,
+            amount=self.plan.price,
+            duration_months_snapshot=self.plan.duration_months,
+            snap_token="snap-token-recon",
+            status=PaymentTransaction.STATUS_PENDING,
+        )
+
+    @patch("subscriptions.reconciliation.midtrans_client.get_transaction_status")
+    def test_reconcile_activates_settled_pending(self, mock_status):
+        mock_status.return_value = {
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+        }
+
+        summary = reconcile_pending_payments(older_than_minutes=0)
+
+        self.tx.refresh_from_db()
+        self.user.refresh_from_db()
+        self.assertEqual(summary["activated"], 1)
+        self.assertEqual(self.tx.status, PaymentTransaction.STATUS_SUCCESS)
+        self.assertIsNotNone(self.tx.paid_at)
+        self.assertEqual(self.user.subscription_status, "PRO")
+        self.assertIsNotNone(self.user.subscription_end_date)
+
+    @patch("subscriptions.reconciliation.midtrans_client.get_transaction_status")
+    def test_reconcile_is_idempotent(self, mock_status):
+        mock_status.return_value = {
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+        }
+
+        reconcile_pending_payments(older_than_minutes=0)
+        self.user.refresh_from_db()
+        first_end = self.user.subscription_end_date
+
+        # Second run: the transaction is no longer PENDING → nothing to do.
+        summary2 = reconcile_pending_payments(older_than_minutes=0)
+        self.user.refresh_from_db()
+
+        self.assertEqual(summary2["activated"], 0)
+        self.assertEqual(self.user.subscription_end_date, first_end)
+
+    @patch("subscriptions.reconciliation.midtrans_client.get_transaction_status")
+    def test_reconcile_leaves_still_pending(self, mock_status):
+        mock_status.return_value = {"transaction_status": "pending"}
+
+        summary = reconcile_pending_payments(older_than_minutes=0)
+
+        self.tx.refresh_from_db()
+        self.assertEqual(summary["activated"], 0)
+        self.assertEqual(self.tx.status, PaymentTransaction.STATUS_PENDING)
+
+    @patch("subscriptions.reconciliation.midtrans_client.get_transaction_status")
+    def test_reconcile_skips_recent_pending(self, mock_status):
+        mock_status.return_value = {
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+        }
+
+        # Transaction was just created, so a 30-minute floor must exclude it.
+        summary = reconcile_pending_payments(older_than_minutes=30)
+
+        self.assertEqual(summary["checked"], 0)
+        mock_status.assert_not_called()
+        self.tx.refresh_from_db()
+        self.assertEqual(self.tx.status, PaymentTransaction.STATUS_PENDING)
+
+    def test_celery_task_delegates_to_service(self):
+        from subscriptions import tasks as tasks_module
+
+        with patch.object(tasks_module, "reconcile_pending_payments") as mock_service:
+            mock_service.return_value = {"checked": 0}
+            tasks_module.reconcile_pending_payments_task(
+                older_than_minutes=5,
+                limit=10,
+            )
+
+            mock_service.assert_called_once_with(older_than_minutes=5, limit=10)
+
+    @patch("subscriptions.reconciliation.midtrans_client.get_transaction_status")
+    def test_management_command_activates_settled_pending(self, mock_status):
+        mock_status.return_value = {
+            "transaction_status": "settlement",
+            "fraud_status": "accept",
+        }
+
+        call_command("reconcile_pending_payments", "--older-than-minutes", "0")
+
+        self.tx.refresh_from_db()
+        self.assertEqual(self.tx.status, PaymentTransaction.STATUS_SUCCESS)
