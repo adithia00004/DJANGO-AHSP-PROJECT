@@ -350,6 +350,74 @@ class ActivateSubscriptionAtomicityTests(TestCase):
         self.assertEqual(user.subscription_status, user.SubscriptionStatus.PRO)
 
 
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    DEFAULT_FROM_EMAIL="noreply@example.com",
+    SITE_URL="https://example.com",
+)
+class ExpiryReminderEmailTests(TestCase):
+    """ACC-2 (A15): the daily reminder task must actually send email to users
+    whose trial/subscription expires within the 3-day window (previously a stub)."""
+
+    def setUp(self):
+        self.user_model = get_user_model()
+
+    @staticmethod
+    def _run():
+        from accounts.tasks import send_expiry_reminder
+
+        return send_expiry_reminder()
+
+    def test_pro_expiring_within_window_gets_email(self):
+        from django.core import mail
+
+        self.user_model.objects.create_user(
+            username="pro_expiring",
+            email="pro-expiring@example.com",
+            password="Secret123!",
+            subscription_status="PRO",
+            subscription_end_date=timezone.now() + timedelta(days=2),
+        )
+
+        result = self._run()
+
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("pro-expiring@example.com", mail.outbox[0].to)
+        self.assertIn("/pricing/", mail.outbox[0].body)
+
+    def test_trial_expiring_within_window_gets_email(self):
+        from django.core import mail
+
+        self.user_model.objects.create_user(
+            username="trial_expiring",
+            email="trial-expiring@example.com",
+            password="Secret123!",
+            subscription_status="TRIAL",
+            trial_end_date=timezone.now() + timedelta(days=1),
+        )
+
+        self._run()
+
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_user_expiring_far_out_gets_no_email(self):
+        from django.core import mail
+
+        self.user_model.objects.create_user(
+            username="not_soon",
+            email="not-soon@example.com",
+            password="Secret123!",
+            subscription_status="PRO",
+            subscription_end_date=timezone.now() + timedelta(days=10),
+        )
+
+        result = self._run()
+
+        self.assertEqual(result["sent"], 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+
 class TrialAccessGuardTests(TestCase):
     def setUp(self):
         self.user_model = get_user_model()

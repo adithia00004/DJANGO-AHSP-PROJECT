@@ -3,6 +3,8 @@ Celery tasks for subscription management.
 Scheduled daily to check and expire subscriptions.
 """
 from celery import shared_task
+from django.conf import settings
+from django.core.mail import send_mail
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 import logging
@@ -70,15 +72,48 @@ def send_expiry_reminder():
         subscription_end_date__lte=reminder_threshold
     )
     
-    # TODO: Implement actual email sending
-    # For now, just log
-    total_reminders = expiring_trials.count() + expiring_subs.count()
-    
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+    support_email = getattr(settings, 'SUPPORT_EMAIL', from_email)
+    pricing_url = f"{getattr(settings, 'SITE_URL', '').rstrip('/')}/pricing/"
+
+    reminders = (
+        [(user, user.trial_end_date, 'trial') for user in expiring_trials]
+        + [(user, user.subscription_end_date, 'pro') for user in expiring_subs]
+    )
+
+    sent = 0
+    for user, end_date, kind in reminders:
+        if not user.email:
+            continue
+
+        days_left = max(0, (end_date - now).days)
+        label = "Masa trial" if kind == 'trial' else "Langganan Pro"
+        subject = "Langganan Dashboard-RAB Anda akan segera berakhir"
+        message = (
+            f"Halo {user.get_full_name() or user.username},\n\n"
+            f"{label} Anda akan berakhir dalam {days_left} hari.\n\n"
+            f"Perpanjang sekarang agar akses Anda tidak terputus:\n{pricing_url}\n\n"
+            f"Butuh bantuan? Hubungi kami di {support_email}.\n\n"
+            f"Terima kasih,\nTim Dashboard-RAB"
+        )
+
+        try:
+            send_mail(subject, message, from_email, [user.email], fail_silently=False)
+            sent += 1
+        except Exception:
+            logger.exception("Failed to send expiry reminder to %s", user.email)
+
+    total_reminders = len(reminders)
     if total_reminders > 0:
-        logger.info(f"Expiry reminders: {expiring_trials.count()} trials, {expiring_subs.count()} subscriptions expiring in 3 days")
-    
+        logger.info(
+            "Expiry reminders: %s due, %s emails sent",
+            total_reminders,
+            sent,
+        )
+
     return {
         'trials_expiring': expiring_trials.count(),
         'subscriptions_expiring': expiring_subs.count(),
-        'total': total_reminders
+        'sent': sent,
+        'total': total_reminders,
     }
