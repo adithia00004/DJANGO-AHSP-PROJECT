@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -845,3 +845,50 @@ class PaymentOrderIdUniquenessTests(TestCase):
 
         self.assertEqual(len(set(order_ids)), 2)
         self.assertEqual(PaymentTransaction.objects.filter(user=self.user).count(), 2)
+
+
+class CheckoutSnapJsToggleTests(TestCase):
+    """
+    SUB-3 (A1): the checkout page must load Snap.js from the host that matches
+    MIDTRANS_IS_PRODUCTION. Previously the sandbox host was hardcoded, so a
+    production deployment loaded sandbox Snap.js with a production client key.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="snap_toggle_user",
+            email="snap-toggle@example.com",
+            password="Secret123!",
+        )
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+
+    def _render_checkout(self):
+        request = self.factory.get(
+            reverse("subscriptions:checkout", args=[self.plan.id])
+        )
+        request.user = self.user
+        return CheckoutView.as_view()(request, plan_id=self.plan.id)
+
+    @override_settings(MIDTRANS_IS_PRODUCTION=True)
+    def test_checkout_uses_production_snap_url_when_flag_on(self):
+        response = self._render_checkout()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"https://app.midtrans.com/snap/snap.js", response.content)
+        self.assertNotIn(b"sandbox.midtrans.com/snap/snap.js", response.content)
+
+    @override_settings(MIDTRANS_IS_PRODUCTION=False)
+    def test_checkout_uses_sandbox_snap_url_when_flag_off(self):
+        response = self._render_checkout()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            b"https://app.sandbox.midtrans.com/snap/snap.js", response.content
+        )

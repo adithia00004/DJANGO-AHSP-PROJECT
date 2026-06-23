@@ -311,4 +311,5 @@ class CheckoutView(LoginRequiredMixin, View):
             'base_price_display': format_currency_idr(pricing.base_price),
             'discount_amount_display': format_currency_idr(pricing.discount_amount),
             'midtrans_client_key': getattr(settings, 'MIDTRANS_CLIENT_KEY', ''),
+            'midtrans_is_production': getattr(settings, 'MIDTRANS_IS_PRODUCTION', False),
         })

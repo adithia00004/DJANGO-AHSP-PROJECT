@@ -117,8 +117,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Midtrans Snap.js -->
-<script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key="{{ midtrans_client_key }}"></script>
+<!-- Midtrans Snap.js — production vs sandbox host follows MIDTRANS_IS_PRODUCTION -->
+<script src="https://app.{% if midtrans_is_production %}midtrans.com{% else %}sandbox.midtrans.com{% endif %}/snap/snap.js" data-client-key="{{ midtrans_client_key }}"></script>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
