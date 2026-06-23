@@ -60,8 +60,12 @@ class CreatePaymentView(LoginRequiredMixin, View):
             plan = get_object_or_404(SubscriptionPlan, id=plan_id, is_active=True)
             pricing = resolve_effective_plan_pricing(plan)
             
-            # Create transaction record
-            transaction = PaymentTransaction.objects.create(
+            # Build the transaction with order_id set BEFORE the first save so
+            # the row is inserted once, already unique. The previous two-step
+            # pattern (create() with empty order_id, then save() again) left a
+            # window where concurrent inserts collided on order_id='' and could
+            # strand the unique '' slot if the second save never ran.
+            transaction = PaymentTransaction(
                 user=request.user,
                 plan=plan,
                 amount=pricing.final_price,

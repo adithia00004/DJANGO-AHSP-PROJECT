@@ -303,7 +303,12 @@ class PaymentTransaction(models.Model):
         return f"{self.order_id} - {self.user.email} - {self.status}"
     
     def generate_order_id(self) -> str:
-        """Generate unique order ID for Midtrans."""
-        import time
-        timestamp = int(time.time())
-        return f"AHSP-{self.user.id}-{timestamp}"
+        """Generate a collision-free order ID for Midtrans.
+
+        Derived from the transaction's own UUID primary key (populated at
+        instantiation, before the first save) instead of a second-resolution
+        timestamp. This guarantees uniqueness for rapid double-submits or
+        concurrent checkouts in the same second, which previously produced
+        identical order IDs and tripped the ``unique`` constraint.
+        """
+        return f"AHSP-{self.user_id}-{self.id.hex}"

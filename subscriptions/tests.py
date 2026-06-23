@@ -766,3 +766,82 @@ class ExpiredUserRenewalFlowTests(TestCase):
         self.assertEqual(response.status_code, 403)
         payload = json.loads(response.content)
         self.assertEqual(payload.get("code"), "SUBSCRIPTION_EXPIRED")
+
+
+class PaymentOrderIdUniquenessTests(TestCase):
+    """
+    SUB-2 (A3): order_id must be collision-free and set in a single insert.
+
+    The previous implementation derived order_id from a second-resolution
+    timestamp and saved in two steps (create() with order_id='' then save()),
+    so rapid/concurrent checkouts in the same second collided on the unique
+    order_id constraint.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="order_id_buyer",
+            email="order-id@example.com",
+            password="Secret123!",
+        )
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 3 Bulan",
+            duration_months=3,
+            price=Decimal("300000"),
+            is_active=True,
+        )
+
+    def test_generate_order_id_unique_for_distinct_transactions_same_moment(self):
+        tx_a = PaymentTransaction(user=self.user, plan=self.plan, amount=self.plan.price)
+        tx_b = PaymentTransaction(user=self.user, plan=self.plan, amount=self.plan.price)
+
+        order_a = tx_a.generate_order_id()
+        order_b = tx_b.generate_order_id()
+
+        self.assertNotEqual(order_a, order_b)
+        self.assertTrue(order_a.startswith(f"AHSP-{self.user.id}-"))
+        self.assertTrue(order_a.endswith(tx_a.id.hex))
+        self.assertTrue(order_b.endswith(tx_b.id.hex))
+
+    @patch("subscriptions.views.midtrans_client.create_snap_token")
+    def test_create_payment_sets_nonempty_order_id_single_insert(self, mock_snap_token):
+        mock_snap_token.return_value = {"token": "snap-1", "redirect_url": ""}
+        request = self.factory.post(
+            reverse("subscriptions:create_payment"),
+            data=json.dumps({"plan_id": self.plan.id}),
+            content_type="application/json",
+        )
+        request.user = self.user
+
+        response = CreatePaymentView.as_view()(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+
+        tx = PaymentTransaction.objects.get(order_id=payload["order_id"])
+        self.assertTrue(tx.order_id)
+        self.assertEqual(tx.order_id, f"AHSP-{self.user.id}-{tx.id.hex}")
+        # The empty-order_id window must never be persisted.
+        self.assertFalse(PaymentTransaction.objects.filter(order_id="").exists())
+
+    @patch("subscriptions.views.midtrans_client.create_snap_token")
+    def test_rapid_double_create_produces_distinct_order_ids(self, mock_snap_token):
+        mock_snap_token.return_value = {"token": "snap-x", "redirect_url": ""}
+
+        order_ids = []
+        for _ in range(2):
+            request = self.factory.post(
+                reverse("subscriptions:create_payment"),
+                data=json.dumps({"plan_id": self.plan.id}),
+                content_type="application/json",
+            )
+            request.user = self.user
+            response = CreatePaymentView.as_view()(request)
+            self.assertEqual(response.status_code, 200)
+            order_ids.append(json.loads(response.content)["order_id"])
+
+        self.assertEqual(len(set(order_ids)), 2)
+        self.assertEqual(PaymentTransaction.objects.filter(user=self.user).count(), 2)
