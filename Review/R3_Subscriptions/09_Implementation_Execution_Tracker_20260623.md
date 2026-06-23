@@ -3,7 +3,7 @@
 **Mulai:** 2026-06-23
 **Plan otoritatif:** [08_Implementation_Plan_20260623.md](08_Implementation_Plan_20260623.md)
 **Registry temuan:** [00_Audit_Summary_20260623.md](00_Audit_Summary_20260623.md) (A1–A17)
-**Status keseluruhan:** **IN PROGRESS** — M1 sisi SUB selesai (SUB-1/2/3/4 DONE); tersisa **ACC-1** (A12, + EC-1) untuk menutup M1. Subscriptions+accounts 63/63.
+**Status keseluruhan:** **M1 (go-live) SELESAI** — SUB-1/2/3/4 + ACC-1 DONE; semua blocker P0 + A12/EC-1 tertutup. Subscriptions+accounts **67/67**. Lanjut M2 (SUB-5 A4, SUB-6 A6/A7/A8). Catatan: A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15 sebelum go-live.
 **Baseline test (2026-06-23):** `test subscriptions` = **23/23 PASS**; `check` PASS; `makemigrations --check` PASS. Semua perubahan diukur terhadap baseline ini.
 
 ---
@@ -42,8 +42,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | SUB-1 | SUB | A11+A5 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 6/6; full 52/52; check PASS; makemigrations PASS | `e9475bed` (branch `fix/subscriptions-sub1-idempotent-activation`) |
 | SUB-2 | SUB | A3 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 3/3; full 55/55; check PASS; makemigrations no-changes | `3bbae422` (code) + `f4fa7a3d` (docs) |
 | SUB-3 | SUB | A1 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 2/2; full 57/57; check PASS | branch `fix/subscriptions-sub3-snap-toggle` (pending commit) |
-| SUB-4 ⇄ | SUB | A2 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: reconcile 6/6 + webhook 6/6; full 63/63; check PASS; makemigrations no-changes | branch `fix/subscriptions-sub4-reconcile` (pending commit) |
-| ACC-1 ⇄ | ACC | A12 | P1 | PENDING | - | - | **SUB-1** | - |
+| SUB-4 ⇄ | SUB | A2 | P0 | DONE | 2026-06-23 | 2026-06-23 | PASS: reconcile 6/6 + webhook 6/6; full 63/63; check PASS; makemigrations no-changes | `b6e6060d` (code) + `a20010a9` (docs) |
+| ACC-1 ⇄ | ACC | A12 + EC-1 | P1 | DONE | 2026-06-23 | 2026-06-23 | PASS: targeted 10/10; full 67/67; check PASS; makemigrations no-changes. **PG gate A12 pending** | branch `fix/accounts-acc1-atomic-activation` (pending commit) |
 | SUB-5 | SUB | A4 | P1 | PENDING | - | - | SUB-4 (reuse helper) | - |
 | SUB-6 | SUB | A6/A7/A8 | P1 | PENDING | - | - | Baseline | - |
 | SUB-7 | SUB | A13 | P2 | PENDING | - | - | data dedupe | - |
@@ -71,9 +71,12 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 5 | 2026-06-23 | SUB-2 | `subscriptions/tests.py` | M | Tambah `PaymentOrderIdUniquenessTests` (3 test): unik antar-transaksi waktu sama, single-insert non-empty order_id, double-create rapid menghasilkan order_id berbeda. | PASS | `3bbae422` |
 | 6 | 2026-06-23 | SUB-3 | `subscriptions/views.py`, `subscriptions/templates/subscriptions/checkout.html` | M | `CheckoutView` mengirim `midtrans_is_production` ke context; template memilih host Snap.js (`app.midtrans.com` vs `app.sandbox.midtrans.com`) berdasarkan flag, menggantikan host sandbox hardcoded. | PASS | `28fa972a` |
 | 7 | 2026-06-23 | SUB-3 | `subscriptions/tests.py` | M | Tambah `CheckoutSnapJsToggleTests` (2 test): render checkout memakai URL Snap.js produksi saat flag ON, sandbox saat OFF. | PASS | `28fa972a` |
-| 8 | 2026-06-23 | SUB-4 | `subscriptions/reconciliation.py`, `subscriptions/tasks.py`, `.../commands/reconcile_pending_payments.py` | A | Service reconcile (`reconcile_pending_payments` + jalur aktivasi bersama `mark_paid_and_activate`), Celery task wrapper dengan fallback import saat Celery tidak terpasang di test/dev lokal, dan management command. | PASS | _(pending)_ |
-| 9 | 2026-06-23 | SUB-4 | `subscriptions/views.py`, `config/celery.py` | M | `_handle_success` kini delegasi ke `mark_paid_and_activate` (satu jalur aktivasi webhook+reconcile); beat `reconcile-pending-payments` tiap 15 menit memanggil task (bukan command langsung). | PASS | _(pending)_ |
-| 10 | 2026-06-23 | SUB-4 | `subscriptions/tests.py` | M | Tambah `PendingPaymentReconciliationTests` (6 test). | PASS | _(pending)_ |
+| 8 | 2026-06-23 | SUB-4 | `subscriptions/reconciliation.py`, `subscriptions/tasks.py`, `.../commands/reconcile_pending_payments.py` | A | Service reconcile (`reconcile_pending_payments` + jalur aktivasi bersama `mark_paid_and_activate`), Celery task wrapper dengan fallback import saat Celery tidak terpasang di test/dev lokal, dan management command. | PASS | `b6e6060d` |
+| 9 | 2026-06-23 | SUB-4 | `subscriptions/views.py`, `config/celery.py` | M | `_handle_success` kini delegasi ke `mark_paid_and_activate` (satu jalur aktivasi webhook+reconcile); beat `reconcile-pending-payments` tiap 15 menit memanggil task (bukan command langsung). | PASS | `b6e6060d` |
+| 10 | 2026-06-23 | SUB-4 | `subscriptions/tests.py` | M | Tambah `PendingPaymentReconciliationTests` (6 test). | PASS | `b6e6060d` |
+| 11 | 2026-06-23 | ACC-1 | `accounts/models.py` | M | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic`, hitung end_date dari nilai terkunci (cegah lost-update A12 + stale-instance). | PASS | _(pending)_ |
+| 12 | 2026-06-23 | ACC-1 (EC-1) | `subscriptions/views.py` | M | Handler refund hanya `revoke_subscription` bila tak ada transaksi SUCCESS lain milik user (jangan cabut akses yang dijustifikasi pembelian lain). | PASS | _(pending)_ |
+| 13 | 2026-06-23 | ACC-1 | `accounts/tests.py`, `subscriptions/tests.py` | M | Tambah `ActivateSubscriptionAtomicityTests` (2) + `RefundRevocationScopeTests` (2). | PASS | _(pending)_ |
 
 ---
 
@@ -94,6 +97,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 7 | 2026-06-23 | SUB-4 | `management/commands/reconcile_pending_payments.py` | Mgmt command | Jalur manual/runbook reconcile (`--older-than-minutes`, `--limit`). |
 | 8 | 2026-06-23 | SUB-4 | beat `reconcile-pending-payments` (`config/celery.py`) | Beat schedule | Jadwal tiap 15 menit memanggil `subscriptions.reconcile_pending_payments`. |
 | 9 | 2026-06-23 | SUB-4 | `PendingPaymentReconciliationTests` (6 test) | Regression tests | Activate settled, idempotent, leave-pending, skip-recent, task-delegasi, command. |
+| 10 | 2026-06-23 | ACC-1 | `ActivateSubscriptionAtomicityTests` (2 test) | Regression tests | Guard A12: aktivasi menumpuk dari nilai DB (bukan stale instance); fresh activation dari now. |
+| 11 | 2026-06-23 | ACC-1 | `RefundRevocationScopeTests` (2 test) | Regression tests | Guard EC-1: refund mencabut bila satu-satunya tx sukses; mempertahankan akses bila ada tx sukses lain. |
 
 ### 4.2 Penghapusan / Deprecation (Deletions)
 
@@ -132,6 +137,8 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 | 10 | 2026-06-23 | SUB-3 | `test subscriptions accounts` + `check` | **57/57 PASS** + check PASS | +2 dari 55; tanpa migrasi (template/context saja) |
 | 11 | 2026-06-23 | SUB-4 | `test PendingPaymentReconciliationTests + PaymentWebhookIdempotencyTests` | **12/12 PASS** | reconcile 6 + webhook 6 (refaktor `_handle_success` aman) |
 | 12 | 2026-06-23 | SUB-4 | `test subscriptions accounts` + `check` + `makemigrations --check` | **63/63 PASS** + check PASS + no changes | +6 dari 57; tanpa migrasi (service/task/command/beat saja) |
+| 13 | 2026-06-23 | ACC-1 | `test ActivateSubscriptionAtomicityTests + RefundRevocationScopeTests + PaymentWebhookIdempotencyTests` | **10/10 PASS** | A12 + EC-1 + webhook regresi aman |
+| 14 | 2026-06-23 | ACC-1 | `test subscriptions accounts` + `check` + `makemigrations --check` | **67/67 PASS** + check PASS + no changes | +4 dari 63; tanpa migrasi (metode+query saja) |
 
 **Gate per-item (Definition of Done, doc 08):** kode + regression test baru hijau di `config.settings.test`; tidak menurunkan baseline (subscriptions 23/23 + accounts existing); doc review terkait diupdate; migrasi → `makemigrations --check` bersih.
 
@@ -143,7 +150,7 @@ Aturan emas: **tidak ada perubahan kode tanpa baris di §3.** Tidak ada file bar
 
 | # | Tanggal | Item | Temuan/Deviasi | Tindakan |
 |---|---------|------|----------------|----------|
-| EC-1 | 2026-06-23 | SUB-1 | **Revoke bersifat account-wide.** `revoke_subscription()` set `subscription_end_date=now` + EXPIRED untuk SELURUH akun. Bila user punya >1 transaksi sukses dengan masa berlaku tumpang-tindih (mis. renewal mendekati expiry), refund pada SATU order ikut mencabut sisa masa berlaku order lain. **Eksposur rendah**: `CheckoutView` memblok checkout saat `is_subscription_active`, jadi overlap umumnya hanya via renewal-near-expiry atau direct `create_payment`. **Bukan regresi SUB-1** (D-1 diimplementasikan sesuai spec) dan **bukan blocker**. | Track sebagai **refinement D-1** (kaitkan ke A12/ACC-1): saat revoke, pertimbangkan recompute `subscription_end_date` dari transaksi sukses non-refund tersisa, bukan blanket EXPIRED. Verifikasi auditor: kode + 6/6 test PASS independen. |
+| EC-1 | 2026-06-23 | SUB-1 | **Revoke bersifat account-wide.** `revoke_subscription()` set `subscription_end_date=now` + EXPIRED untuk SELURUH akun. Bila user punya >1 transaksi sukses dengan masa berlaku tumpang-tindih (mis. renewal mendekati expiry), refund pada SATU order ikut mencabut sisa masa berlaku order lain. **Eksposur rendah**: `CheckoutView` memblok checkout saat `is_subscription_active`, jadi overlap umumnya hanya via renewal-near-expiry atau direct `create_payment`. **Bukan regresi SUB-1** (D-1 diimplementasikan sesuai spec) dan **bukan blocker**. | Track sebagai **refinement D-1** (kaitkan ke A12/ACC-1): saat revoke, pertimbangkan recompute `subscription_end_date` dari transaksi sukses non-refund tersisa, bukan blanket EXPIRED. **RESOLVED di ACC-1 (2026-06-23):** handler refund hanya `revoke_subscription` bila tak ada transaksi SUCCESS lain milik user → akses yang dijustifikasi pembelian lain tidak ikut tercabut; diuji `RefundRevocationScopeTests` (2/2). |
 
 ---
 

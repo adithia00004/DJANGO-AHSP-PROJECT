@@ -1,6 +1,6 @@
 # R3.0 - Ringkasan Audit App `subscriptions`
 
-**Status:** `[~]` AUDIT + VERIFIKASI RUNTIME; **semua P0 go-live FIXED (SUB-1..4: A11/A5, A3, A1, A2)** — P1+ (A4/A6/A7/A12/A13/A14-16) pending
+**Status:** `[~]` AUDIT + VERIFIKASI RUNTIME; **M1 SELESAI — P0 go-live + A12 FIXED (SUB-1..4 + ACC-1: A11/A5, A3, A1, A2, A12/EC-1)** — sisa P1+ (A4/A6/A7/A13/A14-16); A12/A13 perlu gate PG15
 **Tanggal audit:** 2026-06-23
 **Metode:** Telaah kode statis menyeluruh (read-only) atas seluruh berkas `subscriptions/*` + integrasi `accounts` (User model, middleware, mixins, signals) dan `config` (settings, URL routing), dilanjutkan verifikasi independen serta eksekusi automated test. **Bukan** UAT browser atau transaksi Midtrans nyata.
 **Auditor:** Claude Code; diverifikasi ulang oleh Codex pada 2026-06-23
@@ -28,7 +28,7 @@
 
 ## 2. Penilaian Umum
 
-Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 menutup replay setelah refund/terminal (A11) + kebijakan refund revoke/late terminal (A5); SUB-2 menutup uniqueness order id (A3); SUB-3 menutup checkout produksi (A1, Snap.js prod/sandbox); SUB-4 menutup rekonsiliasi webhook terlewat (A2). **Semua blocker go-live (P0) tertutup.** Sisa pengerasan (bukan blocker): verifikasi field webhook (A4), pembayaran sukses konkuren (A12, perlu gate PG), serta P2/P3.
+Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan snapshot immutable, webhook memakai row-lock (`select_for_update`), entitlement data-driven dengan fallback matrix deterministik, dan test coverage layak. SUB-1 menutup replay setelah refund/terminal (A11) + kebijakan refund revoke/late terminal (A5); SUB-2 menutup uniqueness order id (A3); SUB-3 menutup checkout produksi (A1, Snap.js prod/sandbox); SUB-4 menutup rekonsiliasi webhook terlewat (A2); ACC-1 menutup lost-update aktivasi konkuren (A12) + refund account-wide (EC-1). **Semua blocker go-live (P0) + A12 tertutup; M1 selesai.** Sisa pengerasan (bukan blocker): verifikasi field webhook (A4), rate-limit/constant-time (A6/A7), uniqueness entitlement (A13), perf/lifecycle (A14–A16). A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15.
 
 ---
 
@@ -48,7 +48,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 | **A10a** | 🟡 LOW | Tak ada pencegahan transaksi `pending` ganda (TC-4) | [02](02_Payment_Flow.md) |
 | **A10b** | ℹ️ INFO | Cek `subscription_status=='PRO' and is_subscription_active` ekuivalen dengan `is_pro_active` untuk user non-staff; penggantian hanya penyederhanaan/refactor | [01](01_Checkout_Page.md) |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis `paid_at`; replay `settlement` setelah refund tidak mengaktifkan/memperpanjang subscription ulang | [05](05_Webhook_Security.md), [02](02_Payment_Flow.md) |
-| **A12** | 🟠 MED | Dua transaksi berbeda milik user yang sama dapat sukses bersamaan; row-lock hanya mengunci transaksi, bukan user, sehingga update `subscription_end_date` berisiko lost update | `subscriptions/views.py:146-181`, `accounts/models.py:123-136` |
+| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` re-read baris user di bawah `select_for_update` + hitung dari nilai terkunci → pembayaran konkuren menumpuk (lock lintas-koneksi perlu gate PG15) | `accounts/models.py:activate_subscription` |
 | **A13** | 🟠 MED | UniqueConstraint entitlement `(feature, plan, status)` tidak mencegah beberapa default row dengan `plan=NULL` di PostgreSQL | `subscriptions/models.py:212-219` |
 | **A14** | 🟠 MED | Context processor global `subscription_context` memanggil `get_feature_access` **2×** tiap render terotentikasi tanpa memoization per-request → overhead query repo-wide (tiap halaman) | [07](07_Cross_App_Integration_20260623.md) |
 | **A15** | 🟠 MED | Task terjadwal `accounts.send_expiry_reminder` adalah **stub** (`TODO: Implement actual email sending`) → tak ada email pengingat dikirim; user lapse tanpa peringatan | [07](07_Cross_App_Integration_20260623.md) |
@@ -74,7 +74,7 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 | Prioritas | Temuan | Alasan |
 |-----------|--------|--------|
 | **P0 — sebelum go-live** | ✅ SELESAI (A1 SUB-3, A2 SUB-4, A3 SUB-2, A11 SUB-1) | Semua blocker go-live tertutup; sisa P1+ (A4/A12/...) bukan blocker langsung |
-| **P1 — integritas transaksi** | A4, A6, A7, A12 | Defense-in-depth, anti-abuse, dan locking user |
+| **P1 — integritas transaksi** | A4, A6, A7 (~~A12 ACC-1 FIXED~~) | Defense-in-depth & anti-abuse; locking user (A12) sudah ditutup, lock lintas-koneksi perlu gate PG |
 | **P2 — integritas bisnis/data** | A13, A15 | Uniqueness default entitlement dan pengingat expiry |
 | **P3 — kebersihan/perf** | A9, A10a, A14, A16 | Robustness, konsistensi, dan overhead query lintas-page |
 | **Informational** | A8, A10b, A17 | Klarifikasi respons webhook, penyederhanaan kode, edge-case watermark |
@@ -85,10 +85,10 @@ Arsitektur app memiliki fondasi yang baik: harga dihitung server-side dengan sna
 
 - `python manage.py makemigrations --check --dry-run`: **PASS**, tidak ada perubahan migrasi yang belum dibuat.
 - `python manage.py check`: **PASS**, tidak ada system-check error.
-- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 38/38 test** setelah SUB-1..SUB-4.
-- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 63/63 test** setelah SUB-1..SUB-4.
+- `python manage.py test subscriptions --settings=config.settings.test --noinput`: **PASS, 40/40 test** setelah SUB-1..SUB-4 + ACC-1.
+- `python manage.py test subscriptions accounts --settings=config.settings.test --noinput`: **PASS, 67/67 test** setelah SUB-1..SUB-4 + ACC-1.
 - Eksekusi test harus memakai `config.settings.test`; settings ini sengaja menonaktifkan `TimeoutMiddleware` yang dapat mengganggu autentikasi `force_login` pada Django test client.
-- Automated test saat ini sudah mencakup SUB-1 (A5/A11), SUB-2 (A3), SUB-3 (A1), dan SUB-4 (A2). Skenario A4, A7, A12, dan A13 masih belum tercakup penuh; A12/A13 perlu gate PostgreSQL 15 (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
+- Automated test saat ini sudah mencakup SUB-1 (A5/A11), SUB-2 (A3), SUB-3 (A1), SUB-4 (A2), dan ACC-1 (A12/EC-1). Skenario A4, A7, dan A13 masih belum tercakup penuh; **A12 (lock lintas-koneksi) & A13 perlu gate PostgreSQL 15** (SQLite test backend tak membuktikan locking/`NULLS NOT DISTINCT`).
 
 ---
 

@@ -52,7 +52,7 @@
 | **A7** | 🟡 LOW | Perbandingan signature `==` (non constant-time). | `subscriptions/midtrans.py:143` | Telaah kode |
 | **A8** | ℹ️ INFO | Kalibrasi respons webhook. Signature diverifikasi **sebelum** lookup order, jadi 404 hanya terjadi untuk notifikasi **bertanda tangan sah** namun order tak dikenal — ini yang memicu retry Midtrans dan boleh dijadikan 200 + logging/alerting. **403 untuk signature tidak sah sudah tepat dan TIDAK boleh diganti 200.** | `subscriptions/views.py:144,152` | Telaah kode + dok Midtrans |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi sekarang berbasis `paid_at is not None`; replay `settlement` setelah `refund` tidak mengaktifkan/memperpanjang ulang. | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_replay_settlement_after_refund_does_not_reactivate` |
-| **A12** | 🟠 MED | `select_for_update()` mengunci baris `PaymentTransaction`, bukan baris user; dua pembayaran sukses konkuren milik user sama → lost update pada `subscription_end_date`. (Detail & rekomendasi di [02 Payment Flow](02_Payment_Flow.md).) | `subscriptions/views.py:146-181`, `accounts/models.py:123-136` | Telaah kode + verifikasi independen 2026-06-23 |
+| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini mengunci baris user (`select_for_update`) dan menghitung dari nilai terkunci → pembayaran konkuren menumpuk. (Detail di [02 Payment Flow](02_Payment_Flow.md).) Lock lintas-koneksi penuh perlu gate PostgreSQL 15. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` |
 
 ---
 
@@ -88,7 +88,7 @@
 - [~] Signature verification bulletproof (algoritma ✓ / cakupan field ✗ → A4 / compare non-CT → A7)
 - [x] Replay protection untuk duplicate/replay terminal (A11 tertutup oleh SUB-1)
 - [x] Status transitions correct untuk refund + late terminal setelah success (A5 tertutup oleh SUB-1)
-- [~] Aktivasi bebas lost-update saat konkuren (→ A12)
+- [x] Aktivasi bebas lost-update saat konkuren (A12 tertutup ACC-1; lock lintas-koneksi perlu gate PG)
 - [x] No CSRF vulnerability (exempt beralasan)
 - [x] Logging adequate
 - [ ] Rate limiting (→ A6)

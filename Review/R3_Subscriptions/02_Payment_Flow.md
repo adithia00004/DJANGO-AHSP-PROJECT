@@ -61,7 +61,7 @@
 | **A6** | 🟠 MED | Tidak ada rate limiting pada `CreatePaymentView`; tiap hit membuat baris DB + memanggil Midtrans → rawan spam/abuse. | `subscriptions/views.py:41-115` | Telaah kode |
 | **A10a** | 🟡 LOW | Tidak ada pencegahan transaksi `pending` ganda untuk plan yang sama; user dapat membuat banyak baris `pending` (TC-4). | `subscriptions/views.py:64-80` | Telaah kode |
 | **A11** | 🟢 FIXED (SUB-1) | Idempotensi aktivasi kini berbasis marker `paid_at is not None`, bukan `status`. Replay `settlement` setelah `refund` tidak mengaktifkan ulang karena `paid_at` tetap dipertahankan. Detail webhook di [05](05_Webhook_Security.md). | `subscriptions/views.py`, `accounts/models.py` | Regression: `test_refund_preserves_activation_marker`, `test_replay_settlement_after_refund_does_not_reactivate` |
-| **A12** | 🟠 MED | Lost update pada `subscription_end_date`. `select_for_update()` mengunci baris `PaymentTransaction`, **bukan** baris user. Dua order sukses milik user yang sama (baris transaksi berbeda → tanpa kontensi lock) sama-sama membaca `subscription_end_date` lama lalu menulis → hanya satu perpanjangan yang bertahan. | `subscriptions/views.py:146-181`, `accounts/models.py:123-136` | Telaah kode + verifikasi independen 2026-06-23 |
+| **A12** | 🟢 FIXED (ACC-1) | `activate_subscription` kini re-read baris user di bawah `select_for_update` dalam `atomic` dan menghitung `subscription_end_date` dari nilai terkunci → dua pembayaran konkuren menumpuk, bukan saling menimpa. **Catatan:** serialisasi lintas-koneksi penuh perlu gate PostgreSQL 15; test SQLite membuktikan perbaikan stale-instance. | `accounts/models.py:activate_subscription` | Regression: `ActivateSubscriptionAtomicityTests` (2/2) |
 
 ---
 
@@ -86,6 +86,7 @@
 | 1b | 2026-06-23 | Verifikasi independen (Codex + Claude): tambah A11 (replay re-activate) & A12 (lost update) | - | DONE (audit) |
 | 2 | 2026-06-23 | SUB-2: order_id atomik (UUID pk) + hapus window `order_id=''` (A3) | branch `fix/subscriptions-sub2-order-id` | DONE |
 | 3 | 2026-06-23 | SUB-1: Kebijakan refund/transisi status (A5) + idempotensi replay setelah terminal (A11) | - | DONE |
+| 3b | 2026-06-23 | ACC-1: aktivasi atomik re-read user (A12) + refund revoke hanya bila sole-paid (EC-1) | branch `fix/accounts-acc1-atomic-activation` | DONE |
 | 4 | - | Rate limit create_payment (A6) | - | TODO |
 
 ---
@@ -97,5 +98,5 @@
 - [x] Redirect handling correct
 - [x] Transaction model integrity (transisi status mundur A5 tertutup oleh SUB-1)
 - [x] order_id uniqueness robust (SUB-2: UUID pk + single-insert)
-- [~] Aktivasi idempotent & bebas lost-update (A11 tertutup; A12 masih pending)
+- [x] Aktivasi idempotent & bebas lost-update (A11 + A12 tertutup; lock lintas-koneksi A12 perlu gate PG)
 - [ ] Reviewer sign-off
