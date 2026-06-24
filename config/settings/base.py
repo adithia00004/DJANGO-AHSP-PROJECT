@@ -377,9 +377,13 @@ FORMULA_LABEL_ONLY_UI_ENABLED = (
 # Import rate limiting configuration
 IMPORT_RATE_LIMIT = int(os.getenv("IMPORT_RATE_LIMIT", "10"))  # Max imports per window
 IMPORT_RATE_WINDOW = int(os.getenv("IMPORT_RATE_WINDOW", "3600"))  # Time window in seconds (1 hour)
+# N-7: cover the actual 3-tier import endpoints (/referensi/import/...). The
+# previous values were legacy paths that matched nothing, so import uploads,
+# PDF conversion, and commits were silently un-rate-limited. Combined with the
+# write-method-only check in ImportRateLimitMiddleware, this limits the
+# expensive POST operations without throttling page navigation.
 IMPORT_RATE_LIMIT_PATHS = [
-    "/referensi/preview/",
-    "/referensi/admin/import/",
+    "/referensi/import/",
 ]
 
 # ---------------------------------------------------------------------------

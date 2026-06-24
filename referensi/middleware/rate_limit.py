@@ -91,9 +91,10 @@ class ImportRateLimitMiddleware:
         if not self._should_rate_limit(request):
             return self.get_response(request)
 
-        # Skip rate limiting for unauthenticated users on GET requests
-        # (they can't actually import, just view the page)
-        if not request.user.is_authenticated and request.method == 'GET':
+        # Only rate-limit write operations (uploads, PDF conversion, commits).
+        # Safe methods on import paths — page navigation, validation-report
+        # views, file downloads — must not consume the import budget.
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
             return self.get_response(request)
 
         # Check rate limit

@@ -79,6 +79,12 @@ MIDDLEWARE = [
     if m != 'config.middleware.timeout.TimeoutMiddleware'
 ]
 
+# Disable import rate limiting in the test suite. The shared LocMemCache
+# accumulates counters across import tests, so an active limit would spuriously
+# 429 later tests. The dedicated ImportRateLimitMiddlewareTests re-enables it
+# via override_settings to verify the production configuration.
+IMPORT_RATE_LIMIT_PATHS = []
+
 # Use console email backend for tests
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
