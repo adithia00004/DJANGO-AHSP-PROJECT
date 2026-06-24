@@ -1,6 +1,6 @@
 # R6.0 - Ringkasan Audit App `referensi`
 
-**Status:** `[~]` AUDIT SELESAI; **N-7/N-5/N-4 FIXED & terverifikasi**; sisa N-1/N-2 (LOW) + N-6 (INFO) pending
+**Status:** `[~]` AUDIT SELESAI; **N-7/N-5/N-4/N-1 FIXED & terverifikasi**; sisa N-2 (LOW, butuh desain) + N-6 (INFO) pending
 **Tanggal:** 2026-06-24
 **Metode:** Telaah kode statis read-only atas entry points, access control, model data, pipeline import (upload/validate/staging/commit), validators, rate-limit middleware, XSS toolkit, audit dashboard, dan konsumsi lintas-app. **Bukan** UAT runtime.
 **Auditor:** Claude Code
@@ -32,10 +32,10 @@ App `referensi` **berkualitas tinggi dan sadar-keamanan** di atas rata-rata. Tul
 | ID | Sev | Deskripsi | Lokasi | Rekomendasi |
 |----|-----|-----------|--------|-------------|
 | **N-7** | 🟢 FIXED | **Rate-limit import tidak aktif** — `IMPORT_RATE_LIMIT_PATHS` berisi path legacy yang tak cocok endpoint 3-tier nyata → import upload/convert/commit tak ter-rate-limit. **Fix:** (1) `base.py` → `IMPORT_RATE_LIMIT_PATHS = ["/referensi/import/"]`; (2) middleware hanya rate-limit metode **write** (GET navigasi/report/download tak memakan budget); (3) test settings `IMPORT_RATE_LIMIT_PATHS=[]` (hindari polusi cache lintas-test). | `config/settings/base.py`, `referensi/middleware/rate_limit.py`, `config/settings/test.py` | Regression: `ImportRateLimitMiddlewareTests` (3/3) |
-| **N-1** | 🟡 LOW | Route `referensi/debug/clear-data/` masih terdaftar, namun view sudah `DEBUG`-only + superuser-only dan produksi normal mengembalikan 404. Ini bukan endpoint produksi reachable, tetapi tetap code smell karena route debug hidup di URL utama. | `referensi/views/preview.py:570`, `urls.py:63` | Pertimbangkan keluarkan dari URL produksi / registrasi hanya saat `DEBUG`. |
+| **N-1** | 🟢 FIXED | Route `referensi/debug/clear-data/` masih terdaftar (view sudah `DEBUG`+superuser-only → 404 prod), tapi route hidup di URL utama = code smell. **Fix:** route hanya didaftarkan di `if settings.DEBUG`; view `preview_import` ekspos flag `debug_mode=settings.DEBUG` dan template membungkus form clear-data dengan `{% if debug_mode %}` (cegah `NoReverseMatch` saat route absen). | `referensi/urls.py`, `referensi/views/preview.py`, `templates/referensi/preview_import.html` | Regression: `DebugClearDataRouteGatingTests` |
 | **N-5** | 🟢 FIXED | `validate_content_security` menyertakan `str(e)` di pesan `ValidationError` ke user saat gagal baca file. **Fix:** detail teknis di-`logger.warning` server-side; pesan user generik (tanpa `str(e)`). | `referensi/validators.py` | Regression: `ContentSecurityErrorLeakTests` |
 | **N-2** | 🟡 LOW | `bulk_create` → `rebuild_search_cache()` tiap panggilan (per-chunk import bisa rebuild berulang); `simple_history` kemungkinan tak melacak bulk-import → gap kelengkapan history utk baris ter-import. | `referensi/models.py:16-20` | Rebuild cache sekali di akhir import (commit sudah suppress signal — pola serupa); pertimbangkan `bulk_create` history bila audit-trail import diperlukan. |
-| **N-6** | 🟡 INFO | `_get_client_ip` percaya IP pertama `X-Forwarded-For` tanpa daftar proxy tepercaya → key rate-limit anon bisa di-spoof. Dampak rendah (import auth-gated; user terotentikasi pakai `user.id`). | `referensi/middleware/rate_limit.py:240-247` | Bila perlu, pakai `django-ipware` / proxy-count tepercaya. |
+| **N-6** | 🟡 INFO → Cross-Cutting | `_get_client_ip` percaya IP pertama `X-Forwarded-For` tanpa proxy tepercaya. **Tak ter-eksploitasi di rate-limit** (import auth-gated → key `user.id`; jalur IP hanya anon, dan anon tak bisa import). **Pola berulang repo-wide (4+ titik):** `auth_debug`, `rate_limit`, `views_monitoring`, `audit_logger`. | `referensi/middleware/rate_limit.py:241`, `referensi/services/audit_logger.py:77`, `config/middleware/auth_debug.py:25`, `detail_project/views_monitoring.py:247` | **Item Cross-Cutting:** helper `get_trusted_client_ip` repo-wide (jangan tambal satu titik — pelajaran UF-013/AT-01). |
 | **N-4** | 🟢 FIXED | `staging_commit` saat exception → 500 tanpa set batch `FAILED`/pesan ramah. **Fix:** `except` membungkus atomic → `logger.exception`, set batch `FAILED`, `messages.error`, redirect ke staging (rollback terjaga; signal tetap reconnect via `finally`). | `referensi/views/import_views.py` | Regression: `test_commit_failure_marks_batch_failed_and_rolls_back` |
 | **N-3** | ✅ BUKAN TEMUAN | XSS orde-kedua (audit log simpan payload) — **dimitigasi** oleh auto-escape Django + `json_script`. | `templates/referensi/audit/*.html` | — (diuji `test_audit_template_security.py`) |
 
@@ -65,8 +65,8 @@ App `referensi` **berkualitas tinggi dan sadar-keamanan** di atas rata-rata. Tul
 |-----------|--------|--------|
 | ~~P1~~ | ~~N-7~~ | ✅ **FIXED** — rate-limit import kini aktif (write-only) + diuji |
 | ~~P3~~ | ~~N-5, N-4~~ | ✅ **FIXED** — leak validator ditutup + commit error-handling (batch FAILED + rollback) |
-| **P2** | N-1 | Route debug clear-data masih terdaftar di URL utama meski sudah 404 di produksi normal |
-| **P3** | N-2 | Perf/audit-history (`bulk_create` cache/history) — butuh desain lebih hati-hati |
-| **INFO** | N-6 | XFF (dampak rendah krn import auth-gated) |
+| ~~P2~~ | ~~N-1~~ | ✅ **FIXED** — route clear-data hanya saat `DEBUG`; template di-guard |
+| **P3** | N-2 | Perf/audit-history (`bulk_create` cache/history) — butuh desain lebih hati-hati (sesi terpisah) |
+| **X-Cut** | N-6 | Client-IP trust model repo-wide → backlog Cross-Cutting |
 
-Catatan: 5 doc area R6 (01–05) masih berstatus `BELUM DIREVIEW` (template); ringkasan ini menjadi record audit. Bisa diisi penuh per-area bila diperlukan.
+Catatan: 5 doc area R6 (01–05) **sudah diisi** dengan verdict audit statik (✅ kode-verified / ⏳UAT runtime-pending) per 2026-06-24. Sisa kerja R6: N-2 (sesi terpisah), N-6 (Cross-Cutting), dan UAT runtime per-area.

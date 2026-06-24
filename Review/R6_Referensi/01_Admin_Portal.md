@@ -1,7 +1,9 @@
 # R6.1 - Review Admin Portal Referensi
 
-**Status:** `[ ]` BELUM DIREVIEW
-**Terakhir diperbarui:** -
+**Status:** `[~]` AUDIT STATIK SELESAI (2026-06-24) — ✅ PASS, tak ada temuan
+**Terakhir diperbarui:** 2026-06-24
+
+> **Metode:** telaah kode statis (read-only), bukan UAT runtime. Legend status TC: ✅ = terverifikasi via inspeksi kode · ⏳UAT = perlu pengujian runtime. Ringkasan lintas-area: [00_Audit_Summary_20260624.md](00_Audit_Summary_20260624.md).
 
 ---
 
@@ -24,11 +26,11 @@
 
 | # | Test Case | Expected | Status |
 |---|-----------|----------|--------|
-| TC-1 | Admin portal tampil | Dashboard management | `[ ]` |
-| TC-2 | Non-admin user akses | 403 / redirect | `[ ]` |
-| TC-3 | Statistics overview | Jumlah AHSP, items, dll | `[ ]` |
-| TC-4 | Navigation ke sub-pages | Links benar | `[ ]` |
-| TC-5 | Responsive layout | Mobile usable | `[ ]` |
+| TC-1 | Admin portal tampil | Dashboard management | ⏳UAT |
+| TC-2 | Non-admin user akses | 403 / redirect | ✅ `@login_required` + `has_referensi_portal_access` (C-1) |
+| TC-3 | Statistics overview | Jumlah AHSP, items, dll | ⏳UAT |
+| TC-4 | Navigation ke sub-pages | Links benar | ⏳UAT |
+| TC-5 | Responsive layout | Mobile usable | ⏳UAT |
 
 ---
 
@@ -36,7 +38,7 @@
 
 | # | Severity | Deskripsi | Langkah Reproduksi | Evidence |
 |---|----------|-----------|---------------------|----------|
-| - | - | Belum ada temuan | - | - |
+| - | - | Tak ada temuan area ini (akses portal/pricing/database semuanya ber-gating). | - | C-1 (lihat ringkasan) |
 
 ---
 
@@ -44,7 +46,7 @@
 
 | # | Rekomendasi | Prioritas | Effort |
 |---|-------------|-----------|--------|
-| - | Belum ada rekomendasi | - | - |
+| - | UAT runtime ringan (tampilan dashboard/statistik/navigasi/responsif). | Rendah | Kecil |
 
 ---
 
@@ -52,13 +54,13 @@
 
 | # | Tanggal | Deskripsi Perbaikan | Commit/PR | Status |
 |---|---------|---------------------|-----------|--------|
-| - | - | Belum ada perbaikan | - | - |
+| - | - | Tidak diperlukan (tak ada temuan). | - | - |
 
 ---
 
 ## Checklist Sign-off
 
-- [ ] Access control OK
-- [ ] Data display OK
-- [ ] Navigation OK
+- [x] Access control OK (kode — C-1)
+- [ ] Data display OK (⏳UAT)
+- [ ] Navigation OK (⏳UAT)
 - [ ] Reviewer sign-off

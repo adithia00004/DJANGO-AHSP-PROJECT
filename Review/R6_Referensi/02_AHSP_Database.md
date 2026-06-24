@@ -1,7 +1,9 @@
 # R6.2 - Review AHSP Database (Browse & Search)
 
-**Status:** `[ ]` BELUM DIREVIEW
-**Terakhir diperbarui:** -
+**Status:** `[~]` AUDIT STATIK SELESAI (2026-06-24) — ✅ PASS; N-2 (LOW) ditunda
+**Terakhir diperbarui:** 2026-06-24
+
+> **Metode:** telaah kode statis (read-only), bukan UAT runtime. Legend: ✅ = terverifikasi via inspeksi kode · ⏳UAT = perlu runtime. Ringkasan: [00_Audit_Summary_20260624.md](00_Audit_Summary_20260624.md).
 
 ---
 
@@ -23,17 +25,17 @@
 
 | # | Test Case | Expected | Status |
 |---|-----------|----------|--------|
-| TC-1 | Browse semua AHSP | Paginated list | `[ ]` |
-| TC-2 | Full-text search | Relevant results | `[ ]` |
-| TC-3 | Filter by klasifikasi | Results filtered | `[ ]` |
-| TC-4 | Filter by sub_klasifikasi | Results filtered | `[ ]` |
-| TC-5 | View AHSP detail | Rincian TK/BHN/ALT shown | `[ ]` |
-| TC-6 | Search performance | < 500ms response | `[ ]` |
-| TC-7 | Empty search results | "Tidak ditemukan" message | `[ ]` |
-| TC-8 | Special characters in search | No SQL injection, no crash | `[ ]` |
-| TC-9 | Pagination navigation | Previous/Next works | `[ ]` |
-| TC-10 | AHSP Stats (materialized view) | Stats accurate | `[ ]` |
-| TC-11 | Cache behavior | Search results cached | `[ ]` |
+| TC-1 | Browse semua AHSP | Paginated list | ⏳UAT |
+| TC-2 | Full-text search | Relevant results | ⏳UAT |
+| TC-3 | Filter by klasifikasi | Results filtered | ⏳UAT |
+| TC-4 | Filter by sub_klasifikasi | Results filtered | ⏳UAT |
+| TC-5 | View AHSP detail | Rincian TK/BHN/ALT shown | ⏳UAT |
+| TC-6 | Search performance | < 500ms response | ⏳UAT |
+| TC-7 | Empty search results | "Tidak ditemukan" message | ⏳UAT |
+| TC-8 | Special characters in search | No SQL injection, no crash | ✅ ORM/`SearchQuery` parameterized (tak ada raw SQL string-format) |
+| TC-9 | Pagination navigation | Previous/Next works | ⏳UAT |
+| TC-10 | AHSP Stats (materialized view) | Stats accurate | ✅ `AHSPStats` `managed=False` read-only (C-5) |
+| TC-11 | Cache behavior | Search results cached | ✅ invalidasi via signal; N-2 (rebuild per `bulk_create`) ditunda |
 
 ---
 
@@ -41,7 +43,7 @@
 
 | # | Severity | Deskripsi | Langkah Reproduksi | Evidence |
 |---|----------|-----------|---------------------|----------|
-| - | - | Belum ada temuan | - | - |
+| N-2 | 🟡 LOW | `bulk_create` memanggil `rebuild_search_cache()` tiap panggilan (rebuild berulang saat chunked import) + `simple_history` kemungkinan tak melacak bulk-import. | Import besar multi-chunk. | `referensi/models.py:16-20`. **DITUNDA** (butuh desain, sesi terpisah). |
 
 ---
 
@@ -49,7 +51,7 @@
 
 | # | Rekomendasi | Prioritas | Effort |
 |---|-------------|-----------|--------|
-| - | Belum ada rekomendasi | - | - |
+| N-2 | Rebuild cache sekali di akhir import (suppress-signal seperti `staging_commit`); evaluasi `bulk_create` history bila audit-trail import diperlukan. | Rendah | Sedang (desain) |
 
 ---
 
@@ -57,14 +59,14 @@
 
 | # | Tanggal | Deskripsi Perbaikan | Commit/PR | Status |
 |---|---------|---------------------|-----------|--------|
-| - | - | Belum ada perbaikan | - | - |
+| - | - | N-2 ditunda ke sesi terpisah (kesepakatan owner). | - | DITUNDA |
 
 ---
 
 ## Checklist Sign-off
 
-- [ ] Browse & pagination OK
-- [ ] Search functionality OK
-- [ ] Performance OK
-- [ ] Security (SQL injection) OK
+- [ ] Browse & pagination OK (⏳UAT)
+- [ ] Search functionality OK (⏳UAT)
+- [ ] Performance OK (⏳UAT; N-2 terkait perf cache)
+- [x] Security (SQL injection) OK (kode — ORM/parameterized, TC-8)
 - [ ] Reviewer sign-off
