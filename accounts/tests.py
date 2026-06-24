@@ -559,3 +559,39 @@ class TrialAccessGuardTests(TestCase):
         context = subscription_context(request)
         self.assertFalse(context["is_subscription_active"])
         self.assertFalse(context["can_edit"])
+
+
+class CustomUserAdminTests(TestCase):
+    """The admin must expose the subscription fields so support/admins can view
+    and adjust trial/PRO state (previously hidden by the stock UserAdmin)."""
+
+    def setUp(self):
+        self.user_model = get_user_model()
+        self.admin = self.user_model.objects.create_superuser(
+            username="admin_sub",
+            email="admin-sub@example.com",
+            password="Secret123!",
+        )
+        self.client.force_login(self.admin)
+
+    def test_changelist_renders_with_subscription_column(self):
+        response = self.client.get(
+            reverse("admin:accounts_customuser_changelist")
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "column-subscription_status")
+
+    def test_change_form_exposes_subscription_fields(self):
+        # GET also proves the custom fieldset references only valid fields
+        # (a bad field name would 500 here).
+        response = self.client.get(
+            reverse("admin:accounts_customuser_change", args=[self.admin.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        for field in (
+            "subscription_status",
+            "trial_end_date",
+            "subscription_end_date",
+            "trial_used_once",
+        ):
+            self.assertContains(response, field)
