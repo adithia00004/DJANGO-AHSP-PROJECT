@@ -10,6 +10,7 @@ This module provides comprehensive validation for file uploads including:
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import zipfile
 from typing import Any
@@ -17,6 +18,8 @@ from typing import Any
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.utils.translation import gettext_lazy as _
+
+logger = logging.getLogger(__name__)
 
 try:
     import openpyxl
@@ -341,15 +344,19 @@ class AHSPFileValidator:
             raise
 
         except Exception as e:
+            # N-5: log technical detail server-side; do not leak str(e) to the user.
+            logger.warning(
+                "Content security scan failed for %r: %s",
+                getattr(file, "name", "?"), e,
+            )
             raise ValidationError(
-                _(f"⚠️ Gagal memeriksa keamanan file\n\n"
-                  f"❌ MASALAH: Sistem tidak dapat memeriksa isi file secara menyeluruh\n"
-                  f"Detail teknis: {str(e)}\n\n"
-                  f"💡 SOLUSI:\n"
-                  f"  • File mungkin menggunakan format Excel yang tidak standar\n"
-                  f"  • Coba buka di Excel dan 'Save As' dengan format .xlsx standar\n"
-                  f"  • Pastikan file tidak ter-password protect\n"
-                  f"  • Hubungi administrator jika masalah berlanjut"),
+                _("⚠️ Gagal memeriksa keamanan file\n\n"
+                  "❌ MASALAH: Sistem tidak dapat memeriksa isi file secara menyeluruh\n\n"
+                  "💡 SOLUSI:\n"
+                  "  • File mungkin menggunakan format Excel yang tidak standar\n"
+                  "  • Coba buka di Excel dan 'Save As' dengan format .xlsx standar\n"
+                  "  • Pastikan file tidak ter-password protect\n"
+                  "  • Hubungi administrator jika masalah berlanjut"),
                 code='content_validation_error'
             )
 
