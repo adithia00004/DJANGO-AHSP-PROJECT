@@ -353,6 +353,7 @@ def preview_import(request):
         )
 
     # Get debugging stats
+    from django.conf import settings
     from referensi.models import AHSPReferensi, RincianReferensi
     debug_stats = {
         'db_jobs_count': AHSPReferensi.objects.count(),
@@ -389,6 +390,8 @@ def preview_import(request):
         "jobs_page": jobs_page,
         "details_page": details_page,
         "debug_stats": debug_stats,
+        # N-1: the clear-data tool (and its route) only exists when DEBUG is on.
+        "debug_mode": settings.DEBUG,
     }
     return render(request, "referensi/preview_import.html", context)
 

@@ -1,4 +1,5 @@
 # referensi/urls.py
+from django.conf import settings
 from django.shortcuts import redirect
 from django.urls import path
 
@@ -60,8 +61,6 @@ urlpatterns = [
     path("admin/database/", lambda request: redirect('referensi:ahsp_database_api'), name="ahsp_database_legacy"),  # Redirect to new
     path("admin/database-v2/", ahsp_database_api, name="ahsp_database_api"),
 
-    path("debug/clear-data/", debug_clear_data, name="debug_clear_data"),
-
     # 3-Tier Import System
     path("import/", import_options, name="import_options"),
     path("import/pdf-convert/", import_pdf_convert, name="import_pdf_convert"),
@@ -110,3 +109,11 @@ urlpatterns = [
     path("export/async/", ExportAsyncView.as_view(), name="export_async"),
     path("export/task-status/<str:task_id>/", export_task_status, name="export_task_status"),
 ]
+
+# N-1: the destructive "clear all data" tool is a DEBUG-only testing aid. The
+# view itself already 404s unless DEBUG + superuser, but we also keep the route
+# out of the production URL map entirely so it cannot be discovered.
+if settings.DEBUG:
+    urlpatterns += [
+        path("debug/clear-data/", debug_clear_data, name="debug_clear_data"),
+    ]

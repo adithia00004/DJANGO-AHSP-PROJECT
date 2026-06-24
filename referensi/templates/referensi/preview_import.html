@@ -207,7 +207,7 @@
                 </ul>
             </div>
 
-            {% if debug_stats.db_rincian_count > 0 %}
+            {% if debug_mode and debug_stats.db_rincian_count > 0 %}
             <div class="alert alert-warning mt-3 mb-0">
                 <strong><i class="bi bi-exclamation-triangle"></i> Perhatian:</strong>
                 Database sudah berisi {{ debug_stats.db_rincian_count }} rincian.
