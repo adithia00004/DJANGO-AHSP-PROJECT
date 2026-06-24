@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.middleware import SessionMiddleware
@@ -132,6 +134,36 @@ class ImportBatchCommitPolicyTests(TestCase):
         self.assertEqual(batch.status, AHSPImportBatch.Status.COMMITTED)
         self.assertEqual(batch.commit_mode, AHSPImportBatch.CommitMode.REPLACE)
         self.assertEqual(batch.summary["deleted_rincian"], 1)
+
+    def test_commit_failure_marks_batch_failed_and_rolls_back(self):
+        # N-4: an error mid-commit must roll back, mark the batch FAILED, and
+        # redirect with a friendly message instead of returning a bare 500.
+        batch = self._stage_parent(parent="9.9.9.9")
+
+        with patch(
+            "referensi.models.RincianReferensi.objects.bulk_create",
+            side_effect=RuntimeError("boom"),
+        ):
+            response = self._commit(
+                {
+                    "batch_id": batch.id,
+                    "sumber": "AHSP 2026",
+                    "commit_mode": AHSPImportBatch.CommitMode.MERGE,
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("referensi:import_staging"))
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, AHSPImportBatch.Status.FAILED)
+        # Transaction rolled back: the parent AHSP created earlier in the same
+        # atomic block must not survive, and staging rows stay intact.
+        self.assertFalse(
+            AHSPReferensi.objects.filter(kode_ahsp="9.9.9.9", sumber="AHSP 2026").exists()
+        )
+        self.assertTrue(
+            AHSPImportStaging.objects.filter(user=self.user, batch=batch).exists()
+        )
 
     def test_preflight_counts_distinct_parent_ahsp_not_detail_rows(self):
         batch = self._stage_parent(parent="1.2.3.4")

@@ -7,6 +7,7 @@ Import Views for AHSP Referensi.
 - Opsi 3: Clean Excel Import
 """
 
+import logging
 import os
 import uuid
 from django.conf import settings
@@ -44,6 +45,8 @@ from referensi.services.import_schema import (
     is_interchange_workbook,
     load_workbook_rows as load_interchange_workbook_rows,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def is_admin(user):
@@ -3108,6 +3111,23 @@ def staging_commit(request):
                 }
                 active_batch.committed_at = timezone.now()
                 active_batch.save(update_fields=["status", "sumber", "commit_mode", "summary", "committed_at"])
+    except Exception:
+        # N-4: the transaction has rolled back (no data changed). Mark the batch
+        # FAILED and surface a friendly error instead of a bare 500.
+        logger.exception(
+            "Staging commit failed (user=%s, batch=%s)",
+            getattr(request.user, "id", None),
+            getattr(active_batch, "id", None),
+        )
+        if active_batch:
+            active_batch.status = AHSPImportBatch.Status.FAILED
+            active_batch.save(update_fields=["status"])
+        messages.error(
+            request,
+            "Commit gagal karena kesalahan sistem. Tidak ada data yang diubah. "
+            "Silakan coba lagi; jika masalah berlanjut, hubungi administrator.",
+        )
+        return redirect('referensi:import_staging')
     finally:
         post_save.connect(invalidate_ahsp_cache, sender=AHSPReferensi)
         post_delete.connect(invalidate_ahsp_cache, sender=AHSPReferensi)
