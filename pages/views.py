@@ -31,8 +31,12 @@ class LandingPageView(TemplateView):
 
 
 class PricingPageView(TemplateView):
-    """
-    Dedicated pricing page with detailed plan comparison.
+    """Dedicated pricing page with detailed plan comparison.
+
+    F-2 (deliberate product decision): unlike the landing page, authenticated
+    users are intentionally NOT redirected away. Expired/PRO users must reach
+    pricing to upgrade or renew — SubscriptionMiddleware likewise exempts
+    ``/pricing/`` for this reason, so redirecting here would break renewal.
     """
     template_name = 'pages/pricing.html'
 

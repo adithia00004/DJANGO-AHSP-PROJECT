@@ -97,6 +97,12 @@
         z-index: 2;
     }
 
+    @media (max-width: 768px) {
+        .hero-tagline {
+            font-size: 2.25rem;
+        }
+    }
+
     .hero-tagline span.highlight {
         background: linear-gradient(to right, var(--bs-primary), var(--bs-info));
         -webkit-background-clip: text;
@@ -844,8 +850,6 @@
     <div class="container position-relative z-index-1">
         <div class="py-4">
             <h2 class="display-5 fw-bold mb-3">Siap Mengelola Proyek Lebih Profesional?</h2>
-            <p class="lead mb-4 opacity-75">Bergabung dengan ribuan profesional konstruksi yang sudah beralih ke
-                digital.</p>
             <a href="{% url 'account_signup' %}" class="btn-hero-primary btn-lg px-5">
                 <i class="bi bi-rocket-takeoff me-2"></i>Mulai Sekarang - Gratis 14 Hari
             </a>
@@ -906,7 +910,7 @@
         </div>
 
         <div class="border-top mt-5 pt-3 text-center">
-            <small class="text-muted">&copy; {% now "Y" %} ADIT PORTOFOLIO Project. All rights reserved.</small>
+            <small class="text-muted">&copy; {% now "Y" %} Dashboard-RAB. All rights reserved.</small>
         </div>
     </div>
 </footer>
