@@ -10,6 +10,14 @@ Catatan:
 
 ---
 
+## Pembaruan 2026-06-25 (fix-phase, owner decisions)
+- ✅ **Keamanan dikonfirmasi bersih** (telaah ulang statik): tanpa input user, semua data auto-escape, tak ada `|safe`/inline-handler, redirect aman.
+- ✅ **RESOLVED:** F-6 (hero `@media (max-width:768px)` → `font-size:2.25rem`), F-8 (footer brand → **"Dashboard-RAB"**), F-9 (klaim "ribuan profesional" **dihapus**), F-10 (favicon dobel → tunggal SVG; inline "A" data-URI dibuang).
+- ⏳ **OPEN (ditunda):** F-5 (inline CSS besar — maintainability; lebih baik digabung refactor frontend + pricing F-3, butuh QA visual).
+- Gate: `pages.tests` 7/7 PASS, `manage.py check` PASS. Commit: (pending owner).
+
+---
+
 ## Informasi Umum
 
 | Atribut | Detail |

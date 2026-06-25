@@ -11,6 +11,14 @@ Catatan:
 
 ---
 
+## Pembaruan 2026-06-25 (fix-phase, owner decisions)
+- ✅ **Keamanan dikonfirmasi bersih** (public page, tanpa surface injeksi baru).
+- ✅ **RESOLVED:** F-2 (keputusan produk: authenticated user **sengaja TIDAK** di-redirect dari `/pricing/` — wajib untuk renewal/upgrade, sejalan exclude SubscriptionMiddleware; didokumentasikan di docstring `PricingPageView`), F-5 (klaim "ribuan profesional" **dihapus**).
+- ⏳ **OPEN (ditunda — lebih besar):** F-3 (`pricing.html` extends `landing.html` → refactor maintainability, risiko regresi visual tanpa QA browser), F-4 (tabel perbandingan fitur — paket = tier durasi dgn fitur sama; perbandingan bermakna = **Trial vs Pro** dari matriks entitlement; butuh keputusan konten/desain).
+- Gate: `pages.tests` 7/7 PASS. Commit: (pending owner).
+
+---
+
 ## Informasi Umum
 
 | Atribut | Detail |
