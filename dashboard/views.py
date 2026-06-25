@@ -349,6 +349,8 @@ def dashboard_view(request):
                 for row in rekap_rows
             }
         except Exception:
+            # F-07: surface compute failures instead of swallowing them silently.
+            logger.exception("Rekap fallback compute failed for project %s", project.id)
             rekap_total_by_project[project.id] = {}
 
     for project in page_obj.object_list:
@@ -394,11 +396,11 @@ def dashboard_view(request):
                     
             project.progress_realisasi = weighted_progress
             
-        except Exception as e:
-            # Fallback gracefully on error
+        except Exception:
+            # F-07: log instead of swallowing so a calc failure is observable
+            # and not indistinguishable from a genuine 0% progress.
+            logger.exception("Weighted progress calc failed for project %s", project.id)
             project.progress_realisasi = 0.0
-            # Log error ideally
-            pass
 
     # === FASE 2.1: Analytics & Statistics ===
     all_active_projects = Project.objects.filter(owner=request.user, is_active=True)

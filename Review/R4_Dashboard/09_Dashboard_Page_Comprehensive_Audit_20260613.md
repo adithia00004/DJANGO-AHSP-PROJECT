@@ -5,6 +5,22 @@
 **URL utama:** `/dashboard/`  
 **Status:** **LULUS BERSYARAT - perlu remediasi temuan High sebelum production sign-off**
 
+---
+
+## 0. Status Remediasi (pembaruan 2026-06-25)
+
+**Semua temuan P0 (security/data) sudah ditutup:**
+- ✅ **F-01 (stored XSS chart)** FIXED — `dashboard/views.py` `_safe_inline_json()` meng-escape `<`/`>`/`&` → `<…` (mirror `json_script`) untuk SEMUA chart payload; regression `dashboard/tests_chart_xss.py` (payload `</script><script>` ter-escape, nilai numerik tetap angka).
+- ✅ **F-02 (mass-edit lewati side-effect tanggal_mulai)** FIXED — `views_mass_edit.py` memanggil `reset_project_progress(..., regenerate_weekly=True)`; regression `tests_mass_edit.py`.
+- ✅ **F-10 (dead `mass_edit_bulk_update` + log request body)** FIXED — fungsi lama dihapus dari `views.py`.
+- ✅ **F-07 (error progress disembunyikan)** FIXED 2026-06-25 — `logger.exception(..., project.id)` di kedua blok (rekap fallback `:351` + weighted progress `:397`), tak lagi silent `pass`.
+
+**Masih OPEN (UX/SSOT/produk/cross-cutting, bukan security P0):** F-03 (quick search JS crash), F-04 (timeline status SSOT) + UX-01, F-05 (archived lifecycle — keputusan produk), F-06 (filter/progress duplikasi — refactor service), F-08 (mobile bulk), F-09 (pagination encoding), F-11 (label mode), **F-12 (CSP → Cross-Cutting)**, F-13 (N+1 fallback), UX-02..07.
+
+**Gate:** dashboard suite **41/41 PASS** (naik dari 36 saat audit).
+
+---
+
 ## 1. Ruang Lingkup
 
 Audit mencakup alur:
