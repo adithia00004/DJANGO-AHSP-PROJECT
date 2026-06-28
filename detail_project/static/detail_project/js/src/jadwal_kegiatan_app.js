@@ -995,12 +995,24 @@ class JadwalKegiatanApp {
       const monthCheckboxes = exportModal.querySelectorAll('input[name="months"]:checked');
       const selectedMonths = Array.from(monthCheckboxes).map(cb => parseInt(cb.value, 10)).sort((a, b) => a - b);
 
+      const dailyMode = exportModal.querySelector('input[name="dailyExportMode"]:checked')?.value || 'day';
+      const dailyPeriodNumber = (() => {
+        if (dailyMode === 'week') {
+          return parseInt(exportModal.querySelector('input[name="dailyWeekPeriod"]:checked')?.value || '1', 10) || 1;
+        }
+        if (dailyMode === 'month') {
+          return parseInt(exportModal.querySelector('input[name="dailyMonthPeriod"]:checked')?.value || '1', 10) || 1;
+        }
+        return parseInt(exportModal.querySelector('#dailyPeriodNumber')?.value || '1', 10) || 1;
+      })();
+
       // Map old report type values to new export system values
       const reportTypeMapping = {
         'full': 'rekap',      // Laporan Rekap (Full timeline)
         'rekap': 'rekap',     // Already correct
         'monthly': 'monthly', // Already correct
-        'weekly': 'weekly'    // Already correct
+        'weekly': 'weekly',   // Already correct
+        'daily': 'daily'      // Daily report, DOCX only
       };
       const reportType = reportTypeMapping[reportTypeRaw] || 'rekap';
 
@@ -1010,7 +1022,9 @@ class JadwalKegiatanApp {
         format,
         useProfessional,
         periodNumber,
-        selectedMonths  // Log selected months
+        selectedMonths,
+        dailyMode,
+        dailyPeriodNumber
       });
 
       // Show progress modal
@@ -1029,7 +1043,7 @@ class JadwalKegiatanApp {
       // ========================================================================
       if (useProfessional && (format === 'pdf' || format === 'word')) {
         // Skip chart rendering for weekly reports (no charts needed)
-        const skipChartRendering = (reportType === 'weekly');
+        const skipChartRendering = (reportType === 'weekly' || reportType === 'daily');
 
         if (!skipChartRendering) {
           this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (150 DPI)...');
@@ -1182,11 +1196,13 @@ class JadwalKegiatanApp {
           // Monthly period: use periodNumber if no multi-select, otherwise null
           period: (reportType === 'monthly' && (!selectedMonths || selectedMonths.length === 0))
             ? periodNumber
-            : (reportType === 'weekly' ? periodNumber : null),
+            : (reportType === 'daily' ? dailyPeriodNumber : (reportType === 'weekly' ? periodNumber : null)),
+          daily_mode: reportType === 'daily' ? dailyMode : null,
           // Multi-month support: send months array for monthly reports when multi-select
           months: (reportType === 'monthly' && selectedMonths && selectedMonths.length > 0) ? selectedMonths : null,
           // Multi-week support: send weeks array for weekly reports
           weeks: (reportType === 'weekly' && selectedWeeks.length > 0) ? selectedWeeks : null,
+          days: null,
           attachments: attachments.map(att => ({
             title: att.title,
             bytes: att.bytes,
@@ -1221,9 +1237,13 @@ class JadwalKegiatanApp {
           throw new Error(`Export gagal: ${response.status} - ${errorText}`);
         }
 
-        // Download the file
+        // Download the file. Validate the payload before saving so JSON/HTML
+        // error bodies never get downloaded as .docx/.xlsx/.pdf.
         const blob = await response.blob();
-        const filename = `Laporan_${reportType}_${new Date().toISOString().slice(0, 10)}.${format === 'pdf' ? 'pdf' : 'docx'}`;
+        const extension = format === 'pdf' ? 'pdf' : (format === 'xlsx' ? 'xlsx' : 'docx');
+        await this._validateExportBlob(blob, format, response.headers.get('Content-Type') || '');
+        const filename = this._filenameFromContentDisposition(response.headers.get('Content-Disposition'))
+          || `Laporan_${reportType}_${new Date().toISOString().slice(0, 10)}.${extension}`;
 
         // Trigger download
         const url = window.URL.createObjectURL(blob);
@@ -1281,6 +1301,8 @@ class JadwalKegiatanApp {
         week: reportType === 'weekly' ? (selectedWeeksPhase4.length > 0 ? selectedWeeksPhase4[0] : periodNumber) : null,
         // Multi-week support: pass full array for xlsx export
         weeks: reportType === 'weekly' && selectedWeeksPhase4.length > 0 ? selectedWeeksPhase4 : null,
+        daily_mode: reportType === 'daily' ? dailyMode : null,
+        days: null,
         options: {
           includeGantt,
           includeKurvaS
@@ -1308,6 +1330,57 @@ class JadwalKegiatanApp {
         duration: 5000,
         position: 'top-right'
       });
+    }
+  }
+
+  _filenameFromContentDisposition(contentDisposition) {
+    if (!contentDisposition) return null;
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ''));
+      } catch (_) {
+        return utf8Match[1].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+    const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+    return match?.[1]?.trim() || null;
+  }
+
+  async _validateExportBlob(blob, format, contentType) {
+    const normalizedType = String(contentType || '').toLowerCase();
+    const expectedTypes = {
+      pdf: ['application/pdf'],
+      word: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+    };
+    const allowedTypes = expectedTypes[format] || [];
+    if (allowedTypes.length && !allowedTypes.some(type => normalizedType.includes(type))) {
+      const message = await this._readBlobTextPreview(blob);
+      throw new Error(message || `Export gagal: response bukan file ${format.toUpperCase()}`);
+    }
+
+    const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+    const isZip = header[0] === 0x50 && header[1] === 0x4b;
+    const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46 && header[4] === 0x2d;
+    if ((format === 'word' || format === 'xlsx') && !isZip) {
+      const message = await this._readBlobTextPreview(blob);
+      throw new Error(message || 'Export gagal: file Office yang diterima tidak valid.');
+    }
+    if (format === 'pdf' && !isPdf) {
+      const message = await this._readBlobTextPreview(blob);
+      throw new Error(message || 'Export gagal: file PDF yang diterima tidak valid.');
+    }
+  }
+
+  async _readBlobTextPreview(blob) {
+    try {
+      const text = await blob.slice(0, 2000).text();
+      const cleaned = text.replace(/\s+/g, ' ').trim();
+      if (!cleaned) return '';
+      return cleaned.length > 300 ? `${cleaned.slice(0, 300)}...` : cleaned;
+    } catch (_) {
+      return '';
     }
   }
 

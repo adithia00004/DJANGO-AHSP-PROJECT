@@ -3,6 +3,7 @@
 # Copy this entire file
 # =====================================================================
 
+import logging
 from typing import Dict, Any
 from django.http import HttpResponse
 from ..export_config import ExportConfig, SignatureConfig, format_currency, JadwalExportLayout
@@ -17,6 +18,9 @@ from .volume_pekerjaan_adapter import VolumePekerjaanAdapter
 from .harga_items_adapter import HargaItemsAdapter
 from .rincian_ahsp_adapter import RincianAHSPAdapter
 from .jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExportManager:
@@ -569,7 +573,7 @@ class ExportManager:
 
         config = self._create_config_simple(
             title,
-            page_orientation='landscape',
+            page_orientation='portrait' if report_type == 'daily' else 'landscape',
             page_size=JadwalExportLayout.PAGE_SIZE,
             signature_preset='PELAKSANAAN'  # Jadwal uses Pelaksanaan preset
         )
@@ -671,6 +675,8 @@ class ExportManager:
         period: int | None = None,
         months: list[int] | None = None,  # NEW: support multi-month export
         weeks: list[int] | None = None,   # NEW: support multi-week export
+        daily_mode: str | None = None,
+        days: list[int] | None = None,
         attachments: list | None = None,
         gantt_data: dict | None = None,
     ) -> HttpResponse:
@@ -697,7 +703,10 @@ class ExportManager:
         """
         import time
         start_time = time.time()
-        print(f"[ExportManager] [TIME] Starting {report_type} {format_type} export...")
+        logger.debug("Starting %s %s export", report_type, format_type)
+
+        if report_type == 'daily' and format_type != 'word':
+            raise ValueError("Laporan harian hanya tersedia dalam format Word (.docx).")
         
         from reportlab.platypus import PageBreak, Spacer
         from reportlab.lib.units import mm
@@ -707,6 +716,7 @@ class ExportManager:
             'rekap': 'LAPORAN REKAPITULASI JADWAL PEKERJAAN',
             'monthly': 'LAPORAN PROGRES BULANAN JADWAL PEKERJAAN',
             'weekly': 'LAPORAN PROGRES MINGGUAN JADWAL PEKERJAAN',
+            'daily': 'LAPORAN HARIAN JADWAL PEKERJAAN',
         }
         title = title_map.get(report_type, 'LAPORAN JADWAL PEKERJAAN')
         
@@ -750,7 +760,7 @@ class ExportManager:
             else:
                 # Single month (backward compatible)
                 month = period or 1
-                print(f"[ExportManager] Monthly data request: period={period}, using month={month}")
+                logger.debug("Monthly data request: period=%s, using month=%s", period, month)
                 report_data = adapter.get_monthly_comparison_data(month)
         elif report_type == 'weekly':
             # Multi-week support (NEW)
@@ -769,6 +779,22 @@ class ExportManager:
                 # Single week (backward compatible)
                 week = period or 1
                 report_data = adapter.get_weekly_comparison_data(week)
+        elif report_type == 'daily':
+            full_data = adapter.get_monthly_comparison_data(1)
+            raw_base_rows, _ = adapter._build_base_rows()
+            base_rows_with_harga = self._build_jadwal_base_rows_with_harga(adapter, raw_base_rows)
+            daily_sheets = self._build_laporan_harian_sheets(
+                full_data=full_data,
+                base_rows=base_rows_with_harga,
+                daily_mode=daily_mode or 'day',
+                period=period,
+                days=days,
+            )
+            report_data = {
+                'project_info': full_data.get('project_info', adapter._get_project_info()),
+                'daily_mode': daily_mode or 'day',
+                'sheets': daily_sheets,
+            }
         else:
             report_data = adapter.get_export_data()
 
@@ -817,9 +843,9 @@ class ExportManager:
                             'total_harga': float(total_harga),
                         })
                 data['base_rows_with_harga'] = base_rows_with_harga
-                print(f"[ExportManager] Added {len(base_rows_with_harga)} rows with harga data")
+                logger.debug("Added %s rows with harga data", len(base_rows_with_harga))
             except Exception as e:
-                print(f"[ExportManager] Warning: Could not build base_rows_with_harga: {e}")
+                logger.warning("Could not build base_rows_with_harga: %s", e)
                 data['base_rows_with_harga'] = []
             
             # Include cover page sections
@@ -836,12 +862,12 @@ class ExportManager:
                 data['months_data'] = report_data.get('months_data', [])
                 data['months'] = report_data.get('months', [])
                 
-                print(f"[ExportManager] Multi-month export: {len(data['months'])} months: {data['months']}")
+                logger.debug("Multi-month export: %s months: %s", len(data['months']), data['months'])
                 
                 # For single-month selection via checkbox, also set 'month' for Excel exporter
                 if data['months'] and len(data['months']) == 1:
                     data['month'] = data['months'][0]
-                    print(f"[ExportManager] Monthly: Single month {data['month']} selected via checkbox")
+                    logger.debug("Monthly: single month %s selected via checkbox", data['month'])
                 
                 # Get data from first month to use as base for all sheets
                 first_month_data = data['months_data'][0]['data'] if data['months_data'] else {}
@@ -882,9 +908,9 @@ class ExportManager:
                                 'total_harga': float(total_harga),
                             })
                     data['base_rows_with_harga'] = base_rows_with_harga
-                    print(f"[ExportManager] Multi-month: Added {len(base_rows_with_harga)} rows with harga data")
+                    logger.debug("Multi-month: added %s rows with harga data", len(base_rows_with_harga))
                 except Exception as e:
-                    print(f"[ExportManager] Multi-month: Could not build base_rows_with_harga: {e}")
+                    logger.warning("Multi-month: could not build base_rows_with_harga: %s", e)
                     data['base_rows_with_harga'] = []
                     
             else:
@@ -935,9 +961,9 @@ class ExportManager:
                                 'total_harga': float(total_harga),
                             })
                     data['base_rows_with_harga'] = base_rows_with_harga
-                    print(f"[ExportManager] Monthly: Added {len(base_rows_with_harga)} rows with harga data")
+                    logger.debug("Monthly: added %s rows with harga data", len(base_rows_with_harga))
                 except Exception as e:
-                    print(f"[ExportManager] Monthly: Could not build base_rows_with_harga: {e}")
+                    logger.warning("Monthly: could not build base_rows_with_harga: %s", e)
                     data['base_rows_with_harga'] = []
                     
         elif report_type == 'weekly':
@@ -947,12 +973,12 @@ class ExportManager:
                 data['weeks_data'] = report_data.get('weeks_data', [])
                 data['weeks'] = report_data.get('weeks', [])
                 
-                print(f"[ExportManager] Multi-week export: {len(data['weeks'])} weeks: {data['weeks']}")
+                logger.debug("Multi-week export: %s weeks: %s", len(data['weeks']), data['weeks'])
                 
                 # For single-week selection via checkbox, also set 'week' for Excel exporter
                 if data['weeks'] and len(data['weeks']) == 1:
                     data['week'] = data['weeks'][0]
-                    print(f"[ExportManager] Weekly: Single week {data['week']} selected via checkbox")
+                    logger.debug("Weekly: single week %s selected via checkbox", data['week'])
                 
                 # ============================================================
                 # USE get_monthly_comparison_data(1) TO GET ALL REQUIRED DATA
@@ -972,8 +998,13 @@ class ExportManager:
                 data['actual_map'] = full_data.get('actual_map', {})
                 data['total_project_weeks'] = full_data.get('total_project_weeks', 0)
                 
-                print(f"[ExportManager] Multi-week: base_rows={len(data['base_rows'])}, weekly_cols={len(data['all_weekly_columns'])}")
-                print(f"[ExportManager] Multi-week: planned_map={len(data['planned_map'])}, actual_map={len(data['actual_map'])}")
+                logger.debug(
+                    "Multi-week: base_rows=%s, weekly_cols=%s, planned_map=%s, actual_map=%s",
+                    len(data['base_rows']),
+                    len(data['all_weekly_columns']),
+                    len(data['planned_map']),
+                    len(data['actual_map']),
+                )
                 
                 # Build base_rows_with_harga using adapter methods
                 try:
@@ -999,9 +1030,9 @@ class ExportManager:
                                 'total_harga': float(total_harga),
                             })
                     data['base_rows_with_harga'] = base_rows_with_harga
-                    print(f"[ExportManager] Multi-week: Added {len(base_rows_with_harga)} rows with harga data")
+                    logger.debug("Multi-week: added %s rows with harga data", len(base_rows_with_harga))
                 except Exception as e:
-                    print(f"[ExportManager] Multi-week: Could not build base_rows_with_harga: {e}")
+                    logger.warning("Multi-week: could not build base_rows_with_harga: %s", e)
                     data['base_rows_with_harga'] = []
                     
             else:
@@ -1023,6 +1054,9 @@ class ExportManager:
                 data['planned_map'] = report_data.get('planned_map', {})
                 data['actual_map'] = report_data.get('actual_map', {})
                 data['week'] = report_data.get('week', period)
+        elif report_type == 'daily':
+            data['daily_mode'] = report_data.get('daily_mode', 'day')
+            data['sheets'] = report_data.get('sheets', [])
 
         if attachments:
             data['attachments'] = attachments
@@ -1035,34 +1069,230 @@ class ExportManager:
         if not exporter_class:
             raise ValueError(f"Unsupported format: {format_type}")
 
-        print(f"[ExportManager] [TIME] Data prepared in {time.time() - start_time:.2f}s, {len(attachments or [])} attachments")
+        logger.debug("Data prepared in %.2fs, %s attachments", time.time() - start_time, len(attachments or []))
         
-        # Word format is disabled due to performance issues
-        if format_type == 'word':
+        # Legacy Word exports are still disabled; daily DOCX is template-based
+        # and does not render charts/images server-side.
+        if format_type == 'word' and report_type != 'daily':
             raise ValueError("Word export is currently disabled. Please use PDF or Excel format.")
         
         exporter = exporter_class(config)
         
-        # For PDF and Excel, use special professional export methods
-        if format_type == 'xlsx' and report_type == 'monthly' and hasattr(exporter, 'export_monthly_professional'):
+        # For PDF, Excel, and daily Word, use special professional export methods
+        if format_type == 'word' and report_type == 'daily' and hasattr(exporter, 'export_daily_professional'):
+            export_start = time.time()
+            result = exporter.export_daily_professional(data)
+            logger.info("Daily Word exporter finished in %.2fs; total %.2fs", time.time() - export_start, time.time() - start_time)
+            return result
+        elif format_type == 'xlsx' and report_type == 'monthly' and hasattr(exporter, 'export_monthly_professional'):
             # Monthly Excel export
             export_start = time.time()
             result = exporter.export_monthly_professional(data)
-            print(f"[ExportManager] [TIME] Monthly Excel exporter finished in {time.time() - export_start:.2f}s")
-            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            logger.info("Monthly Excel exporter finished in %.2fs; total %.2fs", time.time() - export_start, time.time() - start_time)
             return result
         elif format_type == 'xlsx' and report_type == 'weekly' and hasattr(exporter, 'export_weekly_professional'):
             # Weekly Excel export
             export_start = time.time()
             result = exporter.export_weekly_professional(data)
-            print(f"[ExportManager] [TIME] Weekly Excel exporter finished in {time.time() - export_start:.2f}s")
-            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            logger.info("Weekly Excel exporter finished in %.2fs; total %.2fs", time.time() - export_start, time.time() - start_time)
             return result
         elif format_type in ('pdf', 'xlsx') and hasattr(exporter, 'export_professional'):
             export_start = time.time()
             result = exporter.export_professional(data)
-            print(f"[ExportManager] [TIME] Exporter finished in {time.time() - export_start:.2f}s")
-            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            logger.info("Professional exporter finished in %.2fs; total %.2fs", time.time() - export_start, time.time() - start_time)
             return result
         
         return exporter.export(data)
+
+    def _build_jadwal_base_rows_with_harga(self, adapter, raw_base_rows: list[dict]) -> list[dict]:
+        """Build lightweight pekerjaan rows for laporan harian.
+
+        This intentionally omits volume/bobot/progress display fields from the
+        final report, but keeps total_harga internally for previous-week progress
+        weighting.
+        """
+        base_rows = []
+        for row in raw_base_rows:
+            if row.get('type') != 'pekerjaan':
+                continue
+            pek_id = row.get('pekerjaan_id')
+            total_harga = adapter._get_pekerjaan_harga(pek_id) if pek_id else 0
+            base_rows.append({
+                'pekerjaan_id': pek_id,
+                'uraian': row.get('uraian', ''),
+                'total_harga': float(total_harga or 0),
+            })
+        return base_rows
+
+    def _build_laporan_harian_sheets(
+        self,
+        *,
+        full_data: dict,
+        base_rows: list[dict],
+        daily_mode: str,
+        period: int | None,
+        days: list[int] | None,
+    ) -> list[dict]:
+        from datetime import timedelta
+        from decimal import Decimal
+
+        project_start = getattr(self.project, 'tanggal_mulai', None)
+        project_end = getattr(self.project, 'tanggal_selesai', None)
+        if not project_start:
+            from datetime import date
+            project_start = date.today()
+        if not project_end or project_end < project_start:
+            project_end = project_start
+
+        weekly_columns = full_data.get('all_weekly_columns') or []
+        planned_map = self._parse_progress_map(full_data.get('planned_map', {}))
+        actual_map = self._parse_progress_map(full_data.get('actual_map', {}))
+        selected_dates = self._resolve_laporan_harian_dates(
+            project_start=project_start,
+            project_end=project_end,
+            weekly_columns=weekly_columns,
+            daily_mode=daily_mode,
+            period=period,
+            days=days,
+        )
+
+        total_harga = sum(Decimal(str(row.get('total_harga') or 0)) for row in base_rows)
+        if total_harga <= 0:
+            total_harga = Decimal('1')
+        bobot_map = {
+            int(row['pekerjaan_id']): Decimal(str(row.get('total_harga') or 0)) / total_harga
+            for row in base_rows
+            if row.get('pekerjaan_id')
+        }
+
+        sheets = []
+        used_names = set()
+        for report_date in selected_dates:
+            week_number = self._week_number_for_date(report_date, project_start, weekly_columns)
+            previous_week = week_number - 1
+            active_ids = self._active_pekerjaan_ids_for_week(planned_map, actual_map, week_number)
+            work_items = [
+                {
+                    'uraian': row.get('uraian', ''),
+                    'lokasi': '',
+                    'keterangan': '',
+                }
+                for row in base_rows
+                if row.get('pekerjaan_id') in active_ids
+            ]
+
+            prev_progress = {'planned': None, 'actual': None, 'deviation': None}
+            if previous_week >= 1:
+                planned_prev = self._weighted_week_progress(planned_map, bobot_map, previous_week)
+                actual_prev = self._weighted_week_progress(actual_map, bobot_map, previous_week)
+                prev_progress = {
+                    'planned': planned_prev,
+                    'actual': actual_prev,
+                    'deviation': actual_prev - planned_prev,
+                }
+
+            sheet_name = self._build_laporan_harian_sheet_name(report_date, used_names)
+            used_names.add(sheet_name)
+            sheets.append({
+                'date': report_date,
+                'sheet_name': sheet_name,
+                'day_number': (report_date - project_start).days + 1,
+                'week_number': week_number,
+                'previous_week': previous_week if previous_week >= 1 else None,
+                'previous_progress': prev_progress,
+                'work_items': work_items,
+            })
+
+        return sheets
+
+    def _resolve_laporan_harian_dates(
+        self,
+        *,
+        project_start,
+        project_end,
+        weekly_columns: list[dict],
+        daily_mode: str,
+        period: int | None,
+        days: list[int] | None,
+    ) -> list:
+        from datetime import timedelta
+
+        def clamp_dates(values):
+            return sorted({d for d in values if project_start <= d <= project_end})
+
+        if daily_mode == 'week':
+            week_number = max(int(period or 1), 1)
+            week_col = next((c for c in weekly_columns if c.get('week_number') == week_number), None)
+            start = week_col.get('start_date') if week_col else project_start + timedelta(days=(week_number - 1) * 7)
+            end = week_col.get('end_date') if week_col else start + timedelta(days=6)
+            return clamp_dates(start + timedelta(days=i) for i in range((end - start).days + 1))
+
+        if daily_mode == 'month':
+            month_number = max(int(period or 1), 1)
+            start_week = (month_number - 1) * 4 + 1
+            end_week = month_number * 4
+            dates = []
+            for week_number in range(start_week, end_week + 1):
+                week_col = next((c for c in weekly_columns if c.get('week_number') == week_number), None)
+                start = week_col.get('start_date') if week_col else project_start + timedelta(days=(week_number - 1) * 7)
+                end = week_col.get('end_date') if week_col else start + timedelta(days=6)
+                dates.extend(start + timedelta(days=i) for i in range((end - start).days + 1))
+            return clamp_dates(dates)
+
+        day_numbers = days if days else [period or 1]
+        dates = [project_start + timedelta(days=max(int(day), 1) - 1) for day in day_numbers]
+        return clamp_dates(dates)
+
+    def _parse_progress_map(self, raw_map: dict) -> dict:
+        from decimal import Decimal
+        parsed = {}
+        for key, value in (raw_map or {}).items():
+            parts = str(key).split('-')
+            if len(parts) != 2:
+                continue
+            try:
+                pek_id = int(parts[0])
+                week_number = int(parts[1])
+                parsed[(pek_id, week_number)] = Decimal(str(value or 0))
+            except Exception:
+                continue
+        return parsed
+
+    def _week_number_for_date(self, report_date, project_start, weekly_columns: list[dict]) -> int:
+        for column in weekly_columns:
+            start = column.get('start_date')
+            end = column.get('end_date')
+            if start and end and start <= report_date <= end:
+                return int(column.get('week_number') or 1)
+        return ((report_date - project_start).days // 7) + 1
+
+    def _active_pekerjaan_ids_for_week(self, planned_map: dict, actual_map: dict, week_number: int) -> set[int]:
+        active = set()
+        for source in (planned_map, actual_map):
+            for (pek_id, wk), value in source.items():
+                if wk == week_number and value:
+                    active.add(pek_id)
+        return active
+
+    def _weighted_week_progress(self, progress_map: dict, bobot_map: dict, week_number: int):
+        from decimal import Decimal
+        total = Decimal('0')
+        for (pek_id, wk), value in progress_map.items():
+            if wk != week_number:
+                continue
+            total += bobot_map.get(pek_id, Decimal('0')) * (Decimal(str(value or 0)) / Decimal('100'))
+        return total
+
+    def _build_laporan_harian_sheet_name(self, report_date, used_names: set[str]) -> str:
+        month_labels = {
+            1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MEI', 6: 'JUN',
+            7: 'JUL', 8: 'AGU', 9: 'SEP', 10: 'OKT', 11: 'NOV', 12: 'DES',
+        }
+        base = f"{report_date.day:02d} {month_labels.get(report_date.month, report_date.strftime('%b').upper())}"
+        name = base
+        counter = 2
+        while name in used_names:
+            suffix = f" ({counter})"
+            name = f"{base[:31 - len(suffix)]}{suffix}"
+            counter += 1
+        return name

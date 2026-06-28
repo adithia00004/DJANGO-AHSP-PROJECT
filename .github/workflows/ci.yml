@@ -55,6 +55,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Verify export templates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          template = Path("detail_project/export_templates/laporan_harian_template.docx")
+          if not template.exists():
+              raise SystemExit(f"Missing required export template: {template}")
+          with ZipFile(template) as package:
+              bad_file = package.testzip()
+              if bad_file:
+                  raise SystemExit(f"Invalid DOCX template member: {bad_file}")
+              if "word/document.xml" not in package.namelist():
+                  raise SystemExit("DOCX template is missing word/document.xml")
+          PY
+
       - name: Run pytest
         run: |
           pytest

@@ -10,6 +10,33 @@ import { generatePDF, downloadPDF } from '../generators/pdf-generator.js';
 import { generateWord, downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
 
+async function readBlobTextPreview(blob) {
+  try {
+    const text = await blob.slice(0, 600).text();
+    return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+async function validateOfficeBlob(blob, format, contentType) {
+  const normalizedType = String(contentType || '').toLowerCase();
+  const expectedTypes = {
+    xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    word: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+  };
+  const allowedTypes = expectedTypes[format] || [];
+  if (allowedTypes.length && !allowedTypes.some(type => normalizedType.includes(type))) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || `Export gagal: response bukan file ${format.toUpperCase()}`);
+  }
+  const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  if (header[0] !== 0x50 || header[1] !== 0x4b) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || 'Export gagal: file Office yang diterima tidak valid.');
+  }
+}
+
 // ============================================================================
 // Helper Functions for Monthly Report Data Preparation
 // ============================================================================
@@ -344,6 +371,7 @@ export async function generateMonthlyReport(state, format, month, options = {}) 
           }
 
           const blob = await response.blob();
+          await validateOfficeBlob(blob, 'xlsx', contentType);
           console.log('[MonthlyReport] Excel blob received:', blob.size, 'bytes, type:', blob.type);
 
           result = {

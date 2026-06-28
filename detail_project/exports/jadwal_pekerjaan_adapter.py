@@ -12,6 +12,7 @@ four weeks (last block may contain <4 columns).
 
 from __future__ import annotations
 
+import logging
 import math
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -31,6 +32,9 @@ from detail_project.progress_utils import calculate_week_number, get_week_date_r
 from detail_project.services import compute_rekap_for_project
 from ..export_config import get_page_size_mm, JadwalExportLayout
 from .table_styles import SectionHeaderFormatter as SHF
+
+
+logger = logging.getLogger(__name__)
 
 
 class JadwalPekerjaanExportAdapter:
@@ -703,11 +707,11 @@ class JadwalPekerjaanExportAdapter:
 
         # Log all timings
         total = time.time() - start
-        print(f"[JadwalAdapter] get_rekap_report_data timing breakdown:")
+        logger.debug("[JadwalAdapter] get_rekap_report_data timing breakdown:")
         for step, duration in step_times.items():
             pct = (duration / total) * 100 if total > 0 else 0
-            print(f"  - {step}: {duration:.2f}s ({pct:.1f}%)")
-        print(f"[JadwalAdapter] Total: {total:.2f}s")
+            logger.debug("[JadwalAdapter] %s: %.2fs (%.1f%%)", step, duration, pct)
+        logger.debug("[JadwalAdapter] Total: %.2fs", total)
 
         return {
             "planned_pages": planned_pages,

@@ -22,6 +22,41 @@ import { downloadPDF } from '../generators/pdf-generator.js';
 import { downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
 
+async function readBlobTextPreview(blob) {
+  try {
+    const text = await blob.slice(0, 600).text();
+    return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+async function validateBackendExportBlob(blob, format, contentType) {
+  const normalizedType = String(contentType || '').toLowerCase();
+  const expectedTypes = {
+    pdf: ['application/pdf'],
+    word: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+  };
+  const allowedTypes = expectedTypes[format] || [];
+  if (allowedTypes.length && !allowedTypes.some(type => normalizedType.includes(type))) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || `Export gagal: response bukan file ${format.toUpperCase()}`);
+  }
+
+  const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+  const isZip = header[0] === 0x50 && header[1] === 0x4b;
+  const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46 && header[4] === 0x2d;
+  if ((format === 'word' || format === 'xlsx') && !isZip) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || 'Export gagal: file Office yang diterima tidak valid.');
+  }
+  if (format === 'pdf' && !isPdf) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || 'Export gagal: file PDF yang diterima tidak valid.');
+  }
+}
+
 // ============================================================================
 // Helper Functions for Weekly Report Data Preparation
 // ============================================================================
@@ -238,6 +273,7 @@ async function generateWeeklyReportFromBackend(state, format, weeksOrWeek, optio
   }
 
   const blob = await response.blob();
+  await validateBackendExportBlob(blob, format, response.headers.get('Content-Type') || '');
 
   // Extract filename from Content-Disposition if available
   const contentDisposition = response.headers.get('Content-Disposition');
@@ -388,6 +424,7 @@ export async function generateWeeklyReport(state, format, week, options = {}) {
           }
 
           const blob = await response.blob();
+          await validateBackendExportBlob(blob, 'xlsx', response.headers.get('Content-Type') || '');
 
           // Extract filename from Content-Disposition
           const contentDisposition = response.headers.get('Content-Disposition');

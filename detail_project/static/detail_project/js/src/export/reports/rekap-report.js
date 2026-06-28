@@ -11,6 +11,28 @@ import { generatePDF, downloadPDF } from '../generators/pdf-generator.js';
 import { generateWord, downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
 
+async function readBlobTextPreview(blob) {
+  try {
+    const text = await blob.slice(0, 600).text();
+    return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+async function validateXlsxBlob(blob, contentType) {
+  const normalizedType = String(contentType || '').toLowerCase();
+  if (!normalizedType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || 'Export gagal: response bukan file XLSX');
+  }
+  const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  if (header[0] !== 0x50 || header[1] !== 0x4b) {
+    const message = await readBlobTextPreview(blob);
+    throw new Error(message || 'Export gagal: file Excel yang diterima tidak valid.');
+  }
+}
+
 /**
  * Download JSON blob as file
  * @param {Blob} blob - JSON blob
@@ -228,6 +250,7 @@ export async function generateRekapReport(state, format, options = {}) {
           }
 
           const blob = await response.blob();
+          await validateXlsxBlob(blob, response.headers.get('Content-Type') || '');
           result = {
             blob,
             metadata: {

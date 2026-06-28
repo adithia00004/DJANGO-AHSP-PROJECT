@@ -10,6 +10,7 @@ Requirements: openpyxl
 """
 
 from io import BytesIO
+import logging
 from typing import Any, Dict, List
 from decimal import Decimal
 
@@ -26,6 +27,9 @@ try:
     OPENPYXL_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     OPENPYXL_AVAILABLE = False
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_number(value, default=0.0):
@@ -1167,7 +1171,7 @@ class ExcelExporter(ConfigExporterBase):
 
         import time
         start_time = time.time()
-        print(f"[ExcelExporter] Starting professional export...")
+        logger.debug("[ExcelExporter] Starting professional export...")
 
         wb = Workbook()
         report_type = data.get('report_type', 'rekap')
@@ -1194,12 +1198,12 @@ class ExcelExporter(ConfigExporterBase):
         actual_map = {}
         
         # Extract rows from planned_pages (table_data.rows contains materialized rows)
-        print(f"[ExcelExporter] planned_pages count: {len(planned_pages)}")
+        logger.debug("[ExcelExporter] planned_pages count: %s", len(planned_pages))
         for page_idx, page in enumerate(planned_pages):
             table_data = page.get('table_data', {})
             page_rows = table_data.get('rows', [])
             headers = table_data.get('headers', [])
-            print(f"[ExcelExporter] Page {page_idx}: {len(page_rows)} rows, headers: {headers[:5]}...")
+            logger.debug("[ExcelExporter] Page %s: %s rows, headers: %s...", page_idx, len(page_rows), headers[:5])
             
             for row_idx, row in enumerate(page_rows):
                 # Row is a list [uraian, volume, satuan, week1, week2, ...]
@@ -1233,7 +1237,7 @@ class ExcelExporter(ConfigExporterBase):
                     
                     # Debug first few rows
                     if pek_id <= 3:
-                        print(f"[ExcelExporter] Row {pek_id}: uraian='{uraian[:30]}...', volume_str='{volume_str}', satuan='{satuan}'")
+                        logger.debug("[ExcelExporter] Row %s: uraian='%s...', volume_str='%s', satuan='%s'", pek_id, uraian[:30], volume_str, satuan)
                     
                     # Extract week progress (columns after satuan are weeks)
                     week_values = row[3:] if len(row) > 3 else []  # Weeks start at column 4 (index 3)
@@ -1253,7 +1257,7 @@ class ExcelExporter(ConfigExporterBase):
                             else:
                                 week_dict[week_num] = parsed_val
                         planned_map[pek_id] = week_dict
-                        print(f"[ExcelExporter] Row {pek_id} planned: {list(week_dict.items())[:3]}...")
+                        logger.debug("[ExcelExporter] Row %s planned: %s...", pek_id, list(week_dict.items())[:3])
         
         # Extract from actual_pages similarly (using same uraian matching)
         seen_actual_uraian = set()
@@ -1330,12 +1334,12 @@ class ExcelExporter(ConfigExporterBase):
             planned_map = _nest_progress_map(data.get('canonical_planned_map'))
             actual_map = _nest_progress_map(data.get('canonical_actual_map'))
 
-        print(f"[ExcelExporter] Data: {len(base_rows)} rows, {len(weekly_columns)} weeks, planned_map: {len(planned_map)}, actual_map: {len(actual_map)}")
+        logger.debug("[ExcelExporter] Data: %s rows, %s weeks, planned_map: %s, actual_map: %s", len(base_rows), len(weekly_columns), len(planned_map), len(actual_map))
 
         # Merge harga data from base_rows_with_harga (from ExportManager)
         base_rows_with_harga = data.get('base_rows_with_harga', [])
         if base_rows_with_harga:
-            print(f"[ExcelExporter] Merging {len(base_rows_with_harga)} rows with harga data...")
+            logger.debug("[ExcelExporter] Merging %s rows with harga data...", len(base_rows_with_harga))
             # Prefer stable pekerjaan_id; uraian remains a legacy fallback.
             harga_lookup = {}
             harga_lookup_by_id = {}
@@ -1356,7 +1360,7 @@ class ExcelExporter(ConfigExporterBase):
                     brow['harga_satuan'] = hdata.get('harga_satuan', 0)
                     brow['total_harga'] = hdata.get('total_harga', 0)
                     brow['volume_num'] = hdata.get('volume', brow.get('volume_num', 0))
-                    print(f"[ExcelExporter] Merged harga for: {uraian[:30]}... satuan={brow['satuan']}, harga={brow['harga_satuan']:.0f}")
+                    logger.debug("[ExcelExporter] Merged harga for: %s... satuan=%s, harga=%.0f", uraian[:30], brow['satuan'], brow['harga_satuan'])
 
         # Build sheets in order
         # 1. Input Progress-Gantt FIRST (SSOT)
@@ -1377,7 +1381,7 @@ class ExcelExporter(ConfigExporterBase):
         ws_cover = wb.create_sheet("Cover", 0)  # Insert at beginning
         self._build_cover_sheet(ws_cover, project_info, summary, kurva_ranges)
 
-        print(f"[ExcelExporter] [TIME] Workbook built in {time.time() - start_time:.2f}s")
+        logger.debug("[ExcelExporter] Workbook built in %.2fs", time.time() - start_time)
 
         # Save to response
         output = BytesIO()
@@ -1389,7 +1393,7 @@ class ExcelExporter(ConfigExporterBase):
             self.config.export_date,
         )
 
-        print(f"[ExcelExporter] [OK] Total export time: {time.time() - start_time:.2f}s")
+        logger.info("[ExcelExporter] Total export time: %.2fs", time.time() - start_time)
 
         return self._create_response(
             output.getvalue(),
@@ -1488,7 +1492,7 @@ class ExcelExporter(ConfigExporterBase):
             ws[f'D{row}'].number_format = '0.00%'
             ws[f'D{row}'].border = border
 
-        print("[ExcelExporter] Cover sheet created")
+        logger.debug("[ExcelExporter] Cover sheet created")
 
     def _build_input_progress_sheet(self, ws, rows: List[Dict], weekly_columns: List[Dict],
                                      planned_map: Dict, actual_map: Dict) -> Dict:
@@ -1677,7 +1681,7 @@ class ExcelExporter(ConfigExporterBase):
                 ws.cell(row=current_row, column=1).border = border
                 current_row += 1
 
-        print(f"[ExcelExporter] Input Progress-Gantt sheet created with {len(gantt_ranges['pekerjaan_rows'])} pekerjaan")
+        logger.debug("[ExcelExporter] Input Progress-Gantt sheet created with %s pekerjaan", len(gantt_ranges['pekerjaan_rows']))
         return gantt_ranges
 
     def _build_kurva_s_sheet(self, ws, rows: List[Dict], weekly_columns: List[Dict],
@@ -2207,16 +2211,16 @@ class ExcelExporter(ConfigExporterBase):
             chart.height = num_pekerjaan * DIMENSIONS['ROWS_PER_PEKERJAAN'] * kurva_row_height_cm
             
             # Log calculated size
-            print(f"[ExcelExporter] Chart calculated: {total_week_cols} week cols × {DIMENSIONS['WEEK_COL_WIDTH_CM']}cm = {chart.width:.1f}cm width")
-            print(f"[ExcelExporter] Chart calculated: {num_pekerjaan} pek × 2 rows × {kurva_row_height_cm:.2f}cm = {chart.height:.1f}cm height")
+            logger.debug("[ExcelExporter] Chart calculated: %s week cols x %scm = %.1fcm width", total_week_cols, DIMENSIONS['WEEK_COL_WIDTH_CM'], chart.width)
+            logger.debug("[ExcelExporter] Chart calculated: %s pek x 2 rows x %.2fcm = %.1fcm height", num_pekerjaan, kurva_row_height_cm, chart.height)
             
             # Position: starts at Week 0 column (G), at the first pekerjaan row
             chart_anchor = f'{get_column_letter(week0_col)}{first_pekerjaan_row}' if first_pekerjaan_row else 'G4'
             ws.add_chart(chart, chart_anchor)
             
-            print(f"[ExcelExporter] Chart: {total_week_cols} weeks, {num_pekerjaan} pek, anchor={chart_anchor}, size={chart.width:.1f}x{chart.height:.1f}cm")
+            logger.debug("[ExcelExporter] Chart: %s weeks, %s pek, anchor=%s, size=%.1fx%.1fcm", total_week_cols, num_pekerjaan, chart_anchor, chart.width, chart.height)
 
-        print(f"[ExcelExporter] Kurva S sheet created with {len(pekerjaan_row_data)} pekerjaan")
+        logger.debug("[ExcelExporter] Kurva S sheet created with %s pekerjaan", len(pekerjaan_row_data))
         return kurva_ranges
 
     # =========================================================================
@@ -2246,7 +2250,7 @@ class ExcelExporter(ConfigExporterBase):
         if not OPENPYXL_AVAILABLE:
             raise ImportError("openpyxl is required for Excel export")
 
-        print("[ExcelExporter] Starting Monthly Professional export...")
+        logger.debug("[ExcelExporter] Starting Monthly Professional export...")
 
         month = data.get('month', 1)
         project_info = data.get('project_info', {})
@@ -2281,20 +2285,20 @@ class ExcelExporter(ConfigExporterBase):
                     actual_map[pek_id] = {}
                 actual_map[pek_id][week_num] = float(val)
 
-        print(f"[ExcelExporter] Monthly Month {month}: {len(base_rows)} rows, {len(all_weekly_columns)} total weeks, max week {cumulative_end_week}")
-        print(f"[ExcelExporter] planned_map_str type: {type(planned_map_str)}, len: {len(planned_map_str)}")
-        print(f"[ExcelExporter] planned_map_str keys sample: {list(planned_map_str.keys())[:10] if planned_map_str else 'EMPTY'}")
+        logger.debug("[ExcelExporter] Monthly Month %s: %s rows, %s total weeks, max week %s", month, len(base_rows), len(all_weekly_columns), cumulative_end_week)
+        logger.debug("[ExcelExporter] planned_map_str type: %s, len: %s", type(planned_map_str), len(planned_map_str))
+        logger.debug("[ExcelExporter] planned_map_str keys sample: %s", list(planned_map_str.keys())[:10] if planned_map_str else 'EMPTY')
         if planned_map_str:
             sample_key = list(planned_map_str.keys())[0] if planned_map_str else None
-            print(f"[ExcelExporter] Sample: key={sample_key}, value={planned_map_str.get(sample_key) if sample_key else None}")
-        print(f"[ExcelExporter] planned_map parsed: {len(planned_map)} pekerjaan, total entries: {sum(len(v) for v in planned_map.values())}")
-        print(f"[ExcelExporter] actual_map parsed: {len(actual_map)} pekerjaan, total entries: {sum(len(v) for v in actual_map.values())}")
-        print(f"[ExcelExporter] base_rows sample: {base_rows[0] if base_rows else 'EMPTY'}")
+            logger.debug("[ExcelExporter] Sample: key=%s, value=%s", sample_key, planned_map_str.get(sample_key) if sample_key else None)
+        logger.debug("[ExcelExporter] planned_map parsed: %s pekerjaan, total entries: %s", len(planned_map), sum(len(v) for v in planned_map.values()))
+        logger.debug("[ExcelExporter] actual_map parsed: %s pekerjaan, total entries: %s", len(actual_map), sum(len(v) for v in actual_map.values()))
+        logger.debug("[ExcelExporter] base_rows sample: %s", base_rows[0] if base_rows else 'EMPTY')
 
         # Merge harga data from base_rows_with_harga (same as rekap)
         base_rows_with_harga = data.get('base_rows_with_harga', [])
         if base_rows_with_harga:
-            print(f"[ExcelExporter] Monthly: Merging {len(base_rows_with_harga)} rows with harga data...")
+            logger.debug("[ExcelExporter] Monthly: Merging %s rows with harga data...", len(base_rows_with_harga))
             harga_lookup = {}
             harga_lookup_by_id = {}
             for hrow in base_rows_with_harga:
@@ -2315,9 +2319,9 @@ class ExcelExporter(ConfigExporterBase):
                     brow['harga_satuan'] = hdata.get('harga_satuan', 0)
                     brow['total_harga'] = hdata.get('total_harga', 0)
                     brow['volume'] = hdata.get('volume', brow.get('volume', 0))
-                    print(f"[ExcelExporter] Monthly: Merged harga for: {uraian[:30]}... vol={brow['volume']}, harga={brow['harga_satuan']}")
+                    logger.debug("[ExcelExporter] Monthly: Merged harga for: %s... vol=%s, harga=%s", uraian[:30], brow['volume'], brow['harga_satuan'])
         else:
-            print("[ExcelExporter] Monthly: No base_rows_with_harga found - using existing data")
+            logger.debug("[ExcelExporter] Monthly: No base_rows_with_harga found - using existing data")
 
         # Create workbook
         wb = Workbook()
@@ -2344,7 +2348,7 @@ class ExcelExporter(ConfigExporterBase):
         if not months_list:
             months_list = [month]
         
-        print(f"[ExcelExporter] Multi-month export: {len(months_list)} months: {months_list}")
+        logger.debug("[ExcelExporter] Multi-month export: %s months: %s", len(months_list), months_list)
         
         for m in sorted(months_list):
             m_cumulative_end_week = m * 4  # Each month covers 4 weeks
@@ -2378,7 +2382,7 @@ class ExcelExporter(ConfigExporterBase):
                 max_week_num=m_cumulative_end_week
             )
             
-            print(f"[ExcelExporter] Created sheets for Month {m}: Rincian Progress M{m}, Kurva S M{m}")
+            logger.debug("[ExcelExporter] Created sheets for Month %s: Rincian Progress M%s, Kurva S M%s", m, m, m)
 
         # Save to buffer
         buffer = BytesIO()
@@ -2393,7 +2397,7 @@ class ExcelExporter(ConfigExporterBase):
             self.config.export_date,
         )
 
-        print(f"[ExcelExporter] Monthly export complete: {filename}")
+        logger.info("[ExcelExporter] Monthly export complete: %s", filename)
         return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     def _build_monthly_detail_sheet(self, ws, month: int, project_info: Dict, 
@@ -2697,7 +2701,7 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'G{current_row}'] = '(Nama Pelaksana)'
         ws[f'G{current_row}'].alignment = Alignment(horizontal='center')
 
-        print(f"[ExcelExporter] Monthly Detail sheet created: {len(hierarchy_progress)} rows + pengesahan")
+        logger.debug("[ExcelExporter] Monthly Detail sheet created: %s rows + pengesahan", len(hierarchy_progress))
 
     def _build_pengesahan_sheet(self, ws, month: int, project_info: Dict):
         """
@@ -2792,7 +2796,7 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'E{current_row}'] = '(Nama Pelaksana)'
         ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
 
-        print(f"[ExcelExporter] Pengesahan sheet created")
+        logger.debug("[ExcelExporter] Pengesahan sheet created")
 
     def _build_ssot_sheet(self, ws, project_info: Dict, base_rows: List[Dict], 
                           weekly_columns: List[Dict], planned_map: Dict, actual_map: Dict) -> Dict:
@@ -2923,8 +2927,8 @@ class ExcelExporter(ConfigExporterBase):
             if item_type == 'pekerjaan':
                 # Debug: Show first pekerjaan item structure
                 if pekerjaan_counter == 0:
-                    print(f"[SSOT Debug] First pekerjaan item keys: {list(item.keys())}")
-                    print(f"[SSOT Debug] First pekerjaan item: {item}")
+                    logger.debug("[SSOT Debug] First pekerjaan item keys: %s", list(item.keys()))
+                    logger.debug("[SSOT Debug] First pekerjaan item: %s", item)
                 
                 # ==========================================
                 # PEKERJAAN: 2-row structure (planned/actual)
@@ -2997,10 +3001,10 @@ class ExcelExporter(ConfigExporterBase):
 
                 # Debug: First 3 pekerjaan only
                 if pekerjaan_counter <= 3:
-                    print(f"[SSOT Debug] pek #{pekerjaan_counter}: item_id={item_id} (type={type(item_id).__name__})")
-                    print(f"[SSOT Debug]   planned_map keys: {list(planned_map.keys())[:5]}")
-                    print(f"[SSOT Debug]   pek_planned found: {bool(pek_planned)}, entries: {len(pek_planned)}")
-                    print(f"[SSOT Debug]   week_col_map keys sample: {list(week_col_map.keys())[:5]}")
+                    logger.debug("[SSOT Debug] pek #%s: item_id=%s (type=%s)", pekerjaan_counter, item_id, type(item_id).__name__)
+                    logger.debug("[SSOT Debug] planned_map keys: %s", list(planned_map.keys())[:5])
+                    logger.debug("[SSOT Debug] pek_planned found: %s, entries: %s", bool(pek_planned), len(pek_planned))
+                    logger.debug("[SSOT Debug] week_col_map keys sample: %s", list(week_col_map.keys())[:5])
                 
                 for week_num, col_letter in week_col_map.items():
                     col_idx = num_fixed_cols + 1 + list(week_col_map.keys()).index(week_num)
@@ -3318,7 +3322,7 @@ class ExcelExporter(ConfigExporterBase):
             },
         }
 
-        print(f"[ExcelExporter] SSOT Data Master sheet created: {len(pekerjaan_rows)} rows, {len(week_col_map)} weeks")
+        logger.debug("[ExcelExporter] SSOT Data Master sheet created: %s rows, %s weeks", len(pekerjaan_rows), len(week_col_map))
         return ssot_ranges
 
     def _build_monthly_rincian_sheet(self, ws, month: int, ssot_ranges: Dict, 
@@ -3685,11 +3689,269 @@ class ExcelExporter(ConfigExporterBase):
         ws.column_dimensions['I'].width = 11
         ws.column_dimensions['J'].width = 11
         
-        print(f"[ExcelExporter] Rincian Progress M{month} sheet created: {len(pekerjaan_rows)} rows")
+        logger.debug("[ExcelExporter] Rincian Progress M%s sheet created: %s rows", month, len(pekerjaan_rows))
 
     # =========================================================================
     # PROFESSIONAL EXPORT FOR LAPORAN MINGGUAN (WEEKLY REPORT)
     # =========================================================================
+
+    def export_daily_professional(self, data: Dict[str, Any]):
+        """
+        Export print-ready A4 XLSX for daily field reports.
+
+        This report intentionally stays lightweight: identity, previous-week
+        progress, scheduled work list, manual photo placeholders, notes, and
+        signatures. It does not expose volume, bobot, pricing, or daily progress.
+        """
+        if not OPENPYXL_AVAILABLE:
+            raise ImportError("openpyxl is required for Excel export")
+
+        logger.debug("[ExcelExporter] Starting Daily Professional export...")
+
+        project_info = data.get('project_info', {})
+        sheets = data.get('sheets') or []
+        if not sheets:
+            raise ValueError("Tidak ada periode laporan harian untuk diexport.")
+
+        wb = Workbook()
+        wb.remove(wb.active)
+
+        for sheet_data in sheets:
+            ws_daily = wb.create_sheet(sheet_data.get('sheet_name') or 'Laporan Harian')
+            self._build_daily_rincian_sheet(ws_daily, sheet_data, project_info)
+            logger.debug("[ExcelExporter] Created sheet: %s", ws_daily.title)
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            project_info.get('nama') or self.config.project_name,
+            "Laporan Harian",
+            "xlsx",
+            self.config.export_date,
+        )
+
+        logger.info("[ExcelExporter] Daily export complete: %s", filename)
+        return self._create_response(
+            buffer.getvalue(),
+            filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    def _parse_weekly_progress_map(self, raw_map: Dict[str, Any]) -> Dict[int, Dict[int, float]]:
+        parsed: Dict[int, Dict[int, float]] = {}
+        for key, val in (raw_map or {}).items():
+            parts = str(key).split('-')
+            if len(parts) != 2:
+                continue
+            try:
+                pek_id = int(parts[0])
+                week_num = int(parts[1])
+                parsed.setdefault(pek_id, {})[week_num] = float(val or 0)
+            except (TypeError, ValueError):
+                continue
+        return parsed
+
+    def _merge_harga_to_base_rows(self, base_rows: List[Dict[str, Any]], harga_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not harga_rows:
+            return base_rows
+
+        by_id = {row.get('pekerjaan_id'): row for row in harga_rows if row.get('pekerjaan_id')}
+        by_name = {row.get('uraian'): row for row in harga_rows if row.get('uraian')}
+
+        for row in base_rows:
+            if row.get('type') != 'pekerjaan':
+                continue
+            hdata = by_id.get(row.get('pekerjaan_id') or row.get('id')) or by_name.get(row.get('uraian') or row.get('name'))
+            if not hdata:
+                continue
+            row['satuan'] = hdata.get('satuan', row.get('satuan', '-'))
+            row['harga_satuan'] = hdata.get('harga_satuan', 0)
+            row['total_harga'] = hdata.get('total_harga', 0)
+            row['volume'] = hdata.get('volume', row.get('volume', 0))
+        return base_rows
+
+    def _build_daily_rincian_sheet(self, ws, sheet_data: Dict[str, Any], project_info: Dict[str, Any]):
+        from openpyxl.worksheet.page import PageMargins
+
+        thin = Side(style='thin', color='9CA3AF')
+        medium = Side(style='medium', color='374151')
+        border = Border(top=thin, left=thin, right=thin, bottom=thin)
+        outer = Border(top=medium, left=medium, right=medium, bottom=medium)
+        blue = '1F4E78'
+        sub_blue = '4472C4'
+        light_blue = 'D9EAF7'
+        light_gray = 'F3F4F6'
+        photo_fill = 'F9FAFB'
+
+        report_date = sheet_data.get('date')
+        week_number = sheet_data.get('week_number') or 1
+        day_number = sheet_data.get('day_number') or 1
+        work_items = sheet_data.get('work_items') or []
+        previous = sheet_data.get('previous_progress') or {}
+
+        ws.sheet_view.showGridLines = False
+        ws.freeze_panes = 'A17'
+        ws.page_setup.orientation = 'portrait'
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35)
+        ws.print_area = 'A1:L67'
+
+        widths = [5, 13, 13, 14, 14, 14, 14, 16, 15, 15, 15, 15]
+        for idx, width in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+        for row in range(1, 68):
+            ws.row_dimensions[row].height = 20
+
+        def set_border(cell_range, style_border=border):
+            for row in ws[cell_range]:
+                for cell in row:
+                    cell.border = style_border
+
+        def merge(cell_range, value='', font=None, fill=None, alignment=None, style_border=border):
+            start_cell = cell_range.split(':')[0]
+            end_cell = cell_range.split(':')[-1]
+            if start_cell != end_cell:
+                ws.merge_cells(cell_range)
+            cell = ws[cell_range.split(':')[0]]
+            cell.value = value
+            if font:
+                cell.font = font
+            if fill:
+                cell.fill = fill
+            if alignment:
+                cell.alignment = alignment
+            if style_border:
+                set_border(cell_range, style_border)
+            return cell
+
+        def label_value(row, label, value, left='A', label_end='C', value_start='D', value_end='H'):
+            merge(f'{left}{row}:{label_end}{row}', label, Font(bold=True, size=9),
+                  PatternFill('solid', fgColor=light_gray), Alignment(vertical='center'), border)
+            merge(f'{value_start}{row}:{value_end}{row}', value or '-', Font(size=9),
+                  None, Alignment(vertical='center', wrap_text=True), border)
+
+        def fmt_date(value):
+            if not value:
+                return '-'
+            month_labels = {
+                1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MEI', 6: 'JUN',
+                7: 'JUL', 8: 'AGU', 9: 'SEP', 10: 'OKT', 11: 'NOV', 12: 'DES',
+            }
+            return f"{value.day:02d} {month_labels.get(value.month, value.strftime('%b').upper())} {value.year}"
+
+        def progress_value(value):
+            if value is None:
+                return '-'
+            return float(value)
+
+        merge('A1:L1', 'LAPORAN HARIAN PROYEK',
+              Font(bold=True, size=16, color='FFFFFF'), PatternFill('solid', fgColor=blue),
+              Alignment(horizontal='center', vertical='center'), outer)
+        ws.row_dimensions[1].height = 28
+        merge('A2:L2', f"Tanggal Laporan: {fmt_date(report_date)}    |    Minggu {week_number}    |    Hari ke-{day_number}",
+              Font(bold=True, size=10), PatternFill('solid', fgColor=light_blue),
+              Alignment(horizontal='center', vertical='center'), border)
+
+        merge('A4:L4', 'IDENTITAS PROYEK', Font(bold=True, size=11, color='FFFFFF'),
+              PatternFill('solid', fgColor=blue), Alignment(horizontal='left'), border)
+        label_value(5, 'Nama Proyek', project_info.get('nama') or self.config.project_name)
+        label_value(6, 'Lokasi Proyek', project_info.get('lokasi') or self.config.location)
+        label_value(7, 'Nomor Kontrak / Kode', self.config.project_code)
+        label_value(8, 'Nama Kontraktor', project_info.get('nama_kontraktor') or project_info.get('kontraktor'))
+        label_value(9, 'Konsultan Pengawas', project_info.get('nama_konsultan_pengawas') or project_info.get('konsultan_pengawas'))
+        label_value(10, 'Owner / Instansi', project_info.get('nama_client') or project_info.get('pemilik') or project_info.get('owner'))
+
+        merge('I5:J5', 'Cuaca Pagi', Font(bold=True, size=9), PatternFill('solid', fgColor=light_gray), None, border)
+        merge('K5:L5', '', Font(size=9), None, None, border)
+        merge('I6:J6', 'Cuaca Siang', Font(bold=True, size=9), PatternFill('solid', fgColor=light_gray), None, border)
+        merge('K6:L6', '', Font(size=9), None, None, border)
+        merge('I7:J7', 'Cuaca Sore', Font(bold=True, size=9), PatternFill('solid', fgColor=light_gray), None, border)
+        merge('K7:L7', '', Font(size=9), None, None, border)
+        merge('I8:L10', 'Diisi manual oleh user.', Font(italic=True, size=9, color='6B7280'),
+              None, Alignment(wrap_text=True, vertical='top'), border)
+
+        merge('A12:L12', 'PROGRESS MINGGU SEBELUMNYA', Font(bold=True, size=11, color='FFFFFF'),
+              PatternFill('solid', fgColor=blue), Alignment(horizontal='left'), border)
+        for rng, text in (('A13:D13', 'Rencana'), ('E13:H13', 'Realisasi'), ('I13:L13', 'Deviasi')):
+            merge(rng, text, Font(bold=True, size=9, color='FFFFFF'), PatternFill('solid', fgColor=sub_blue),
+                  Alignment(horizontal='center'), border)
+        for rng, value in (
+            ('A14:D14', progress_value(previous.get('planned'))),
+            ('E14:H14', progress_value(previous.get('actual'))),
+            ('I14:L14', progress_value(previous.get('deviation'))),
+        ):
+            cell = merge(rng, value, Font(bold=True, size=10), None, Alignment(horizontal='center'), border)
+            if isinstance(value, float):
+                cell.number_format = '0.00%'
+
+        merge('A16:L16', 'PEKERJAAN YANG DILAKSANAKAN HARI INI', Font(bold=True, size=11, color='FFFFFF'),
+              PatternFill('solid', fgColor=blue), Alignment(horizontal='left'), border)
+        for rng, text in (('A17:A17', 'No'), ('B17:G17', 'Uraian Pekerjaan'), ('H17:J17', 'Lokasi / Area'), ('K17:L17', 'Keterangan')):
+            merge(rng, text, Font(bold=True, size=9, color='FFFFFF'), PatternFill('solid', fgColor=sub_blue),
+                  Alignment(horizontal='center', vertical='center', wrap_text=True), border)
+
+        row_idx = 18
+        visible_items = work_items[:8]
+        if not visible_items:
+            visible_items = [{'uraian': 'Tidak ada pekerjaan terjadwal pada periode ini.', 'lokasi': '', 'keterangan': ''}]
+        for idx, item in enumerate(visible_items, 1):
+            ws[f'A{row_idx}'] = idx
+            ws[f'A{row_idx}'].alignment = Alignment(horizontal='center', vertical='top')
+            ws[f'A{row_idx}'].border = border
+            merge(f'B{row_idx}:G{row_idx}', item.get('uraian', ''), Font(size=9), None,
+                  Alignment(wrap_text=True, vertical='top'), border)
+            merge(f'H{row_idx}:J{row_idx}', item.get('lokasi', ''), Font(size=9), None,
+                  Alignment(wrap_text=True, vertical='top'), border)
+            merge(f'K{row_idx}:L{row_idx}', item.get('keterangan', ''), Font(size=9), None,
+                  Alignment(wrap_text=True, vertical='top'), border)
+            ws.row_dimensions[row_idx].height = 28
+            row_idx += 1
+        while row_idx <= 25:
+            ws[f'A{row_idx}'].border = border
+            merge(f'B{row_idx}:G{row_idx}', '', style_border=border)
+            merge(f'H{row_idx}:J{row_idx}', '', style_border=border)
+            merge(f'K{row_idx}:L{row_idx}', '', style_border=border)
+            ws.row_dimensions[row_idx].height = 28
+            row_idx += 1
+
+        merge('A27:L27', 'DOKUMENTASI PEKERJAAN', Font(bold=True, size=11, color='FFFFFF'),
+              PatternFill('solid', fgColor=blue), Alignment(horizontal='left'), border)
+        for rng, label in (
+            ('A28:F39', 'Foto 1'), ('G28:L39', 'Foto 2'),
+            ('A41:F52', 'Foto 3'), ('G41:L52', 'Foto 4'),
+        ):
+            merge(rng, f'{label}\n\nPLACEHOLDER FOTO\nInsert picture manual di area ini',
+                  Font(bold=True, size=11, color='6B7280'), PatternFill('solid', fgColor=photo_fill),
+                  Alignment(horizontal='center', vertical='center', wrap_text=True), outer)
+        for rng, text in (
+            ('A40:F40', 'Keterangan foto 1'), ('G40:L40', 'Keterangan foto 2'),
+            ('A53:F53', 'Keterangan foto 3'), ('G53:L53', 'Keterangan foto 4'),
+        ):
+            merge(rng, text, Font(size=9, italic=True, color='6B7280'), None,
+                  Alignment(horizontal='center'), border)
+
+        merge('A55:L55', 'HAMBATAN / KENDALA / KETERANGAN', Font(bold=True, size=11, color='FFFFFF'),
+              PatternFill('solid', fgColor=blue), Alignment(horizontal='left'), border)
+        merge('A56:L60', '', Font(size=9), None, Alignment(wrap_text=True, vertical='top'), border)
+
+        merge('A62:D62', 'Dibuat oleh,', Font(size=9), None, Alignment(horizontal='center'), border)
+        merge('E62:H62', 'Diperiksa oleh,', Font(size=9), None, Alignment(horizontal='center'), border)
+        merge('I62:L62', 'Disetujui oleh,', Font(size=9), None, Alignment(horizontal='center'), border)
+        merge('A63:D66', '', style_border=border)
+        merge('E63:H66', '', style_border=border)
+        merge('I63:L66', '', style_border=border)
+        merge('A67:D67', '(Site Engineer)', Font(size=9), None, Alignment(horizontal='center'), border)
+        merge('E67:H67', '(Konsultan Pengawas)', Font(size=9), None, Alignment(horizontal='center'), border)
+        merge('I67:L67', '(Owner / PPK)', Font(size=9), None, Alignment(horizontal='center'), border)
+
+        logger.debug("[ExcelExporter] Daily sheet %s created: %s pekerjaan", ws.title, len(work_items))
 
     def export_weekly_professional(self, data: Dict[str, Any]):
         """
@@ -3713,7 +3975,7 @@ class ExcelExporter(ConfigExporterBase):
         if not OPENPYXL_AVAILABLE:
             raise ImportError("openpyxl is required for Excel export")
 
-        print("[ExcelExporter] Starting Weekly Professional export...")
+        logger.debug("[ExcelExporter] Starting Weekly Professional export...")
 
         week = data.get('week', 1)
         weeks_list = data.get('weeks', [week])
@@ -3748,13 +4010,13 @@ class ExcelExporter(ConfigExporterBase):
                     actual_map[pek_id] = {}
                 actual_map[pek_id][week_num] = float(val)
 
-        print(f"[ExcelExporter] Weekly export: {len(weeks_list)} weeks: {weeks_list}")
-        print(f"[ExcelExporter] Weekly: {len(base_rows)} rows, {len(all_weekly_columns)} total weeks")
+        logger.debug("[ExcelExporter] Weekly export: %s weeks: %s", len(weeks_list), weeks_list)
+        logger.debug("[ExcelExporter] Weekly: %s rows, %s total weeks", len(base_rows), len(all_weekly_columns))
 
         # Merge harga data from base_rows_with_harga
         base_rows_with_harga = data.get('base_rows_with_harga', [])
         if base_rows_with_harga:
-            print(f"[ExcelExporter] Weekly: Merging {len(base_rows_with_harga)} rows with harga data...")
+            logger.debug("[ExcelExporter] Weekly: Merging %s rows with harga data...", len(base_rows_with_harga))
             harga_lookup = {}
             harga_lookup_by_id = {}
             for hrow in base_rows_with_harga:
@@ -3787,7 +4049,7 @@ class ExcelExporter(ConfigExporterBase):
             ws_ssot, project_info, base_rows, all_weekly_columns, planned_map, actual_map
         )
         
-        print(f"[ExcelExporter] Multi-week export: {len(weeks_list)} weeks: {weeks_list}")
+        logger.debug("[ExcelExporter] Multi-week export: %s weeks: %s", len(weeks_list), weeks_list)
         
         # Get executive summary from data
         executive_summary = data.get('executive_summary', {})
@@ -3804,7 +4066,7 @@ class ExcelExporter(ConfigExporterBase):
                 project_info=project_info,
                 executive_summary=executive_summary
             )
-            print(f"[ExcelExporter] Created sheet: Rincian Progress W{w}")
+            logger.debug("[ExcelExporter] Created sheet: Rincian Progress W%s", w)
 
         # Save to buffer
         buffer = BytesIO()
@@ -3819,7 +4081,7 @@ class ExcelExporter(ConfigExporterBase):
             self.config.export_date,
         )
 
-        print(f"[ExcelExporter] Weekly export complete: {filename}")
+        logger.info("[ExcelExporter] Weekly export complete: %s", filename)
         return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     def _build_weekly_rincian_sheet(self, ws, week: int, ssot_ranges: Dict, project_info: Dict,
@@ -4153,4 +4415,4 @@ class ExcelExporter(ConfigExporterBase):
         ws.column_dimensions['I'].width = 13
         ws.column_dimensions['J'].width = 13
         
-        print(f"[ExcelExporter] Rincian Progress W{week} sheet created: {len(pekerjaan_rows)} rows")
+        logger.debug("[ExcelExporter] Rincian Progress W%s sheet created: %s rows", week, len(pekerjaan_rows))

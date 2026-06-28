@@ -23,6 +23,107 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/gantt-chart-redesign.css' %}">
 <!-- Fullscreen Mode -->
 <link rel="stylesheet" href="{% static 'detail_project/css/fullscreen-mode.css' %}">
+<style>
+  .export-modal-section {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    padding: 14px;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+  }
+
+  .export-modal-section + .export-modal-section {
+    margin-top: 14px;
+  }
+
+  .export-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--bs-body-color);
+  }
+
+  .export-report-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .export-report-option {
+    min-height: 112px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+  }
+
+  .export-report-option:hover {
+    border-color: rgba(var(--bs-primary-rgb), .45);
+    background: rgba(var(--bs-primary-rgb), .06);
+  }
+
+  .export-report-option:has(input:checked) {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), .10);
+    box-shadow: 0 0 0 1px rgba(var(--bs-primary-rgb), .22);
+  }
+
+  .export-report-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-weight: 700;
+    color: var(--bs-body-color);
+  }
+
+  .export-report-option small {
+    display: block;
+    color: var(--bs-secondary-color);
+    line-height: 1.35;
+  }
+
+  .export-period-panel {
+    border: 1px solid rgba(var(--bs-primary-rgb), .25);
+    border-radius: 8px;
+    padding: 12px;
+    background: rgba(var(--bs-primary-rgb), .05);
+  }
+
+  .export-preview-box {
+    border: 1px solid rgba(var(--bs-info-rgb), .35);
+    border-radius: 8px;
+    background: rgba(var(--bs-info-rgb), .10);
+  }
+
+  [data-bs-theme="dark"] .export-report-option:hover {
+    background: rgba(var(--bs-primary-rgb), .14);
+  }
+
+  [data-bs-theme="dark"] .export-report-option:has(input:checked) {
+    background: rgba(var(--bs-primary-rgb), .18);
+  }
+
+  [data-bs-theme="dark"] .export-period-panel {
+    background: rgba(var(--bs-primary-rgb), .12);
+  }
+
+  [data-bs-theme="dark"] .export-preview-box {
+    background: rgba(var(--bs-info-rgb), .14);
+  }
+
+  @media (max-width: 767.98px) {
+    .export-report-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
 {% endblock %}
 
 {% block dp_content %}
@@ -339,118 +440,120 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- Report Type Selection (hidden for JSON) -->
-        <div class="mb-4" id="reportTypeSection">
-          <label class="form-label fw-bold">
-            <i class="bi bi-file-earmark-text"></i> Jenis Laporan
-          </label>
-          <div class="list-group">
-            <label class="list-group-item list-group-item-action d-flex align-items-start">
-              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="full"
-                id="reportTypeFull" checked>
-              <div class="flex-grow-1">
-                <h6 class="mb-1 fw-bold">A. Rekap Laporan (Full Report)</h6>
-                <small class="text-muted">
-                  Laporan lengkap semua minggu:<br>
-                  • Grid Views Full (Weekly Mode)<br>
-                  • Gantt Chart Full<br>
-                  • Kurva S Full (Weekly Granularity)
-                </small>
+        <div class="export-modal-section" id="reportTypeSection">
+          <div class="export-section-title">
+            <i class="bi bi-file-earmark-text"></i>
+            <span>Jenis laporan</span>
+          </div>
+          <div class="export-report-grid">
+            <label class="export-report-option">
+              <div class="d-flex align-items-start gap-2">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="reportType" value="full"
+                  id="reportTypeFull" checked>
+                <div>
+                  <div class="export-report-title">
+                    <i class="bi bi-journal-text"></i>
+                    <span>Rekap laporan</span>
+                  </div>
+                  <small>Ringkasan lengkap jadwal, progress, Gantt, dan Kurva S untuk seluruh periode.</small>
+                </div>
               </div>
             </label>
-            <label class="list-group-item list-group-item-action d-flex align-items-start">
-              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="monthly"
-                id="reportTypeMonthly">
-              <div class="flex-grow-1">
-                <h6 class="mb-1 fw-bold">B. Laporan Bulanan (Monthly Report)</h6>
-                <small class="text-muted">
-                  Progress per bulan (4 minggu agregasi):<br>
-                  • Grid Bulanan (M1, M2, M3...)<br>
-                  • Kurva S Bulanan (Month Boundaries)
-                </small>
+            <label class="export-report-option">
+              <div class="d-flex align-items-start gap-2">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="reportType" value="monthly"
+                  id="reportTypeMonthly">
+                <div>
+                  <div class="export-report-title">
+                    <i class="bi bi-calendar3"></i>
+                    <span>Laporan bulanan</span>
+                  </div>
+                  <small>Progress per bulan berdasarkan kelompok 4 minggu.</small>
+                </div>
               </div>
             </label>
-            <label class="list-group-item list-group-item-action d-flex align-items-start">
-              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="weekly"
-                id="reportTypeWeekly">
-              <div class="flex-grow-1">
-                <h6 class="mb-1 fw-bold">C. Laporan Mingguan (Weekly Report)</h6>
-                <small class="text-muted">
-                  Progress per minggu dengan rentang tanggal:<br>
-                  • Grid Mingguan (W1, W2, W3... dengan date ranges)<br>
-                  • Kurva S Mingguan (Weekly Granularity)
-                </small>
+            <label class="export-report-option">
+              <div class="d-flex align-items-start gap-2">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="reportType" value="weekly"
+                  id="reportTypeWeekly">
+                <div>
+                  <div class="export-report-title">
+                    <i class="bi bi-calendar-week"></i>
+                    <span>Laporan mingguan</span>
+                  </div>
+                  <small>Progress satu atau beberapa minggu dengan pembanding periode sebelumnya.</small>
+                </div>
+              </div>
+            </label>
+            <label class="export-report-option">
+              <div class="d-flex align-items-start gap-2">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="reportType" value="daily"
+                  id="reportTypeDaily">
+                <div>
+                  <div class="export-report-title">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>Laporan harian</span>
+                  </div>
+                  <small>Template DOCX A4 berisi identitas proyek, cuaca, progress minggu sebelumnya, daftar pekerjaan, dokumentasi, dan keterangan.</small>
+                </div>
               </div>
             </label>
           </div>
         </div>
 
-        <!-- Format Selection -->
-        <div class="mb-4">
-          <label class="form-label fw-bold">
-            <i class="bi bi-filetype-pdf"></i> Format Export
-          </label>
+        <div class="export-modal-section">
+          <div class="export-section-title">
+            <i class="bi bi-filetype-pdf"></i>
+            <span>Format file</span>
+          </div>
           <div class="btn-group w-100" role="group" aria-label="Export format selection">
             <input type="radio" class="btn-check" name="exportFormat" id="formatPdf" value="pdf" checked>
             <label class="btn btn-outline-danger" for="formatPdf">
               <i class="bi bi-file-earmark-pdf"></i> PDF
             </label>
 
-            <!-- Word format disabled due to performance issues
             <input type="radio" class="btn-check" name="exportFormat" id="formatWord" value="word">
             <label class="btn btn-outline-primary" for="formatWord">
               <i class="bi bi-file-earmark-word"></i> Word
             </label>
-            -->
 
             <input type="radio" class="btn-check" name="exportFormat" id="formatExcel" value="xlsx">
             <label class="btn btn-outline-success" for="formatExcel">
               <i class="bi bi-file-earmark-excel"></i> Excel
             </label>
-            {# WP-B5 inc-B5d (B-2): JSON bukan format report — radio dihapus.
-               Paket data project (termasuk jadwal) lewat project_backup. #}
           </div>
         </div>
 
-        <!-- Toggle Button for Advanced Options -->
-        <div class="mb-3">
-          <button class="btn btn-sm btn-outline-secondary w-100" type="button" data-bs-toggle="collapse"
-            data-bs-target="#advancedExportOptions" aria-expanded="false" aria-controls="advancedExportOptions">
-            <i class="bi bi-chevron-down me-1"></i>
-            <span>Tampilkan Detail</span>
-          </button>
-        </div>
-
         <!-- Collapsible Advanced Options -->
-        <div class="collapse" id="advancedExportOptions">
-          <!-- Professional Report Format (hidden for JSON) -->
-          <div class="mb-4" id="professionalFormatSection">
-            <label class="form-label fw-bold">
-              <i class="bi bi-file-earmark-richtext"></i> Format Laporan
-            </label>
+        <div id="advancedExportOptions">
+          <div class="export-modal-section" id="professionalFormatSection">
+            <div class="export-section-title">
+              <i class="bi bi-file-earmark-richtext"></i>
+              <span>Susunan dokumen</span>
+            </div>
             <!-- Hidden input - professional format is always enabled for PDF/Word -->
             <input type="hidden" id="useProfessionalFormat" value="true">
             <div class="alert alert-success py-2 px-3 small mb-0">
               <i class="bi bi-check-circle-fill text-success"></i>
-              <strong>Laporan Tertulis Profesional</strong>
+              <strong>Format laporan resmi</strong>
               <small class="text-muted d-block mt-1">
-                Format resmi dengan Cover Page, Ringkasan Eksekutif, Grid Terpisah (Rencana vs Realisasi), dan Lembar
-                Pengesahan.
+                PDF memakai susunan laporan lengkap dengan cover, ringkasan, grid progress, chart, dan lembar pengesahan.
+                Laporan harian memakai template DOCX A4 tersendiri.
               </small>
             </div>
             <div class="alert alert-warning mt-2 py-2 px-3 small" id="professionalFormatNote" style="display: none;">
               <i class="bi bi-info-circle"></i>
-              Format profesional hanya tersedia untuk <strong>PDF</strong>.
-              Untuk XLSX/JSON, akan menggunakan format data tabel standar.
+              Format Word khusus aktif untuk laporan harian. Format Excel memakai template spreadsheet sesuai jenis laporan yang dipilih.
             </div>
           </div>
 
 
           <!-- Period Selection for Monthly/Weekly (visible when using Professional + Monthly/Weekly) -->
-          <div class="mb-4" id="periodSelectionSection" style="display: none;">
-            <label class="form-label fw-bold">
-              <i class="bi bi-calendar-range"></i> Pilih Periode
-            </label>
+          <div class="export-modal-section" id="periodSelectionSection" style="display: none;">
+            <div class="export-section-title">
+              <i class="bi bi-calendar-range"></i>
+              <span>Periode export</span>
+            </div>
 
             <!-- Single Period Input (for weekly) -->
             <div id="singlePeriodInput" class="row g-2">
@@ -476,7 +579,7 @@
               </div>
               <!-- Scrollable container for dynamic month checkboxes -->
               <div class="month-checkbox-grid d-flex flex-wrap gap-2" id="monthCheckboxGrid"
-                style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
+                style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid var(--bs-border-color); border-radius: 6px; background: var(--bs-body-bg);">
                 <!-- Will be dynamically populated by initializeMonthCheckboxes() -->
                 <span class="text-muted small">Loading months...</span>
               </div>
@@ -498,7 +601,7 @@
               </div>
               <!-- Scrollable container for dynamic week checkboxes -->
               <div class="week-checkbox-grid d-flex flex-wrap gap-2" id="weekCheckboxGrid"
-                style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
+                style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid var(--bs-border-color); border-radius: 6px; background: var(--bs-body-bg);">
                 <!-- Will be dynamically populated by initializeWeekCheckboxes() -->
                 <span class="text-muted small">Loading weeks...</span>
               </div>
@@ -507,25 +610,77 @@
                 minggu digabung dalam satu PDF.
               </small>
             </div>
+
+            <!-- Multi-Day Selection (for daily DOCX only) -->
+            <div class="export-period-panel" id="multiDayInput" style="display: none;">
+              <label class="form-label small text-muted mb-2">Mode periode laporan harian</label>
+              <div class="btn-group w-100 mb-3" role="group" aria-label="Mode periode laporan harian">
+                <input type="radio" class="btn-check" name="dailyExportMode" id="dailyModeDay" value="day" checked>
+                <label class="btn btn-outline-success" for="dailyModeDay">Harian</label>
+
+                <input type="radio" class="btn-check" name="dailyExportMode" id="dailyModeWeek" value="week">
+                <label class="btn btn-outline-success" for="dailyModeWeek">Mingguan</label>
+
+                <input type="radio" class="btn-check" name="dailyExportMode" id="dailyModeMonth" value="month">
+                <label class="btn btn-outline-success" for="dailyModeMonth">Bulanan (4 minggu)</label>
+              </div>
+              <div id="dailyDayPicker">
+                <label class="form-label small text-muted" id="dailyPeriodLabel">Pilih hari laporan</label>
+                <div class="input-group">
+                  <span class="input-group-text">Hari ke</span>
+                  <input type="number" class="form-control" id="dailyPeriodNumber" min="1" value="1" placeholder="1">
+                  <span class="input-group-text" id="dailyTotalDaysLabel">dari total N hari proyek</span>
+                </div>
+                <small class="text-muted d-block mt-2" id="dailyPeriodHint">
+                  Export 1 laporan harian untuk tanggal tersebut.
+                </small>
+              </div>
+
+              <div id="dailyWeekPicker" style="display: none;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <label class="form-label small text-muted mb-0">Pilih minggu laporan harian</label>
+                </div>
+                <div class="daily-week-option-grid d-flex flex-wrap gap-2" id="dailyWeekOptionGrid"
+                  style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid var(--bs-border-color); border-radius: 6px; background: var(--bs-body-bg);">
+                  <span class="text-muted small">Loading weeks...</span>
+                </div>
+                <small class="text-muted d-block mt-2">
+                  Export laporan harian untuk semua tanggal pada minggu yang dipilih.
+                </small>
+              </div>
+
+              <div id="dailyMonthPicker" style="display: none;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <label class="form-label small text-muted mb-0">Pilih periode bulan laporan harian</label>
+                </div>
+                <div class="daily-month-option-grid d-flex flex-wrap gap-2" id="dailyMonthOptionGrid"
+                  style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid var(--bs-border-color); border-radius: 6px; background: var(--bs-body-bg);">
+                  <span class="text-muted small">Loading months...</span>
+                </div>
+                <small class="text-muted d-block mt-2">
+                  Setiap periode bulan mencakup 4 minggu laporan harian.
+                </small>
+              </div>
+
+              <div class="small text-muted mt-2" id="dailyRangeSummary">
+                Hari 1 dari total periode proyek.
+              </div>
+              <small class="text-muted d-block mt-2">
+                <i class="bi bi-info-circle"></i> Dokumen memakai heading tanggal, misalnya 01 JAN - Laporan Harian.
+              </small>
+            </div>
           </div>
 
 
           <!-- Export Preview/Info -->
-          <div class="alert alert-info mb-0" role="alert">
+          <div class="export-modal-section export-preview-box" role="status" aria-live="polite">
             <h6 class="alert-heading">
-              <i class="bi bi-info-circle"></i> Informasi Export
+              <i class="bi bi-info-circle"></i> Ringkasan export
             </h6>
             <p class="mb-2 small" id="exportPreviewText">
-              <strong>Laporan:</strong> Rekap Laporan (Full Report)<br>
+              <strong>Laporan:</strong> Rekap laporan<br>
               <strong>Format:</strong> PDF<br>
-              <strong>Charts:</strong> Gantt Chart, Kurva S<br>
-              <strong>Halaman:</strong> Auto-paginated (smart splitting)
-            </p>
-            <hr>
-            <p class="mb-0 small">
-              <i class="bi bi-lightbulb text-warning"></i>
-              Sistem akan otomatis memotong kolom/baris yang terlalu banyak dengan pengelompokan semantik
-              (month boundaries, hierarchy-aware splitting).
+              <strong>Konten:</strong> Jadwal, progress, Gantt, dan Kurva S
             </p>
           </div>
         </div>
@@ -599,17 +754,33 @@
       const btnClearWeeks = exportModal.querySelector('#btnClearWeeks');
       const weekCheckboxGrid = exportModal.querySelector('#weekCheckboxGrid');
 
-      // Collapse toggle - update button text and icon
+      // Multi-day elements
+      const multiDayInput = exportModal.querySelector('#multiDayInput');
+      const dailyModeInputs = exportModal.querySelectorAll('input[name="dailyExportMode"]');
+      const dailyPeriodLabel = exportModal.querySelector('#dailyPeriodLabel');
+      const dailyPeriodNumber = exportModal.querySelector('#dailyPeriodNumber');
+      const dailyPeriodHint = exportModal.querySelector('#dailyPeriodHint');
+      const dailyRangeSummary = exportModal.querySelector('#dailyRangeSummary');
+      const dailyTotalDaysLabel = exportModal.querySelector('#dailyTotalDaysLabel');
+      const dailyDayPicker = exportModal.querySelector('#dailyDayPicker');
+      const dailyWeekPicker = exportModal.querySelector('#dailyWeekPicker');
+      const dailyMonthPicker = exportModal.querySelector('#dailyMonthPicker');
+      const dailyWeekOptionGrid = exportModal.querySelector('#dailyWeekOptionGrid');
+      const dailyMonthOptionGrid = exportModal.querySelector('#dailyMonthOptionGrid');
+      let dailyWeekOptions = exportModal.querySelectorAll('input[name="dailyWeekPeriod"]');
+      let dailyMonthOptions = exportModal.querySelectorAll('input[name="dailyMonthPeriod"]');
+
+      // Legacy collapse hook, retained for compatibility if this section is collapsed again later.
       const advancedOptionsCollapse = document.getElementById('advancedExportOptions');
       const toggleButton = exportModal.querySelector('[data-bs-target="#advancedExportOptions"]');
       if (advancedOptionsCollapse && toggleButton) {
         advancedOptionsCollapse.addEventListener('show.bs.collapse', function () {
           toggleButton.querySelector('i').classList.replace('bi-chevron-down', 'bi-chevron-up');
-          toggleButton.querySelector('span').textContent = 'Sembunyikan Detail';
+          toggleButton.querySelector('span').textContent = 'Sembunyikan opsi';
         });
         advancedOptionsCollapse.addEventListener('hide.bs.collapse', function () {
           toggleButton.querySelector('i').classList.replace('bi-chevron-up', 'bi-chevron-down');
-          toggleButton.querySelector('span').textContent = 'Tampilkan Detail';
+          toggleButton.querySelector('span').textContent = 'Tampilkan opsi';
         });
       }
 
@@ -657,6 +828,101 @@
         console.log('[ExportModal] Initialized ' + totalWeeks + ' week checkboxes');
       }
 
+      function getDailyMode() {
+        return exportModal.querySelector('input[name="dailyExportMode"]:checked')?.value || 'day';
+      }
+
+      function getProjectDurationDays() {
+        const app = document.getElementById('tahapan-grid-app');
+        const startRaw = app?.dataset?.projectStart;
+        const endRaw = app?.dataset?.projectEnd;
+        if (!startRaw || !endRaw) return null;
+        const start = new Date(`${startRaw}T00:00:00`);
+        const end = new Date(`${endRaw}T00:00:00`);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null;
+        return Math.floor((end - start) / 86400000) + 1;
+      }
+
+      function getTotalWeeksForProject() {
+        const totalDays = getProjectDurationDays();
+        let totalWeeks = totalDays ? Math.ceil(totalDays / 7) : parseInt('{{ total_weeks|default:12 }}', 10) || 12;
+        if (window.__JADWAL_APP_STATE__?.weekColumns?.length) {
+          totalWeeks = Math.max(totalWeeks, window.__JADWAL_APP_STATE__.weekColumns.length);
+        }
+        return Math.max(1, Math.min(200, totalWeeks));
+      }
+
+      function getTotalMonthsForProject() {
+        const totalWeeks = getTotalWeeksForProject();
+        return Math.max(1, Math.min(50, Math.ceil(totalWeeks / 4)));
+      }
+
+      function initializeDailyWeekOptions() {
+        if (!dailyWeekOptionGrid) return;
+        const totalWeeks = getTotalWeeksForProject();
+        dailyWeekOptionGrid.innerHTML = '';
+        for (let w = 1; w <= totalWeeks; w++) {
+          const label = document.createElement('label');
+          label.className = 'btn btn-outline-info btn-sm daily-week-option';
+          label.innerHTML = `<input type="radio" name="dailyWeekPeriod" value="${w}" class="d-none" ${w === 1 ? 'checked' : ''}> Minggu ${w}`;
+          dailyWeekOptionGrid.appendChild(label);
+        }
+        dailyWeekOptions = exportModal.querySelectorAll('input[name="dailyWeekPeriod"]');
+        dailyWeekOptions.forEach(input => input.addEventListener('change', () => {
+          updateDailyOptionStyling();
+          updatePreview();
+        }));
+        updateDailyOptionStyling();
+      }
+
+      function initializeDailyMonthOptions() {
+        if (!dailyMonthOptionGrid) return;
+        const totalMonths = getTotalMonthsForProject();
+        dailyMonthOptionGrid.innerHTML = '';
+        for (let m = 1; m <= totalMonths; m++) {
+          const startWeek = ((m - 1) * 4) + 1;
+          const endWeek = Math.min(m * 4, getTotalWeeksForProject());
+          const label = document.createElement('label');
+          label.className = 'btn btn-outline-primary btn-sm daily-month-option';
+          label.innerHTML = `<input type="radio" name="dailyMonthPeriod" value="${m}" class="d-none" ${m === 1 ? 'checked' : ''}> Bulan ${m} <span class="small opacity-75">(M${startWeek}-${endWeek})</span>`;
+          dailyMonthOptionGrid.appendChild(label);
+        }
+        dailyMonthOptions = exportModal.querySelectorAll('input[name="dailyMonthPeriod"]');
+        dailyMonthOptions.forEach(input => input.addEventListener('change', () => {
+          updateDailyOptionStyling();
+          updatePreview();
+        }));
+        updateDailyOptionStyling();
+      }
+
+      function getDailySelectedPeriod() {
+        const mode = getDailyMode();
+        if (mode === 'week') {
+          return parseInt(exportModal.querySelector('input[name="dailyWeekPeriod"]:checked')?.value || '1', 10) || 1;
+        }
+        if (mode === 'month') {
+          return parseInt(exportModal.querySelector('input[name="dailyMonthPeriod"]:checked')?.value || '1', 10) || 1;
+        }
+        return parseInt(dailyPeriodNumber?.value || '1', 10) || 1;
+      }
+
+      function updateDailyOptionStyling() {
+        dailyWeekOptions.forEach(input => {
+          const label = input.closest('label');
+          if (!label) return;
+          label.classList.toggle('btn-info', input.checked);
+          label.classList.toggle('active', input.checked);
+          label.classList.toggle('btn-outline-info', !input.checked);
+        });
+        dailyMonthOptions.forEach(input => {
+          const label = input.closest('label');
+          if (!label) return;
+          label.classList.toggle('btn-primary', input.checked);
+          label.classList.toggle('active', input.checked);
+          label.classList.toggle('btn-outline-primary', !input.checked);
+        });
+      }
+
       // Initialize month checkboxes dynamically based on project data
       function initializeMonthCheckboxes() {
         if (!monthCheckboxGrid) return;
@@ -702,16 +968,16 @@
       }
 
       const reportTypeLabels = {
-        'full': 'Rekap Laporan (Full Report)',
-        'monthly': 'Laporan Bulanan (Monthly Report)',
-        'weekly': 'Laporan Mingguan (Weekly Report)'
+        'full': 'Rekap laporan',
+        'monthly': 'Laporan bulanan',
+        'weekly': 'Laporan mingguan',
+        'daily': 'Laporan harian'
       };
 
       const formatLabels = {
         'pdf': 'PDF',
         'word': 'Word (DOCX)',
-        'xlsx': 'Excel (XLSX)',
-        'json': 'JSON'
+        'xlsx': 'Excel (XLSX)'
       };
 
 
@@ -747,6 +1013,41 @@
         });
       }
 
+      function updateDailyPeriodControls() {
+        const mode = getDailyMode();
+        if (!dailyPeriodLabel || !dailyPeriodHint) return;
+        const totalDays = getProjectDurationDays();
+        const totalDaysText = totalDays ? totalDays : 'N';
+        const periodValue = getDailySelectedPeriod();
+        if (dailyDayPicker) dailyDayPicker.style.display = mode === 'day' ? 'block' : 'none';
+        if (dailyWeekPicker) dailyWeekPicker.style.display = mode === 'week' ? 'block' : 'none';
+        if (dailyMonthPicker) dailyMonthPicker.style.display = mode === 'month' ? 'block' : 'none';
+        if (dailyTotalDaysLabel) dailyTotalDaysLabel.textContent = `dari total ${totalDaysText} hari proyek`;
+        if (mode === 'week') {
+          dailyPeriodLabel.textContent = 'Minggu ke-';
+          if (dailyPeriodNumber && totalDays) dailyPeriodNumber.max = String(Math.max(1, Math.ceil(totalDays / 7)));
+          if (dailyRangeSummary) dailyRangeSummary.textContent = `Minggu ${periodValue}; sistem akan mengambil maksimal 7 tanggal laporan.`;
+        } else if (mode === 'month') {
+          dailyPeriodLabel.textContent = 'Bulan/periode ke-';
+          if (dailyPeriodNumber && totalDays) dailyPeriodNumber.max = String(Math.max(1, Math.ceil(Math.ceil(totalDays / 7) / 4)));
+          if (dailyRangeSummary) {
+            const startWeek = ((periodValue - 1) * 4) + 1;
+            const endWeek = Math.min(periodValue * 4, getTotalWeeksForProject());
+            dailyRangeSummary.textContent = `Periode ${periodValue}; mencakup Minggu ${startWeek}-${endWeek}.`;
+          }
+        } else {
+          dailyPeriodLabel.textContent = 'Hari ke-';
+          dailyPeriodHint.textContent = 'Export 1 laporan harian untuk tanggal tersebut.';
+          if (dailyPeriodNumber && totalDays) dailyPeriodNumber.max = String(totalDays);
+          if (dailyRangeSummary) {
+            dailyRangeSummary.textContent = totalDays
+              ? `Hari ${periodValue} dari total ${totalDays} hari proyek.`
+              : `Hari ${periodValue} dari total periode proyek.`;
+          }
+        }
+        updateDailyOptionStyling();
+      }
+
       // Get selected months array
       function getSelectedMonths() {
         const selected = [];
@@ -771,11 +1072,42 @@
 
       function updatePreview() {
         const selectedReportType = exportModal.querySelector('input[name="reportType"]:checked')?.value || 'full';
-        const selectedFormat = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
+        let selectedFormat = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
+        const formatPdf = exportModal.querySelector('#formatPdf');
+        const formatWord = exportModal.querySelector('#formatWord');
+        const formatExcel = exportModal.querySelector('#formatExcel');
+        const formatPdfLabel = exportModal.querySelector('label[for="formatPdf"]');
+        const formatWordLabel = exportModal.querySelector('label[for="formatWord"]');
+        const formatExcelLabel = exportModal.querySelector('label[for="formatExcel"]');
+
+        if (selectedReportType === 'daily') {
+          updateDailyPeriodControls();
+          if (formatPdf) formatPdf.disabled = true;
+          if (formatExcel) formatExcel.disabled = true;
+          if (formatWord) formatWord.disabled = false;
+          if (formatPdfLabel) formatPdfLabel.classList.add('disabled');
+          if (formatExcelLabel) formatExcelLabel.classList.add('disabled');
+          if (formatWordLabel) formatWordLabel.classList.remove('disabled');
+          if (formatWord && selectedFormat !== 'word') {
+            formatWord.checked = true;
+            selectedFormat = 'word';
+          }
+        } else {
+          if (formatPdf) formatPdf.disabled = false;
+          if (formatExcel) formatExcel.disabled = false;
+          if (formatWord) formatWord.disabled = true;
+          if (formatPdfLabel) formatPdfLabel.classList.remove('disabled');
+          if (formatExcelLabel) formatExcelLabel.classList.remove('disabled');
+          if (formatWordLabel) formatWordLabel.classList.add('disabled');
+          if (formatWord?.checked && formatPdf) {
+            formatPdf.checked = true;
+            selectedFormat = 'pdf';
+          }
+        }
         // Charts always included (use constants from outer scope)
         // Professional format is always enabled for PDF (Word disabled)
         const isPdf = (selectedFormat === 'pdf');
-        const isJson = (selectedFormat === 'json');
+        const isJson = false;
         const useProfessional = useProfessionalCheckbox?.type === 'checkbox'
           ? useProfessionalCheckbox.checked
           : (useProfessionalCheckbox?.value === 'true' || isPdf);
@@ -785,7 +1117,6 @@
         const chartOptionsSection = document.getElementById('chartOptionsSection');
         const professionalFormatSection = document.getElementById('professionalFormatSection');
 
-        // Hide irrelevant sections for JSON (JSON only exports raw input data)
         if (isJson) {
           if (reportTypeSection) reportTypeSection.style.display = 'none';
           if (chartOptionsSection) chartOptionsSection.style.display = 'none';
@@ -799,26 +1130,33 @@
 
           // Show/hide period selection based on report type
           if (periodSelectionSection) {
-            const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly');
+            const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly' || selectedReportType === 'daily');
             periodSelectionSection.style.display = showPeriod ? 'block' : 'none';
 
             // Toggle between multi-month (monthly) and multi-week (weekly)
-            if (singlePeriodInput && multiMonthInput && multiWeekInput) {
+            if (singlePeriodInput && multiMonthInput && multiWeekInput && multiDayInput) {
               singlePeriodInput.style.display = 'none'; // Never show single input anymore
               if (selectedReportType === 'monthly') {
                 multiMonthInput.style.display = 'block';
                 multiWeekInput.style.display = 'none';
+                multiDayInput.style.display = 'none';
               } else if (selectedReportType === 'weekly') {
                 multiMonthInput.style.display = 'none';
                 multiWeekInput.style.display = 'block';
+                multiDayInput.style.display = 'none';
+              } else if (selectedReportType === 'daily') {
+                multiMonthInput.style.display = 'none';
+                multiWeekInput.style.display = 'none';
+                multiDayInput.style.display = 'block';
               } else {
                 multiMonthInput.style.display = 'none';
                 multiWeekInput.style.display = 'none';
+                multiDayInput.style.display = 'none';
               }
             }
           }
 
-          // Show warning if XLSX selected (professional not available for those)
+          // Show format note when non-PDF output is selected.
           if (professionalFormatNote) {
             const showWarning = !isPdf;
             professionalFormatNote.style.display = showWarning ? 'block' : 'none';
@@ -834,34 +1172,35 @@
           charts.push('Kurva S');
         }
 
-        const chartsText = charts.length > 0 ? charts.join(', ') : 'Tidak ada chart';
+        let contentText = charts.length > 0 ? charts.join(', ') : 'Jadwal dan progress';
+        if (selectedReportType === 'daily') {
+          contentText = 'Template harian DOCX A4';
+        } else if (selectedReportType === 'weekly') {
+          contentText = 'Progress mingguan dan Kurva S';
+        } else if (selectedReportType === 'monthly') {
+          contentText = 'Progress bulanan dan Kurva S';
+        }
 
         // Build preview text
         let previewHtml = '';
 
         if (isJson) {
-          // JSON-specific preview
           previewHtml = `
-            <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
-            <strong>Konten:</strong> Data Input Pekerjaan + Progress<br>
-            <div class="alert alert-info py-2 mt-2 small">
-              <i class="bi bi-info-circle"></i>
-              Export JSON berisi data mentah untuk import/export project.
-              Termasuk: Hierarki pekerjaan, volume, harga, dan progress mingguan.
-            </div>
+            <strong>Format:</strong> ${formatLabels[selectedFormat] || selectedFormat}<br>
+            <strong>Konten:</strong> Data export
           `;
         } else {
           previewHtml = `
             <strong>Laporan:</strong> ${reportTypeLabels[selectedReportType]}<br>
             <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
-            <strong>Charts:</strong> ${chartsText}<br>
+            <strong>Konten:</strong> ${contentText}<br>
           `;
 
           if (useProfessional) {
-            previewHtml += `<strong>Mode:</strong> <span class="text-success">Laporan Tertulis Profesional ✓</span><br>`;
-            previewHtml += `<strong>Fitur:</strong> Cover Page, `;
+            previewHtml += `<strong>Mode:</strong> <span class="text-success">Format laporan resmi</span><br>`;
+            previewHtml += `<strong>Periode:</strong> `;
             if (selectedReportType === 'full') {
-              previewHtml += `Daftar Isi, Grid Terpisah (Rencana/Realisasi)`;
+              previewHtml += `Seluruh periode proyek`;
             } else if (selectedReportType === 'monthly') {
               // Show selected months info
               const selectedMonths = getSelectedMonths();
@@ -886,12 +1225,27 @@
               } else {
                 previewHtml += `<span class="text-warning">Pilih minimal 1 minggu</span>`;
               }
+            } else if (selectedReportType === 'daily') {
+              const dailyMode = getDailyMode();
+              const dailyPeriod = getDailySelectedPeriod();
+              if (dailyMode === 'week') {
+                previewHtml += `Minggu ${dailyPeriod} (maks. 7 laporan harian)`;
+              } else if (dailyMode === 'month') {
+                const startWeek = ((dailyPeriod - 1) * 4) + 1;
+                const endWeek = Math.min(dailyPeriod * 4, getTotalWeeksForProject());
+                previewHtml += `Bulan ${dailyPeriod}: Minggu ${startWeek}-${endWeek} (maks. 28 laporan harian)`;
+              } else {
+                const totalDays = getProjectDurationDays();
+                previewHtml += totalDays
+                  ? `Hari ${dailyPeriod} dari total ${totalDays} hari proyek (1 laporan harian)`
+                  : `Hari ${dailyPeriod} (1 laporan harian)`;
+              }
             } else {
             }
           } else {
-            previewHtml += `<strong>Halaman:</strong> Auto-paginated (smart splitting)`;
+            previewHtml += `<strong>Konten:</strong> Jadwal dan progress sesuai format yang dipilih`;
           }
-        } // End of else block for non-JSON formats
+        }
 
         if (exportPreviewText) {
           exportPreviewText.innerHTML = previewHtml;
@@ -901,6 +1255,11 @@
       // Listen to changes
       reportTypeInputs.forEach(input => input.addEventListener('change', updatePreview));
       formatInputs.forEach(input => input.addEventListener('change', updatePreview));
+      dailyModeInputs.forEach(input => input.addEventListener('change', () => {
+        updateDailyPeriodControls();
+        updatePreview();
+      }));
+      if (dailyPeriodNumber) dailyPeriodNumber.addEventListener('input', updatePreview);
       if (useProfessionalCheckbox) useProfessionalCheckbox.addEventListener('change', updatePreview);
 
       // Month checkbox event listeners
@@ -953,9 +1312,6 @@
         });
       }
 
-      // Initial preview update
-      updatePreview();
-
       // Initialize month checkboxes dynamically on load
       initializeMonthCheckboxes();
       updateMonthCheckboxStyling();
@@ -964,13 +1320,21 @@
       initializeWeekCheckboxes();
       updateWeekCheckboxStyling();
 
+      initializeDailyWeekOptions();
+      initializeDailyMonthOptions();
+      updateDailyPeriodControls();
+      updatePreview();
+
       // Reinitialize checkboxes when modal is shown (in case app state updated)
       exportModal.addEventListener('show.bs.modal', function () {
         // Re-check week/month count from latest app state
         initializeMonthCheckboxes();
         initializeWeekCheckboxes();
+        initializeDailyWeekOptions();
+        initializeDailyMonthOptions();
         updateMonthCheckboxStyling();
         updateWeekCheckboxStyling();
+        updateDailyPeriodControls();
         updatePreview();
       });
     });

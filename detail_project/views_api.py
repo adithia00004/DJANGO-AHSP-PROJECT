@@ -6397,7 +6397,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
     - Signature section
 
     Query/Body Parameters:
-    - report_type: 'rekap' | 'monthly' | 'weekly' (default: 'rekap')
+    - report_type: 'rekap' | 'monthly' | 'weekly' | 'daily' (default: 'rekap')
     - period: Month number (1-based) for monthly, Week number for weekly
     - format: 'pdf' | 'word' (default: 'pdf')
     - attachments: Chart attachments (POST only)
@@ -6420,6 +6420,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
         report_type = request.GET.get('report_type') or payload.get('report_type', 'rekap')
         period_str = request.GET.get('period') or payload.get('period')
         format_type = request.GET.get('format') or payload.get('format', 'pdf')
+        daily_mode = request.GET.get('daily_mode') or payload.get('daily_mode')
         
         # V6: trace via structured logging (debug level) instead of stray print().
         logger.debug(
@@ -6450,10 +6451,10 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
                 }, status=400)
 
         # Validate report_type
-        if report_type not in ('rekap', 'monthly', 'weekly'):
+        if report_type not in ('rekap', 'monthly', 'weekly', 'daily'):
             return JsonResponse({
                 'status': 'error',
-                'message': f"Invalid report_type: {report_type}. Must be 'rekap', 'monthly', or 'weekly'."
+                'message': f"Invalid report_type: {report_type}. Must be 'rekap', 'monthly', 'weekly', or 'daily'."
             }, status=400)
 
         # Validate format
@@ -6462,6 +6463,20 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
                 'status': 'error',
                 'message': f"Invalid format: {format_type}. Must be 'pdf', 'word', or 'xlsx'."
             }, status=400)
+
+        if report_type == 'daily' and format_type != 'word':
+            return JsonResponse({
+                'status': 'error',
+                'message': "Laporan harian hanya tersedia dalam format Word (.docx)."
+            }, status=400)
+
+        if report_type == 'daily':
+            daily_mode = daily_mode or 'day'
+            if daily_mode not in ('day', 'week', 'month'):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': "Invalid daily_mode. Must be 'day', 'week', or 'month'."
+                }, status=400)
 
         # Parse period for monthly/weekly (backward compatibility for single month/week)
         period = None
@@ -6495,6 +6510,26 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
                     'message': f"Invalid weeks format: {weeks_raw}. Must be comma-separated integers or list."
                 }, status=400)
 
+        # Parse days parameter for daily DOCX export.
+        days_raw = request.GET.get('days') or payload.get('days')
+        days = None
+        if days_raw:
+            try:
+                if isinstance(days_raw, list):
+                    days = [int(d) for d in days_raw]
+                elif isinstance(days_raw, str):
+                    days = [int(d.strip()) for d in days_raw.split(',') if d.strip()]
+                if days and any(d < 1 for d in days):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Invalid days: all values must be positive integers.'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid days format: {days_raw}. Must be comma-separated integers or list."
+                }, status=400)
+
         # Parse attachments (for POST)
         attachments = _parse_export_attachments(request)
         
@@ -6514,6 +6549,8 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
             period=period,
             months=months,  # NEW: pass months list
             weeks=weeks,    # NEW: pass weeks list
+            daily_mode=daily_mode,
+            days=days,
             attachments=attachments,
             gantt_data=gantt_data
         )

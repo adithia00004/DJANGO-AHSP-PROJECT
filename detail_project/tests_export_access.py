@@ -16,6 +16,7 @@ from django.utils import timezone
 from dashboard.models import Project
 from dashboard.views_export import export_csv, export_dashboard_xlsx, export_project_pdf
 from detail_project.models_export import ExportSession
+from detail_project.exports.async_routing import call_export_method
 from detail_project.views_api import (
     api_export_rincian_rab_csv,
     export_volume_pekerjaan_pdf,
@@ -322,3 +323,64 @@ class ExportAccessControlTests(TestCase):
         payload = json.loads(response.content)
         self.assertEqual(payload.get("task_id"), "task-123")
         self.assertIn("/api/export-status/async/task-123/", payload.get("status_url", ""))
+
+    def test_async_export_routes_volume_options_to_manager(self):
+        manager = Mock()
+        manager.export_volume_pekerjaan.return_value = HttpResponse(b"%PDF-1.4")
+
+        response = call_export_method(
+            manager,
+            "volume-pekerjaan",
+            "pdf",
+            {"parameters": {"bp_1": 5}},
+        )
+
+        self.assertEqual(response.content, b"%PDF-1.4")
+        manager.export_volume_pekerjaan.assert_called_once_with(
+            "pdf",
+            parameters={"bp_1": 5},
+        )
+
+    def test_async_export_routes_rincian_orientation_to_manager(self):
+        manager = Mock()
+        manager.export_rincian_ahsp.return_value = HttpResponse(b"%PDF-1.4")
+
+        call_export_method(
+            manager,
+            "rincian-ahsp",
+            "pdf",
+            {"orientation": "landscape"},
+        )
+
+        manager.export_rincian_ahsp.assert_called_once_with(
+            "pdf",
+            orientation="landscape",
+        )
+
+    def test_async_export_routes_rekap_kebutuhan_options_to_manager(self):
+        manager = Mock()
+        manager.export_rekap_kebutuhan.return_value = HttpResponse(b"%PDF-1.4")
+
+        call_export_method(
+            manager,
+            "rekap-kebutuhan",
+            "pdf",
+            {
+                "mode": "tahapan",
+                "tahapan_id": 7,
+                "filters": {"kategori_items": ["BHN"]},
+                "search": "semen",
+                "time_scope": {"mode": "week_range"},
+                "unit_mode": "market",
+            },
+        )
+
+        manager.export_rekap_kebutuhan.assert_called_once_with(
+            "pdf",
+            mode="tahapan",
+            tahapan_id=7,
+            filters={"kategori_items": ["BHN"]},
+            search="semen",
+            time_scope={"mode": "week_range"},
+            unit_mode="market",
+        )

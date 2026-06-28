@@ -17,13 +17,17 @@ Created: 2025
 """
 
 from io import BytesIO
+import logging
+from copy import deepcopy
+from pathlib import Path
 from typing import Dict, Any, List
+from django.conf import settings
 from django.http import HttpResponse
 
 from docx import Document
 from docx.shared import Inches, Mm, Pt, Cm, RGBColor
 from docx.enum.section import WD_ORIENT
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -38,6 +42,9 @@ from ..export_config import (
 )
 from .table_styles import UnifiedTableStyles as UTS, ExportDefaults as ED
 from .signature_config import SignatureLayoutRules as SLR
+
+
+logger = logging.getLogger(__name__)
 
 
 class WordExporter:
@@ -83,8 +90,92 @@ class WordExporter:
             return self.export_monthly(data)
         elif report_type == 'weekly':
             return self.export_weekly(data)
+        elif report_type == 'daily':
+            return self.export_daily_professional(data)
         else:
             return self.export_rekap(data)
+
+    def export_daily_professional(self, data: Dict[str, Any]) -> HttpResponse:
+        """Export laporan harian as DOCX.
+
+        The generated document starts from the DOCX template package so Word
+        diagram/SmartArt parts on the documentation page stay available. Work
+        pages are generated dynamically and paginated; documentation pages are
+        copied from the template block.
+        """
+        template_path = Path(settings.BASE_DIR) / 'detail_project' / 'export_templates' / 'laporan_harian_template.docx'
+        if template_path.exists():
+            self.doc = Document(str(template_path))
+            documentation_block = self._extract_daily_doc_block(
+                self.doc,
+                start_heading='01 JAN - Dokumentasi',
+            )
+            self._clear_doc_body_preserve_section(self.doc)
+        else:
+            self.doc = Document()
+            documentation_block = []
+
+        self._setup_page_layout('A4', 'portrait')
+        self._setup_daily_doc_styles()
+
+        project_info = data.get('project_info', {}) or {}
+        reports = data.get('sheets', []) or []
+        if not reports:
+            reports = [{
+                'sheet_name': 'LAPORAN',
+                'date': None,
+                'week_number': None,
+                'previous_week': None,
+                'previous_progress': {},
+                'work_items': [],
+            }]
+
+        first_page = True
+        for report in reports:
+            work_items = report.get('work_items') or []
+            if not work_items:
+                work_items = [{'uraian': 'Tidak ada pekerjaan terjadwal pada periode ini.', 'keterangan': ''}]
+
+            chunks = [
+                work_items[i:i + self._daily_work_rows_per_page()]
+                for i in range(0, len(work_items), self._daily_work_rows_per_page())
+            ] or [[]]
+
+            for page_index, chunk in enumerate(chunks, start=1):
+                if not first_page:
+                    self.doc.add_page_break()
+                first_page = False
+
+                page_count = len(chunks)
+                sheet_name = report.get('sheet_name') or self._daily_sheet_label(report)
+                heading = (
+                    f"{sheet_name} - Pekerjaan {page_index}"
+                    if page_count > 1 else
+                    f"{sheet_name} - Laporan Harian"
+                )
+                self._daily_add_heading(heading, level=1)
+                self._daily_add_title(
+                    'LAPORAN HARIAN PROYEK',
+                    self._daily_subtitle(report),
+                )
+                self._daily_add_identity(project_info, report)
+                if page_index == 1:
+                    self._daily_add_previous_progress(report)
+                self._daily_add_work_table(chunk, page_index, page_count)
+                if page_index == page_count:
+                    self._daily_add_signatures()
+
+            self.doc.add_page_break()
+            if documentation_block:
+                self._append_daily_documentation_block(documentation_block, report)
+            else:
+                sheet_name = report.get('sheet_name') or self._daily_sheet_label(report)
+                self._daily_add_heading(f"{sheet_name} - Dokumentasi", level=1)
+                self._daily_add_title('DOKUMENTASI LAPORAN HARIAN', self._daily_subtitle(report))
+                self._daily_add_photo_fallback()
+
+        self._daily_normalize_drawing_ids()
+        return self._create_daily_response(reports)
     
     def export(self, data: Dict[str, Any]) -> HttpResponse:
         """
@@ -538,10 +629,10 @@ class WordExporter:
             for i, page in enumerate(planned_pages):
                 page_start = time.time()
                 self._build_grid_table(page, mode='planned')
-                print(f"[WordExporter] Grid Planned page {i+1}/{len(planned_pages)}: {time.time() - page_start:.2f}s")
+                logger.debug("[WordExporter] Grid Planned page %s/%s: %.2fs", i + 1, len(planned_pages), time.time() - page_start)
             self.doc.add_page_break()
             step_times['grid_planned'] = time.time() - grid_planned_start
-            print(f"[WordExporter] [TIME] Grid Planned ({len(planned_pages)} pages): {step_times['grid_planned']:.2f}s")
+            logger.debug("[WordExporter] Grid Planned (%s pages): %.2fs", len(planned_pages), step_times['grid_planned'])
         
         # 4. Grid Actual Section
         actual_pages = data.get('actual_pages', [])
@@ -551,10 +642,10 @@ class WordExporter:
             for i, page in enumerate(actual_pages):
                 page_start = time.time()
                 self._build_grid_table(page, mode='actual')
-                print(f"[WordExporter] Grid Actual page {i+1}/{len(actual_pages)}: {time.time() - page_start:.2f}s")
+                logger.debug("[WordExporter] Grid Actual page %s/%s: %.2fs", i + 1, len(actual_pages), time.time() - page_start)
             self.doc.add_page_break()
             step_times['grid_actual'] = time.time() - grid_actual_start
-            print(f"[WordExporter] [TIME] Grid Actual ({len(actual_pages)} pages): {step_times['grid_actual']:.2f}s")
+            logger.debug("[WordExporter] Grid Actual (%s pages): %.2fs", len(actual_pages), step_times['grid_actual'])
         
         # NOTE: Gantt Chart dan Kurva S dihapus dari Word export
         # karena bukan format native Word (hanya embedded image).
@@ -564,8 +655,8 @@ class WordExporter:
         step_start = time.time()
         response = self._create_response('rekap_laporan')
         step_times['create_response'] = time.time() - step_start
-        print(f"[WordExporter] [TIME] Create response (save doc): {step_times['create_response']:.2f}s")
-        print(f"[WordExporter] [OK] Total export_rekap: {time.time() - start:.2f}s")
+        logger.debug("[WordExporter] Create response (save doc): %.2fs", step_times['create_response'])
+        logger.info("[WordExporter] Total export_rekap: %.2fs", time.time() - start)
         
         return response
     
@@ -1326,6 +1417,584 @@ class WordExporter:
             row.cells[1].text = f"{item.get('planned', 0):.2f}"
             row.cells[2].text = f"{item.get('actual', 0):.2f}"
             row.cells[3].text = f"{item.get('deviation', 0):.2f}"
+
+    # =========================================================================
+    # DAILY DOCX EXPORT HELPERS
+    # =========================================================================
+
+    def _daily_work_rows_per_page(self) -> int:
+        return 28
+
+    def _setup_daily_doc_styles(self):
+        styles = self.doc.styles
+        styles['Normal'].font.name = 'Arial'
+        styles['Normal'].font.size = Pt(8)
+        for style_name in ('Heading 1', 'Heading 2'):
+            style = styles[style_name]
+            style.font.name = 'Arial'
+            style.font.bold = True
+            style.font.color.rgb = RGBColor(17, 24, 39)
+
+    def _paragraph_text_from_element(self, element) -> str:
+        return ''.join(t.text or '' for t in element.findall('.//' + qn('w:t')))
+
+    def _is_heading_element(self, element) -> bool:
+        if element.tag != qn('w:p'):
+            return False
+        p_style = element.find('.//' + qn('w:pStyle'))
+        if p_style is None:
+            return False
+        style_val = p_style.get(qn('w:val')) or ''
+        return style_val.startswith('Heading')
+
+    def _extract_daily_doc_block(self, doc: Document, start_heading: str) -> list:
+        children = list(doc._body._element)
+        start_index = None
+        for idx, child in enumerate(children):
+            if child.tag == qn('w:p') and self._paragraph_text_from_element(child).strip() == start_heading:
+                start_index = idx
+                break
+        if start_index is None:
+            return []
+
+        end_index = len(children)
+        for idx in range(start_index + 1, len(children)):
+            if self._is_heading_element(children[idx]):
+                end_index = idx
+                break
+        block = [deepcopy(child) for child in children[start_index:end_index] if child.tag != qn('w:sectPr')]
+        while block and self._is_trailing_empty_or_page_break_paragraph(block[-1]):
+            block.pop()
+        return block
+
+    def _is_trailing_empty_or_page_break_paragraph(self, element) -> bool:
+        if element.tag != qn('w:p'):
+            return False
+        text = self._paragraph_text_from_element(element).strip()
+        if text:
+            return False
+        page_breaks = [
+            br for br in element.findall('.//' + qn('w:br'))
+            if br.get(qn('w:type')) == 'page'
+        ]
+        return bool(page_breaks) or not list(element.findall('.//' + qn('w:drawing')))
+
+    def _clear_doc_body_preserve_section(self, doc: Document):
+        body = doc._body._element
+        sect_pr = body.sectPr
+        for child in list(body):
+            body.remove(child)
+        if sect_pr is not None:
+            body.append(sect_pr)
+
+    def _append_daily_documentation_block(self, block: list, report: Dict[str, Any]):
+        body = self.doc._body._element
+        sect_pr = body.sectPr
+        if sect_pr is not None:
+            body.remove(sect_pr)
+
+        sheet_name = report.get('sheet_name') or self._daily_sheet_label(report)
+        replacements = {
+            '01 JAN - Dokumentasi': f'{sheet_name} - Dokumentasi',
+            'Kamis, 01 Januari 2026 | Minggu 1': self._daily_subtitle(report),
+        }
+        for element in [deepcopy(element) for element in block]:
+            self._replace_text_in_element(element, replacements)
+            body.append(element)
+        if sect_pr is not None:
+            body.append(sect_pr)
+
+    def _daily_normalize_drawing_ids(self):
+        """Make copied drawing identifiers unique for Microsoft Word.
+
+        Word is stricter than python-docx about duplicated DrawingML IDs. The
+        documentation template block may be copied many times, so each copied
+        SmartArt/drawing needs unique wp:docPr id, wp14:anchorId, and
+        wp14:editId values.
+        """
+        root = self.doc._body._element
+        wp_docpr = qn('wp:docPr')
+        wp14_ns = 'http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing'
+        anchor_attr = f'{{{wp14_ns}}}anchorId'
+        edit_attr = f'{{{wp14_ns}}}editId'
+        for index, doc_pr in enumerate(root.findall('.//' + wp_docpr), start=1):
+            doc_pr.set('id', str(index))
+        anchor_index = 1
+        edit_index = 1
+        for element in root.iter():
+            if anchor_attr in element.attrib:
+                element.set(anchor_attr, f'{anchor_index:08X}')
+                anchor_index += 1
+            if edit_attr in element.attrib:
+                element.set(edit_attr, f'{(edit_index + 1048576):08X}')
+                edit_index += 1
+
+    def _replace_text_in_element(self, element, replacements: Dict[str, str]):
+        for text_node in element.findall('.//' + qn('w:t')):
+            if not text_node.text:
+                continue
+            value = text_node.text
+            for old, new in replacements.items():
+                value = value.replace(old, new)
+            text_node.text = value
+
+    def _daily_add_heading(self, text: str, level: int = 1):
+        paragraph = self.doc.add_paragraph(style=f'Heading {level}')
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(3)
+        run = paragraph.add_run(text)
+        run.font.name = 'Arial'
+        run.font.size = Pt(11 if level == 1 else 9)
+        run.font.bold = True
+
+    def _daily_add_title(self, title: str, subtitle: str):
+        paragraph = self.doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        paragraph.paragraph_format.space_after = Pt(0)
+        run = paragraph.add_run(title)
+        run.bold = True
+        run.font.size = Pt(13)
+
+        paragraph = self.doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        paragraph.paragraph_format.space_after = Pt(4)
+        run = paragraph.add_run(subtitle)
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(90, 90, 90)
+
+    def _daily_add_identity(self, project_info: Dict[str, Any], report: Dict[str, Any]):
+        table = self.doc.add_table(rows=4, cols=6)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        self._daily_set_col_widths(table, [2.0, 4.8, 4.2, 2.6, 1.7, 2.7])
+        self._daily_set_table_borders(table, '6B7280', '4')
+
+        progress = self._daily_progress_values(report)
+        rows = [
+            ('Proyek :', self._project_value(project_info, 'nama_proyek', 'name', 'nama', default=self.config.project_name),
+             'Tgl Laporan :', self._daily_date_text(report), 'Progress :', ''),
+            ('Lokasi :', self._project_value(project_info, 'lokasi', 'location', default=self.config.location),
+             'Cuaca :', '__________', 'Rencana :', progress[0]),
+            ('No. Kontrak :', self._project_value(project_info, 'nomor_kontrak', 'kode_proyek', 'code', default=self.config.project_code),
+             'Kontraktor :', self._project_value(project_info, 'kontraktor', 'nama_kontraktor', default=''), 'Realisasi :', progress[1]),
+            ('Konsultan :', self._project_value(project_info, 'konsultan_pengawas', 'nama_konsultan_pengawas', 'konsultan', default=''),
+             'Pemilik/Penanggung Jawab Project :', self._project_value(project_info, 'owner', 'nama_client', 'instansi', default=self.config.owner), 'Deviasi :', progress[2]),
+        ]
+        for row_idx, row_values in enumerate(rows):
+            for col_idx, value in enumerate(row_values):
+                self._daily_set_cell_text(table.cell(row_idx, col_idx), value, bold=col_idx in (0, 2, 4), size=7)
+                if col_idx in (0, 2, 4):
+                    self._daily_set_cell_shading(table.cell(row_idx, col_idx), 'F3F4F6')
+
+    def _daily_add_previous_progress(self, report: Dict[str, Any]):
+        previous_week = report.get('previous_week')
+        text = f"Progress minggu sebelumnya: W{previous_week}" if previous_week else "Progress minggu sebelumnya: belum ada periode pembanding"
+        paragraph = self.doc.add_paragraph()
+        paragraph.paragraph_format.space_before = Pt(3)
+        paragraph.paragraph_format.space_after = Pt(0)
+        run = paragraph.add_run(text)
+        run.font.size = Pt(7)
+        run.font.color.rgb = RGBColor(90, 90, 90)
+
+    def _daily_add_work_table(self, items: List[Dict[str, Any]], page_index: int, page_count: int):
+        paragraph = self.doc.add_paragraph()
+        paragraph.paragraph_format.space_before = Pt(4)
+        paragraph.paragraph_format.space_after = Pt(2)
+        run = paragraph.add_run(f"Pekerjaan yang Dilaksanakan Hari Ini ({page_index}/{page_count})")
+        run.bold = True
+        run.font.size = Pt(9)
+
+        table = self.doc.add_table(rows=1 + len(items), cols=3)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        self._daily_set_col_widths(table, [1.0, 11.4, 5.6])
+        self._daily_set_table_borders(table, '6B7280', '4')
+        for idx, header in enumerate(['No', 'Uraian Pekerjaan', 'Keterangan / Hambatan']):
+            self._daily_set_cell_text(table.cell(0, idx), header, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, color='FFFFFF', size=8)
+            self._daily_set_cell_shading(table.cell(0, idx), '374151')
+
+        offset = ((page_index - 1) * self._daily_work_rows_per_page()) + 1
+        for idx, item in enumerate(items, start=1):
+            row = table.rows[idx]
+            row.height = Cm(0.72)
+            self._daily_set_cell_text(row.cells[0], offset + idx - 1, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            self._daily_set_cell_text(row.cells[1], item.get('uraian') or item.get('name') or '', size=8)
+            self._daily_set_cell_text(row.cells[2], item.get('keterangan') or item.get('note') or '', size=8)
+
+    def _daily_add_signatures(self):
+        paragraph = self.doc.add_paragraph()
+        paragraph.paragraph_format.space_before = Pt(3)
+        table = self.doc.add_table(rows=3, cols=3)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        self._daily_set_col_widths(table, [6.0, 6.0, 6.0])
+        signatures = self._daily_signature_entries()
+        for idx, signature in enumerate(signatures):
+            self._daily_set_cell_text(table.cell(0, idx), signature['label'], bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            self._daily_set_cell_text(table.cell(1, idx), '\n\n', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            name = signature.get('name') or '............................'
+            self._daily_set_cell_text(table.cell(2, idx), f'({name})', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+        self._daily_set_table_borders(table, 'FFFFFF', '0')
+
+    def _daily_signature_entries(self) -> List[Dict[str, str]]:
+        signatures = []
+        sig_config = getattr(self.config, 'signature_config', None)
+        if sig_config and sig_config.enabled:
+            signatures = list(sig_config.signatures or [])
+
+        by_label = {
+            str(sig.get('label', '')).lower(): sig
+            for sig in signatures
+        }
+
+        def find_signature(*needles: str, fallback_label: str, force_label: bool = False):
+            for label, sig in by_label.items():
+                if any(needle in label for needle in needles):
+                    return {
+                        'label': fallback_label if force_label else (sig.get('label') or fallback_label),
+                        'name': sig.get('name') or '',
+                    }
+            return {'label': fallback_label, 'name': ''}
+
+        return [
+            find_signature('kontraktor', fallback_label='Kontraktor Pelaksana'),
+            find_signature('pengawas', fallback_label='Konsultan Pengawas'),
+            find_signature('pemilik', 'owner', fallback_label='Pemilik/Penanggung Jawab Project', force_label=True),
+        ]
+
+    def _daily_add_photo_fallback(self):
+        table = self.doc.add_table(rows=2, cols=2)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        self._daily_set_col_widths(table, [8.9, 8.9])
+        self._daily_set_table_borders(table, '374151', '8')
+        labels = ['Foto 1', 'Foto 2', 'Foto 3', 'Foto 4']
+        for row in table.rows:
+            row.height = Cm(10.0)
+        for idx, cell in enumerate([table.cell(0, 0), table.cell(0, 1), table.cell(1, 0), table.cell(1, 1)]):
+            self._daily_set_cell_shading(cell, 'F3F4F6')
+            self._daily_set_cell_text(
+                cell,
+                f"{labels[idx]}\nInsert > Pictures > This Device\nLetakkan foto di dalam frame",
+                bold=True,
+                size=9,
+                align=WD_ALIGN_PARAGRAPH.CENTER,
+                color='6B7280',
+            )
+
+    def _daily_set_cell_text(self, cell, text, bold=False, size=8, align=None, color=None):
+        cell.text = ''
+        paragraph = cell.paragraphs[0]
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        if align is not None:
+            paragraph.alignment = align
+        run = paragraph.add_run(str(text))
+        run.bold = bold
+        run.font.size = Pt(size)
+        if color:
+            run.font.color.rgb = RGBColor.from_string(color)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+    def _daily_set_cell_shading(self, cell, fill: str):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        shd = tc_pr.find(qn('w:shd'))
+        if shd is None:
+            shd = OxmlElement('w:shd')
+            tc_pr.append(shd)
+        shd.set(qn('w:fill'), fill)
+
+    def _daily_set_cell_border(self, cell, color='000000', size='6', val='single'):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        tc_borders = tc_pr.first_child_found_in('w:tcBorders')
+        if tc_borders is None:
+            tc_borders = OxmlElement('w:tcBorders')
+            tc_pr.append(tc_borders)
+        for edge in ('top', 'left', 'bottom', 'right'):
+            tag = f'w:{edge}'
+            element = tc_borders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tc_borders.append(element)
+            element.set(qn('w:val'), val)
+            element.set(qn('w:sz'), size)
+            element.set(qn('w:space'), '0')
+            element.set(qn('w:color'), color)
+
+    def _daily_set_table_borders(self, table, color='000000', size='4'):
+        for row in table.rows:
+            for cell in row.cells:
+                self._daily_set_cell_border(cell, color=color, size=size)
+
+    def _daily_set_col_widths(self, table, widths_cm: List[float]):
+        for row in table.rows:
+            for idx, width in enumerate(widths_cm):
+                if idx < len(row.cells):
+                    row.cells[idx].width = Cm(width)
+
+    def _project_value(self, project_info: Dict[str, Any], *keys: str, default: Any = ''):
+        for key in keys:
+            value = project_info.get(key)
+            if value not in (None, ''):
+                return value
+        return default or '-'
+
+    def _daily_sheet_label(self, report: Dict[str, Any]) -> str:
+        report_date = report.get('date')
+        if report_date:
+            month_labels = {
+                1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MEI', 6: 'JUN',
+                7: 'JUL', 8: 'AGU', 9: 'SEP', 10: 'OKT', 11: 'NOV', 12: 'DES',
+            }
+            return f"{report_date.day:02d} {month_labels.get(report_date.month, '')}".strip()
+        return report.get('sheet_name') or 'LAPORAN'
+
+    def _daily_date_text(self, report: Dict[str, Any]) -> str:
+        report_date = report.get('date')
+        if not report_date:
+            return '-'
+        month_names = {
+            1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
+            5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
+            9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember',
+        }
+        return f"{report_date.day:02d} {month_names.get(report_date.month, '')} {report_date.year}"
+
+    def _daily_day_name(self, report: Dict[str, Any]) -> str:
+        report_date = report.get('date')
+        if not report_date:
+            return '-'
+        day_names = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+        return day_names[report_date.weekday()]
+
+    def _daily_subtitle(self, report: Dict[str, Any]) -> str:
+        week = report.get('week_number')
+        week_text = f"Minggu {week}" if week else "Minggu -"
+        return f"{self._daily_day_name(report)}, {self._daily_date_text(report)} | {week_text}"
+
+    def _daily_progress_values(self, report: Dict[str, Any]) -> tuple[str, str, str]:
+        progress = report.get('previous_progress') or report.get('progress_previous_week') or {}
+        return (
+            self._daily_percent(progress.get('planned')),
+            self._daily_percent(progress.get('actual')),
+            self._daily_percent(progress.get('deviation'), signed=True),
+        )
+
+    def _daily_percent(self, value, signed: bool = False) -> str:
+        if value is None:
+            return '-'
+        try:
+            numeric = float(value) * 100
+        except (TypeError, ValueError):
+            return '-'
+        if signed and numeric > 0:
+            return f"+{numeric:.2f}%"
+        return f"{numeric:.2f}%"
+
+    def _create_daily_response(self, reports: List[Dict[str, Any]]) -> HttpResponse:
+        buffer = BytesIO()
+        self.doc.save(buffer)
+        content = self._daily_deduplicate_smartart_package(buffer.getvalue())
+
+        response = HttpResponse(
+            content,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        export_filename = self._daily_export_filename(reports)
+        response['Content-Disposition'] = f'attachment; filename="{export_filename}"'
+        return response
+
+    def _daily_export_filename(self, reports: List[Dict[str, Any]]) -> str:
+        import re
+
+        dates = sorted(
+            report.get('date')
+            for report in (reports or [])
+            if report.get('date')
+        )
+        if not dates:
+            return 'Laporan_Harian.docx'
+
+        start = dates[0]
+        end = dates[-1]
+        start_text = start.strftime('%d-%m')
+        end_text = end.strftime('%d-%m')
+        if start == end:
+            label = f'Laporan Harian {start_text}'
+        else:
+            label = f'Laporan Harian {start_text} - {end_text}'
+        safe_label = re.sub(r'[<>:"/\\|?*\x00-\x1F]+', '-', label).strip(' .-')
+        safe_label = re.sub(r'\\s+', ' ', safe_label)
+        return f'{safe_label or "Laporan Harian"}.docx'
+
+    def _daily_deduplicate_smartart_package(self, content: bytes) -> bytes:
+        """Duplicate SmartArt diagram parts per instance.
+
+        Copying a documentation page duplicates DrawingML references. Microsoft
+        Word rejects the resulting DOCX when several SmartArt instances share
+        the same diagram relationship/part. This rewrites every dgm:relIds node
+        to unique relationships and copied diagram parts.
+        """
+        from zipfile import ZipFile, ZIP_DEFLATED
+        from lxml import etree
+        import re
+        import uuid
+
+        rel_ns = 'http://schemas.openxmlformats.org/package/2006/relationships'
+        r_ns = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+        dgm_ns = 'http://schemas.openxmlformats.org/drawingml/2006/diagram'
+        ct_ns = 'http://schemas.openxmlformats.org/package/2006/content-types'
+
+        with ZipFile(BytesIO(content), 'r') as zin:
+            files = {item.filename: zin.read(item.filename) for item in zin.infolist()}
+
+        if 'word/document.xml' not in files or 'word/_rels/document.xml.rels' not in files:
+            return content
+
+        doc = etree.fromstring(files['word/document.xml'])
+        rels = etree.fromstring(files['word/_rels/document.xml.rels'])
+        content_types = etree.fromstring(files['[Content_Types].xml']) if '[Content_Types].xml' in files else None
+        rel_nodes = rels.findall(f'{{{rel_ns}}}Relationship')
+        if not any((rel.get('Type') or '').endswith('diagramData') for rel in rel_nodes):
+            return content
+
+        def build_rel_map():
+            return {rel.get('Id'): rel for rel in rels.findall(f'{{{rel_ns}}}Relationship')}
+
+        def next_rid():
+            numbers = []
+            for rel in rels.findall(f'{{{rel_ns}}}Relationship'):
+                rid = rel.get('Id', '')
+                if rid.startswith('rId') and rid[3:].isdigit():
+                    numbers.append(int(rid[3:]))
+            candidate = max(numbers or [0]) + 1
+            current = build_rel_map()
+            while f'rId{candidate}' in current:
+                candidate += 1
+            return f'rId{candidate}'
+
+        def add_relationship(rid, rel_type, target):
+            element = etree.Element(f'{{{rel_ns}}}Relationship')
+            element.set('Id', rid)
+            element.set('Type', rel_type)
+            element.set('Target', target)
+            rels.append(element)
+
+        def copy_part(old_target, new_target):
+            old_name = 'word/' + old_target
+            new_name = 'word/' + new_target
+            if old_name not in files:
+                return False
+            files[new_name] = files[old_name]
+            new_content_type_overrides.append('/' + new_name)
+            return True
+
+        counters = {'data': 0, 'layout': 0, 'quickStyle': 0, 'colors': 0, 'drawing': 0}
+        new_content_type_overrides = []
+        rmap = build_rel_map()
+        rel_id_nodes = doc.findall(f'.//{{{dgm_ns}}}relIds')
+        for node in rel_id_nodes:
+            old_data_rid = node.get(f'{{{r_ns}}}dm')
+            old_data_rel = rmap.get(old_data_rid)
+            if old_data_rel is None:
+                continue
+
+            old_data_target = old_data_rel.get('Target')
+            old_data_name = 'word/' + old_data_target
+            old_data_text = files.get(old_data_name, b'').decode('utf-8', errors='ignore')
+            drawing_match = re.search(r'relId="(rId\d+)"', old_data_text)
+            old_drawing_rid = drawing_match.group(1) if drawing_match else None
+            new_drawing_rid = None
+            new_drawing_target = None
+            if old_drawing_rid and old_drawing_rid in rmap:
+                old_drawing_rel = rmap[old_drawing_rid]
+                counters['drawing'] += 1
+                new_drawing_target = f'diagrams/drawing_auto{counters["drawing"]}.xml'
+                if copy_part(old_drawing_rel.get('Target'), new_drawing_target):
+                    new_drawing_rid = next_rid()
+                    add_relationship(new_drawing_rid, old_drawing_rel.get('Type'), new_drawing_target)
+                    rmap = build_rel_map()
+
+            copied_data_target = None
+            copied_drawing_target = new_drawing_target
+            for attr_name, kind in (
+                (f'{{{r_ns}}}dm', 'data'),
+                (f'{{{r_ns}}}lo', 'layout'),
+                (f'{{{r_ns}}}qs', 'quickStyle'),
+                (f'{{{r_ns}}}cs', 'colors'),
+            ):
+                old_rid = node.get(attr_name)
+                old_rel = rmap.get(old_rid)
+                if old_rel is None:
+                    continue
+                counters[kind] += 1
+                new_target = f'diagrams/{kind}_auto{counters[kind]}.xml'
+                if not copy_part(old_rel.get('Target'), new_target):
+                    continue
+                new_rid = next_rid()
+                add_relationship(new_rid, old_rel.get('Type'), new_target)
+                node.set(attr_name, new_rid)
+                if kind == 'data':
+                    copied_data_target = new_target
+                if kind == 'data' and new_drawing_rid:
+                    data_name = 'word/' + new_target
+                    data_text = files[data_name].decode('utf-8', errors='ignore')
+                    data_text = re.sub(r'relId="rId\d+"', f'relId="{new_drawing_rid}"', data_text, count=1)
+                    files[data_name] = data_text.encode('utf-8')
+                rmap = build_rel_map()
+
+            if copied_data_target and copied_drawing_target:
+                data_name = 'word/' + copied_data_target
+                drawing_name = 'word/' + copied_drawing_target
+                combined_text = ''
+                if data_name in files:
+                    combined_text += files[data_name].decode('utf-8', errors='ignore')
+                if drawing_name in files:
+                    combined_text += files[drawing_name].decode('utf-8', errors='ignore')
+                guid_map = {
+                    guid: '{' + str(uuid.uuid4()).upper() + '}'
+                    for guid in set(re.findall(r'\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}', combined_text))
+                }
+                for part_name in (data_name, drawing_name):
+                    if part_name not in files:
+                        continue
+                    part_text = files[part_name].decode('utf-8', errors='ignore')
+                    for old_guid, new_guid in guid_map.items():
+                        part_text = part_text.replace(old_guid, new_guid)
+                    files[part_name] = part_text.encode('utf-8')
+
+        files['word/document.xml'] = etree.tostring(doc, xml_declaration=True, encoding='UTF-8', standalone=True)
+        files['word/_rels/document.xml.rels'] = etree.tostring(rels, xml_declaration=True, encoding='UTF-8', standalone=True)
+        if content_types is not None and new_content_type_overrides:
+            content_type_by_prefix = {
+                'data': 'application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml',
+                'layout': 'application/vnd.openxmlformats-officedocument.drawingml.diagramLayout+xml',
+                'quickStyle': 'application/vnd.openxmlformats-officedocument.drawingml.diagramStyle+xml',
+                'colors': 'application/vnd.openxmlformats-officedocument.drawingml.diagramColors+xml',
+                'drawing': 'application/vnd.ms-office.drawingml.diagramDrawing+xml',
+            }
+            existing_parts = {
+                override.get('PartName')
+                for override in content_types.findall(f'{{{ct_ns}}}Override')
+            }
+            for part_name in new_content_type_overrides:
+                filename = part_name.rsplit('/', 1)[-1]
+                prefix = filename.split('_auto', 1)[0]
+                content_type = content_type_by_prefix.get(prefix)
+                if not content_type or part_name in existing_parts:
+                    continue
+                override = etree.Element(f'{{{ct_ns}}}Override')
+                override.set('PartName', part_name)
+                override.set('ContentType', content_type)
+                content_types.append(override)
+                existing_parts.add(part_name)
+            files['[Content_Types].xml'] = etree.tostring(content_types, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+        output = BytesIO()
+        with ZipFile(output, 'w', ZIP_DEFLATED) as zout:
+            for name, data in files.items():
+                zout.writestr(name, data)
+        return output.getvalue()
 
     # =========================================================================
     # RESPONSE CREATION

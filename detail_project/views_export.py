@@ -1010,7 +1010,7 @@ def api_export_download_async(request, task_id):
         )
         
         # Set filename
-        filename = build_export_filename(
+        filename = result.get("download_filename") or build_export_filename(
             result.get("project_name") or result.get("nama_project") or "Project",
             result.get("export_type", "export"),
             format_type,

@@ -19,11 +19,16 @@ Usage:
     print(result.state)  # PENDING, PROCESSING, SUCCESS, FAILURE
 """
 
-import os
 import logging
+import os
 from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.conf import settings
+
+from detail_project.exports.async_routing import (
+    call_export_method,
+    filename_from_content_disposition,
+)
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -117,21 +122,10 @@ def generate_export_async(self, project_id, export_type, format_type, user_id, o
             }
         )
         
-        # Dynamic routing to appropriate exporter
-        # Convert export_type to method name: 'rekap-rab' -> 'export_rekap_rab'
-        export_type_normalized = export_type.replace('-', '_')
-        method_name = f"export_{export_type_normalized}"
-        
         # Use ExportManager which handles config creation properly
         from detail_project.exports.export_manager import ExportManager
         
         manager = ExportManager(project, user)
-        
-        # Check if export method exists on manager
-        if not hasattr(manager, method_name):
-            raise ValueError(
-                f"Export method '{method_name}' not found in ExportManager"
-            )
         
         # Progress callback for tracking
         def progress_callback(current, total, message):
@@ -152,11 +146,7 @@ def generate_export_async(self, project_id, export_type, format_type, user_id, o
             f"format={format_type}, user={user_id}"
         )
         
-        export_method = getattr(manager, method_name)
-        
-        # Call export method with format_type
-        # ExportManager methods take format_type as first arg
-        response = export_method(format_type)
+        response = call_export_method(manager, export_type, format_type, options or {})
         
         # ExportManager returns HttpResponse, we need to save content to file
         import tempfile
@@ -169,8 +159,10 @@ def generate_export_async(self, project_id, export_type, format_type, user_id, o
         exports_dir = os.path.join(settings.MEDIA_ROOT, 'exports', 'async')
         os.makedirs(exports_dir, exist_ok=True)
         
-        # Generate unique filename
+        # Generate unique filename for storage. Public download filename is
+        # preserved from the exporter response when available.
         timestamp = int(time.time())
+        export_type_normalized = export_type.replace('-', '_')
         filename = f"{export_type_normalized}_{project_id}_{timestamp}.{ext}"
         file_path = os.path.join(exports_dir, filename)
         
@@ -191,7 +183,9 @@ def generate_export_async(self, project_id, export_type, format_type, user_id, o
             'file_size': file_size,
             'export_type': export_type,
             'format': format_type,
-            'project_id': project_id
+            'project_id': project_id,
+            'project_name': getattr(project, 'nama', '') or getattr(project, 'name', '') or '',
+            'download_filename': filename_from_content_disposition(response.get('Content-Disposition')),
         }
     
     except Exception as exc:

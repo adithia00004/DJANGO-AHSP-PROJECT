@@ -162,9 +162,11 @@ class ExportManager {
         throw new Error(errorMsg);
       }
 
-      // Download file
+      // Download file. Validate the payload before saving so JSON/HTML error
+      // bodies never get downloaded as .docx/.xlsx/.pdf.
       console.log(`[ExportManager] Creating blob and downloading file...`);
       const blob = await response.blob();
+      await this._validateExportBlob(blob, format, response.headers.get('Content-Type') || '');
       this._downloadBlob(blob, format, response);
 
       this._showSuccess(format);
@@ -332,6 +334,7 @@ class ExportManager {
     }
 
     const blob = await response.blob();
+    await this._validateExportBlob(blob, format, response.headers.get('Content-Type') || '');
     this._downloadBlob(blob, format, response);
   }
 
@@ -386,6 +389,51 @@ class ExportManager {
         document.body.removeChild(a);
       }
     }, 100);
+  }
+
+  /**
+   * Validate response body before creating a downloaded file.
+   * @private
+   */
+  async _validateExportBlob(blob, format, contentType) {
+    const normalizedType = String(contentType || '').toLowerCase();
+    const expectedTypes = {
+      pdf: ['application/pdf'],
+      word: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+      csv: ['text/csv', 'application/csv'],
+      json: ['application/json']
+    };
+    const allowedTypes = expectedTypes[format] || [];
+    if (allowedTypes.length && !allowedTypes.some(type => normalizedType.includes(type))) {
+      const message = await this._readBlobTextPreview(blob);
+      throw new Error(message || `Export gagal: response bukan file ${format.toUpperCase()}`);
+    }
+
+    const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+    const isZip = header[0] === 0x50 && header[1] === 0x4b;
+    const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46 && header[4] === 0x2d;
+    if ((format === 'word' || format === 'xlsx') && !isZip) {
+      const message = await this._readBlobTextPreview(blob);
+      throw new Error(message || 'Export gagal: file Office yang diterima tidak valid.');
+    }
+    if (format === 'pdf' && !isPdf) {
+      const message = await this._readBlobTextPreview(blob);
+      throw new Error(message || 'Export gagal: file PDF yang diterima tidak valid.');
+    }
+  }
+
+  /**
+   * Read a small text preview from an error-like blob.
+   * @private
+   */
+  async _readBlobTextPreview(blob) {
+    try {
+      const text = await blob.slice(0, 600).text();
+      return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    } catch (_) {
+      return '';
+    }
   }
 
   /**

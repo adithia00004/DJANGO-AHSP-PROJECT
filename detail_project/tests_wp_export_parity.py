@@ -13,11 +13,15 @@ import re
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
+from zipfile import ZipFile
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.conf import settings
 
 from openpyxl import load_workbook
+from lxml import etree
 
 from dashboard.models import Project
 from detail_project.models import (
@@ -641,6 +645,163 @@ class JadwalMonthlyValueOnlyTests(TestCase):
             expected_planned,
             places=9,
         )
+
+
+class JadwalDailyDocxExportTests(TestCase):
+    """Regression guard for the template-based daily DOCX export.
+
+    The documentation page can contain SmartArt. Copying that page repeatedly
+    must keep WordprocessingML drawing IDs and diagram relationships unique, or
+    Microsoft Word refuses to open the generated document.
+    """
+
+    NS = {
+        "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+        "wp14": "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+        "dgm": "http://schemas.openxmlformats.org/drawingml/2006/diagram",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    }
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user("wp-jadwal-daily-owner", password="x")
+        self.project = Project.objects.create(
+            owner=self.owner,
+            nama="Daily DOCX",
+            sumber_dana="APBD",
+            lokasi_project="Lokasi",
+            nama_client="Owner Harian",
+            anggaran_owner=Decimal("1000000.00"),
+            nama_kontraktor="Kontraktor Harian",
+            nama_konsultan_pengawas="Pengawas Harian",
+            tanggal_mulai=date(2026, 1, 1),
+            tanggal_selesai=date(2026, 1, 28),
+            week_start_day=0,
+            week_end_day=6,
+        )
+        klas = Klasifikasi.objects.create(project=self.project, name="K", ordering_index=1)
+        sub = SubKlasifikasi.objects.create(project=self.project, klasifikasi=klas, name="S", ordering_index=1)
+        self.pekerjaan = Pekerjaan.objects.create(
+            project=self.project,
+            sub_klasifikasi=sub,
+            source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode="P-001",
+            snapshot_uraian="Pekerjaan harian",
+            snapshot_satuan="m2",
+            ordering_index=1,
+        )
+        item = HargaItemProject.objects.create(
+            project=self.project,
+            kode_item="BHN-1",
+            kategori="BHN",
+            uraian="B",
+            satuan="kg",
+            harga_satuan=Decimal("100.00"),
+        )
+        src = DetailAHSPProject.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            harga_item=item,
+            kategori="BHN",
+            kode="BHN-1",
+            uraian="B",
+            satuan="kg",
+            koefisien=Decimal("1.000000"),
+        )
+        DetailAHSPExpanded.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            source_detail=src,
+            harga_item=item,
+            kategori="BHN",
+            kode="BHN-1",
+            uraian="B",
+            satuan="kg",
+            koefisien=Decimal("1.000000"),
+            expansion_depth=0,
+        )
+        VolumePekerjaan.objects.create(project=self.project, pekerjaan=self.pekerjaan, quantity=Decimal("10"))
+
+        from datetime import timedelta
+        for wk in range(1, 5):
+            start = date(2026, 1, 1) + timedelta(days=(wk - 1) * 7)
+            PekerjaanProgressWeekly.objects.create(
+                project=self.project,
+                pekerjaan=self.pekerjaan,
+                week_number=wk,
+                week_start_date=start,
+                week_end_date=start + timedelta(days=6),
+                planned_proportion=Decimal("10.00"),
+                actual_proportion=Decimal("5.00"),
+            )
+
+    def _daily_docx_content(self, daily_mode="month", period=1):
+        response = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "word",
+            report_type="daily",
+            daily_mode=daily_mode,
+            period=period,
+        )
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertTrue(response.content.startswith(b"PK"))
+        return response.content, response["Content-Disposition"]
+
+    def _assert_unique_docx_drawing_ids(self, content):
+        with ZipFile(BytesIO(content)) as package:
+            self.assertIsNone(package.testzip())
+            names = set(package.namelist())
+            self.assertIn("word/document.xml", names)
+            self.assertIn("word/_rels/document.xml.rels", names)
+            self.assertIn("[Content_Types].xml", names)
+
+            doc = etree.fromstring(package.read("word/document.xml"))
+            docpr_ids = [node.get("id") for node in doc.xpath(".//wp:docPr", namespaces=self.NS)]
+            anchor_ids = [value for value in doc.xpath(".//@wp14:anchorId", namespaces=self.NS)]
+            edit_ids = [value for value in doc.xpath(".//@wp14:editId", namespaces=self.NS)]
+
+            for values, label in (
+                (docpr_ids, "wp:docPr id"),
+                (anchor_ids, "wp14:anchorId"),
+                (edit_ids, "wp14:editId"),
+            ):
+                self.assertEqual(len(values), len(set(values)), f"duplicate {label}")
+
+            rel_ids = []
+            for node in doc.xpath(".//dgm:relIds", namespaces=self.NS):
+                for attr in ("dm", "lo", "qs", "cs"):
+                    value = node.get(f"{{{self.NS['r']}}}{attr}")
+                    if value:
+                        rel_ids.append(value)
+            self.assertEqual(len(rel_ids), len(set(rel_ids)), "duplicate SmartArt relationship IDs")
+
+            diagram_parts = [name for name in names if name.startswith("word/diagrams/")]
+            if rel_ids:
+                self.assertGreater(len(diagram_parts), 0)
+                content_types = package.read("[Content_Types].xml").decode("utf-8")
+                self.assertIn("/word/diagrams/", content_types)
+
+    def test_daily_docx_template_exists_for_deploy(self):
+        template = Path(settings.BASE_DIR) / "detail_project" / "export_templates" / "laporan_harian_template.docx"
+        self.assertTrue(template.exists(), f"missing daily DOCX template: {template}")
+        with ZipFile(template) as package:
+            self.assertIsNone(package.testzip())
+            self.assertIn("word/document.xml", package.namelist())
+
+    def test_daily_docx_month_mode_has_unique_smartart_parts_and_filename_range(self):
+        content, disposition = self._daily_docx_content("month", 1)
+        self.assertIn('filename="Laporan Harian 01-01 - 25-01.docx"', disposition)
+        self._assert_unique_docx_drawing_ids(content)
+
+    def test_daily_docx_rejects_non_word_format_at_manager_boundary(self):
+        with self.assertRaises(ValueError):
+            ExportManager(self.project, self.owner).export_jadwal_professional(
+                "xlsx",
+                report_type="daily",
+                daily_mode="day",
+                period=1,
+            )
 
 
 class VolumeExportParityTests(TestCase):
