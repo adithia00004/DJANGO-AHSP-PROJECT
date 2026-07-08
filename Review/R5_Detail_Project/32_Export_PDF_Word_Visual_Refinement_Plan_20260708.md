@@ -288,7 +288,7 @@ bila ternyata lebih lambat, itu temuan yang akan dilaporkan apa adanya.
 ## 10. Definisi Selesai
 
 - [x] Fase 0 (✅ 2026-07-08): baseline test/timing/ukuran file/render PNG tersimpan; matriks Lampiran A terkonfirmasi penuh via trace; tooling visual-diff siap & tervalidasi (lihat §12)
-- [ ] Fase 1: style registry + hoist + helper alignment; **image-diff = nol**; timing ≤ baseline
+- [x] Fase 1 (✅ 2026-07-08): style registry + hoist + helper alignment; **image-diff = nol (24/24)**; 118 test PASS; timing ≤ baseline (lihat §12)
 - [ ] Fase 2: 5 halaman PDF memakai skala tipografi, perataan, warna, spasi terstandar (pilot Harga Items dulu); approved owner per-report
 - [ ] Fase 3: Word paritas dengan PDF; approved owner; teruji Word+LibreOffice
 - [ ] Item O-1..O-8: masing-masing berstatus diputuskan (ya/tidak/ditunda)
@@ -377,7 +377,26 @@ gate image-diff Fase 1 terbukti feasible. LibreOffice tidak terpasang → DOCX
 tidak di-diff visual (fallback: review manual + test suite, sesuai rencana).
 `.gitignore` ditambah `export_baseline/`.
 
+### Fase 1 — SELESAI (2026-07-08, branch `feat/export-visual-refinement`)
+
+Baseline diperluas dulu ke jalur B (`00949d93`): temuan trace — hot path 1.2/1.3
+(`_build_table`) hanya dipanggil `jadwal_prof_rekap`; tanpa perluasan ini gate
+image-diff tidak meng-cover perubahan. Gate final = 24 halaman PNG (jalur A+B).
+
+| Item | Commit | Isi | Gate |
+|---|---|---|---|
+| 1.1+1.4 | `65099344` | `exports/styles/tokens.py` (registry semantik + adapter PDF cached + Word named-styles, PASIF) + `exports/styles/alignment.py` (helper perataan dari `column_formats`, PASIF) + 16 unit test termasuk guard nilai legacy | 16 test PASS |
+| 1.2 | `cb7eee40` | 9 situs `getSampleStyleSheet()+ParagraphStyle` per SEL → cache modul `_CELL_STYLE_CACHE` (2 keluarga: parent-Normal leading 12; plain leading=size+2; + varian Gantt/PHeader) | **24/24 halaman IDENTIK**; 60 test PASS |
+| 1.3 | `5189deef` | Blank filler `Paragraph('')` → `''` — fitur lebar-tetap R-1 utuh | **24/24 halaman IDENTIK** |
+| 1.5 | — | `NumberedCanvas.save()` TIDAK dihapus (menunggu O-2), sesuai rencana | — |
+
+**Gate akhir:** 118 test PASS (92 export + 16 tokens + 10 jadwal WP-P7); image-diff
+nol; timing sama-atau-lebih-cepat (fixture kecil — perbaikan nyata terlihat di
+`jadwal_prof_rekap`: 0,109s → 0,066s; tidak ada yang melambat).
+
 ### Berikutnya
-Fase 1 (behavior-preserving): 1.1 style registry semantik + adapter → 1.2 hoist
-stylesheet → 1.3 blank filler ringan → 1.4 helper alignment (dibangun, belum
-diaktifkan). Gate: image-diff = 10/10 IDENTIK + 92 test hijau + timing ≤ baseline.
+**Fase 2 (behavior-changing, butuh persetujuan owner per-report):** pilot **Harga
+Items** — aktifkan registry (warna header tunggal, skala tipografi, helper
+alignment, kebijakan nilai kosong 3 kelas) lalu serahkan PDF SEBELUM vs SESUDAH
+untuk review owner sebelum replikasi ke report lain. Keputusan O-1..O-7 masih
+terbuka (§7).
