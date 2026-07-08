@@ -97,3 +97,6 @@ _wcag_check_result.txt
 generate_pass.py
 .env.empty
 .claude/settings.local.json
+
+# Dev-only: artefak baseline export (doc 32 Fase 0)
+export_baseline/
