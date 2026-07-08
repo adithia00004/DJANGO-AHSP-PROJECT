@@ -2274,17 +2274,15 @@ class PDFExporter(ConfigExporterBase):
         
         # ==================================================
         # ADD BLANK CELLS TO FILL TO MAX_WEEKS_PER_PAGE
+        # (fitur lebar-tetap R-1 dipertahankan; sel kosong cukup string
+        # polos — render identik dengan Paragraph kosong, tanpa objek
+        # flowable per sel. Doc 32 Fase 1.3)
         # ==================================================
-        blank_cell_style = ParagraphStyle(
-            'BlankCell', parent=getSampleStyleSheet()['Normal'],
-            fontSize=5,
-            alignment=1,
-        )
         for _ in range(blank_cols):
-            header_cells.append(Paragraph('', blank_cell_style))
+            header_cells.append('')
         for row in wrapped_rows:
             for _ in range(blank_cols):
-                row.append(Paragraph('', blank_cell_style))
+                row.append('')
         
         # Rebuild full_data
         full_data = [header_cells] + wrapped_rows
