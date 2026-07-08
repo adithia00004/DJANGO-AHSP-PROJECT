@@ -18,7 +18,7 @@ import hashlib
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -42,6 +42,7 @@ from detail_project.models import (  # noqa: E402
     DetailAHSPProject,
     DetailAHSPExpanded,
     VolumePekerjaan,
+    PekerjaanProgressWeekly,
 )
 from detail_project.exports.export_manager import ExportManager  # noqa: E402
 
@@ -60,13 +61,38 @@ REPORTS = [
 ]
 
 
+def _jadwal_full(manager, fmt):
+    return manager.export_jadwal_pekerjaan(fmt, parameters={'report_type': 'full'})
+
+
+def _jadwal_professional(report_type):
+    def call(manager, fmt):
+        return manager.export_jadwal_professional(fmt, report_type=report_type)
+    return call
+
+
+# Jalur B (Jadwal) — konsumen `_build_table` (timeline) dan builder professional.
+# Ditambahkan agar gate image-diff Fase 1 meng-cover perubahan 1.2/1.3 yang
+# hot path-nya justru di jalur B (temuan trace 0.4). PDF-only utk professional
+# (Word non-daily memang diblokir manager).
+JALUR_B_REPORTS = [
+    ('jadwal_full', _jadwal_full, ['pdf', 'word']),
+    ('jadwal_prof_rekap', _jadwal_professional('rekap'), ['pdf']),
+    ('jadwal_prof_monthly', _jadwal_professional('monthly'), ['pdf']),
+    ('jadwal_prof_weekly', _jadwal_professional('weekly'), ['pdf']),
+]
+
+
 def build_fixture(owner):
     """Proyek uji cukup kaya untuk menilai visual: hierarki 2 klasifikasi,
     3 kategori item (TK/BHN/ALT), uraian panjang (uji wrap), volume desimal."""
     Project.objects.filter(nama=FIXTURE_PROJECT_NAME).delete()
+    # Tanggal fixed agar header minggu (W1 01/01-...) deterministik antar-run
     project = Project.objects.create(
         owner=owner,
         nama=FIXTURE_PROJECT_NAME,
+        tanggal_mulai=date(2026, 1, 5),
+        tanggal_selesai=date(2026, 3, 29),
     )
 
     items = {
@@ -151,6 +177,23 @@ def build_fixture(owner):
                 VolumePekerjaan.objects.create(
                     project=project, pekerjaan=pek, quantity=volume)
 
+    # Progress mingguan (jalur B): Σ planned = 100%; minggu bernilai 0 ikut
+    # disertakan untuk menguji suppress-0% (R-10); actual parsial.
+    weekly_planned = [Decimal('0'), Decimal('12.5'), Decimal('20'), Decimal('25'),
+                      Decimal('17.5'), Decimal('15'), Decimal('10'), Decimal('0')]
+    start = project.tanggal_mulai
+    for pek in Pekerjaan.objects.filter(project=project).order_by('ordering_index'):
+        for week_no, planned in enumerate(weekly_planned, start=1):
+            week_start = start + timedelta(weeks=week_no - 1)
+            actual = planned - Decimal('2.5') if (week_no <= 5 and planned > 0) else Decimal('0')
+            PekerjaanProgressWeekly.objects.create(
+                project=project, pekerjaan=pek, week_number=week_no,
+                week_start_date=week_start,
+                week_end_date=week_start + timedelta(days=6),
+                planned_proportion=planned,
+                actual_proportion=max(Decimal('0'), actual),
+            )
+
     return project
 
 
@@ -171,7 +214,18 @@ def render_pdf_pages(pdf_path: Path, out_dir: Path) -> int:
     return n
 
 
-def trace_pdf_builders(manager):
+def build_call_list():
+    """Satukan jalur A (method-name) + jalur B (callable) menjadi
+    [(key, caller(manager, fmt), formats)]."""
+    calls = [
+        (key, (lambda m, f, _name=name: getattr(m, _name)(f)), fmts)
+        for key, name, fmts in REPORTS
+    ]
+    calls.extend(JALUR_B_REPORTS)
+    return calls
+
+
+def trace_pdf_builders(manager, calls):
     """Fase 0.4 (doc 32 Lampiran A): konfirmasi empiris builder PDF per report.
 
     Monkeypatch sementara method builder PDFExporter dengan counter, jalankan
@@ -199,11 +253,13 @@ def trace_pdf_builders(manager):
             setattr(PDFExporter, name, make_wrapper(name, orig))
 
         print("\n=== TRACE BUILDER PDF (Fase 0.4) ===")
-        for report_key, method_name, _ in REPORTS:
+        for report_key, caller, formats in calls:
+            if 'pdf' not in formats:
+                continue
             counts.clear()
             try:
-                getattr(manager, method_name)('pdf')
-                summary = ', '.join(f"{k}×{v}" for k, v in sorted(counts.items())) or '(tidak ada builder tercatat — jalur inline)'
+                caller(manager, 'pdf')
+                summary = ', '.join(f"{k}x{v}" for k, v in sorted(counts.items())) or '(tidak ada builder tercatat — jalur inline)'
             except Exception as e:
                 summary = f"ERROR {type(e).__name__}: {e}"
             print(f"  {report_key}: {summary}")
@@ -241,14 +297,14 @@ def main():
     project = build_fixture(owner)
     manager = ExportManager(project, owner)
 
+    calls = build_call_list()
     rows = []
-    for report_key, method_name, formats in REPORTS:
-        method = getattr(manager, method_name)
+    for report_key, caller, formats in calls:
         for fmt in formats:
             label = f"{report_key} [{fmt}]"
             try:
                 t0 = time.perf_counter()
-                response = method(fmt)
+                response = caller(manager, fmt)
                 # CSV exporter mengembalikan StreamingHttpResponse
                 if getattr(response, 'streaming', False):
                     content = b''.join(response.streaming_content)
@@ -281,7 +337,7 @@ def main():
     print(f"Metrik: {csv_path}")
 
     if args.trace:
-        trace_pdf_builders(manager)
+        trace_pdf_builders(manager, calls)
 
 
 if __name__ == '__main__':
