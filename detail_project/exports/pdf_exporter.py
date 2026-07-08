@@ -46,6 +46,112 @@ PAGE_SIZE_MAP = {
 
 
 # =====================================================================
+# SHARED CELL STYLE CACHE (Doc 32 Fase 1.2)
+# Menggantikan pola getSampleStyleSheet()+ParagraphStyle per SEL (T-10).
+# Nilai style identik dengan versi lokal yang digantikan — behavior-
+# preserving, diverifikasi image-diff (scripts/export_visual_diff.py).
+# Style hasil cache dibagikan antar Paragraph dan tidak boleh dimutasi
+# oleh pemanggil.
+# =====================================================================
+
+_BASE_STYLESHEET = None
+_CELL_STYLE_CACHE: Dict[tuple, ParagraphStyle] = {}
+
+_ALIGN_MAP = {'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}
+
+
+def _base_stylesheet():
+    global _BASE_STYLESHEET
+    if _BASE_STYLESHEET is None:
+        _BASE_STYLESHEET = getSampleStyleSheet()
+    return _BASE_STYLESHEET
+
+
+def _cell_style_normal_parent(font_size, bold=False, align='LEFT', parent_name='Normal'):
+    """Keluarga style 'Cell' ber-parent stylesheet (leading ikut parent,
+    mis. Normal=12) — dipakai builder tabel data."""
+    key = ('parent', parent_name, font_size, bold, align)
+    st = _CELL_STYLE_CACHE.get(key)
+    if st is None:
+        st = ParagraphStyle(
+            'Cell', parent=_base_stylesheet()[parent_name],
+            fontSize=font_size,
+            alignment=_ALIGN_MAP.get(align, TA_LEFT),
+        )
+        if bold:
+            st.fontName = 'Helvetica-Bold'
+        _CELL_STYLE_CACHE[key] = st
+    return st
+
+
+def _cell_style_plain(size, bold=False, align='LEFT', color=None):
+    """Keluarga style 'Cell' tanpa parent (leading=size+2) — builder
+    professional. ``color`` = string hex atau None (hitam)."""
+    key = ('plain', size, bold, align, color)
+    st = _CELL_STYLE_CACHE.get(key)
+    if st is None:
+        st = ParagraphStyle(
+            'Cell',
+            fontSize=size,
+            alignment=_ALIGN_MAP.get(align, TA_LEFT),
+            fontName='Helvetica-Bold' if bold else 'Helvetica',
+            textColor=colors.HexColor(color) if color else colors.black,
+            leading=size + 2,
+        )
+        _CELL_STYLE_CACHE[key] = st
+    return st
+
+
+def _header_style_white7():
+    """Style PHeader: 7pt bold putih center, leading 9."""
+    key = ('pheader',)
+    st = _CELL_STYLE_CACHE.get(key)
+    if st is None:
+        st = ParagraphStyle(
+            'Header',
+            fontSize=7,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold',
+            textColor=colors.white,
+            leading=9,
+        )
+        _CELL_STYLE_CACHE[key] = st
+    return st
+
+
+def _gantt_name_style(font_size, font_name):
+    """Style NameCell baris Gantt (wrap CJK, leading=size+2)."""
+    key = ('gantt-name', font_size, font_name)
+    st = _CELL_STYLE_CACHE.get(key)
+    if st is None:
+        st = ParagraphStyle(
+            'NameCell', parent=_base_stylesheet()['Normal'],
+            fontSize=font_size,
+            fontName=font_name,
+            alignment=0,
+            wordWrap='CJK',
+            leading=font_size + 2,
+        )
+        _CELL_STYLE_CACHE[key] = st
+    return st
+
+
+def _gantt_data_style(font_size, font_name):
+    """Style DataCell baris Gantt (rata kanan, leading ikut Normal)."""
+    key = ('gantt-data', font_size, font_name)
+    st = _CELL_STYLE_CACHE.get(key)
+    if st is None:
+        st = ParagraphStyle(
+            'DataCell', parent=_base_stylesheet()['Normal'],
+            fontSize=font_size,
+            fontName=font_name,
+            alignment=2,
+        )
+        _CELL_STYLE_CACHE[key] = st
+    return st
+
+
+# =====================================================================
 # NUMBERED CANVAS - Running Page Header/Footer
 # =====================================================================
 
@@ -2048,14 +2154,7 @@ class PDFExporter(ConfigExporterBase):
 
         # Convert text to Paragraphs for wrapping
         def P(text, bold=False, align='LEFT'):
-            styles = getSampleStyleSheet()
-            st = ParagraphStyle(
-                'Cell', parent=styles['Normal'],
-                fontSize=self.config.font_size_normal,
-                alignment={'LEFT': 0, 'CENTER': 1, 'RIGHT': 2}.get(align, 0)
-            )
-            if bold:
-                st.fontName = 'Helvetica-Bold'
+            st = _cell_style_normal_parent(self.config.font_size_normal, bold, align)
             return Paragraph(str(text or ''), st)
 
         # Helper to check if value is effectively 0% (handles comma decimal)
@@ -2089,10 +2188,28 @@ class PDFExporter(ConfigExporterBase):
             wrapped_rows.append(wrapped)
         # Process headers - create 2-line format for week headers
         import re
+
+        # Style header dibuat sekali per tabel (bukan per sel — Fase 1.2)
+        week_header_style = ParagraphStyle(
+            'WeekHeader', parent=_base_stylesheet()['Normal'],
+            fontSize=5,
+            fontName='Helvetica-Bold',
+            alignment=1,  # CENTER
+            textColor=colors.white,
+            leading=7,  # Line spacing for 2-line
+            wordWrap='CJK',  # Prevent word wrapping
+            splitLongWords=0,  # Don't split words
+        )
+        plain_header_style = ParagraphStyle(
+            'Header', parent=_base_stylesheet()['Normal'],
+            fontSize=7,
+            fontName='Helvetica-Bold',
+            alignment=1,  # CENTER
+            textColor=colors.white,
+        )
+
         def create_header_cell(header_text, is_week=False):
             """Create header cell, with 2-line format for week columns"""
-            styles = getSampleStyleSheet()
-            
             if is_week:
                 # Parse week header like "Week 1 (01/01 - 07/01)" or "W1 (01/01-07/01)"
                 # Match both "Week X" and "WX" formats
@@ -2114,24 +2231,9 @@ class PDFExporter(ConfigExporterBase):
                     else:
                         header_text = week_label
                 
-                st = ParagraphStyle(
-                    'WeekHeader', parent=styles['Normal'],
-                    fontSize=5,
-                    fontName='Helvetica-Bold',
-                    alignment=1,  # CENTER
-                    textColor=colors.white,
-                    leading=7,  # Line spacing for 2-line
-                    wordWrap='CJK',  # Prevent word wrapping
-                    splitLongWords=0,  # Don't split words
-                )
+                st = week_header_style
             else:
-                st = ParagraphStyle(
-                    'Header', parent=styles['Normal'],
-                    fontSize=7,
-                    fontName='Helvetica-Bold',
-                    alignment=1,  # CENTER
-                    textColor=colors.white,
-                )
+                st = plain_header_style
             return Paragraph(str(header_text or ''), st)
         
         # Identify which headers are week columns (start after static columns)
@@ -2301,13 +2403,8 @@ class PDFExporter(ConfigExporterBase):
 
         # Helper for paragraphs
         def P(text, style_name='Normal', bold=False):
-            styles = getSampleStyleSheet()
-            st = ParagraphStyle(
-                'Custom', parent=styles[style_name],
-                fontSize=self.config.font_size_normal
-            )
-            if bold:
-                st.fontName = 'Helvetica-Bold'
+            st = _cell_style_normal_parent(
+                self.config.font_size_normal, bold, 'LEFT', parent_name=style_name)
             return Paragraph(str(text or ''), st)
 
         # Pekerjaan Header Section (similar to .rk-right-header)
@@ -2367,14 +2464,7 @@ class PDFExporter(ConfigExporterBase):
 
             # Wrap cells in Paragraphs
             def wrap_cell(text, align='LEFT', bold=False):
-                styles = getSampleStyleSheet()
-                st = ParagraphStyle(
-                    'Cell', parent=styles['Normal'],
-                    fontSize=self.config.font_size_normal,
-                    alignment={'LEFT': 0, 'CENTER': 1, 'RIGHT': 2}.get(align, 0)
-                )
-                if bold:
-                    st.fontName = 'Helvetica-Bold'
+                st = _cell_style_normal_parent(self.config.font_size_normal, bold, align)
                 return Paragraph(str(text or ''), st)
 
             # Header row
@@ -3021,29 +3111,12 @@ class PDFExporter(ConfigExporterBase):
                 text = str(text)
                 if len(text) > max_chars:
                     text = text[:max_chars-3].rstrip() + '...'
-            
-            al = {'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
-            st = ParagraphStyle(
-                'Cell', 
-                fontSize=size, 
-                alignment=al,
-                fontName='Helvetica-Bold' if bold else 'Helvetica',
-                textColor=colors.HexColor(color) if color else colors.black,
-                leading=size + 2,
-            )
-            return Paragraph(str(text or ''), st)
+
+            return Paragraph(str(text or ''), _cell_style_plain(size, bold, align, color))
         
         def PHeader(text):
             """Header paragraph with white color."""
-            st = ParagraphStyle(
-                'Header', 
-                fontSize=7, 
-                alignment=TA_CENTER,
-                fontName='Helvetica-Bold',
-                textColor=colors.white,
-                leading=9,
-            )
-            return Paragraph(str(text or ''), st)
+            return Paragraph(str(text or ''), _header_style_white7())
         
         # Build header row with white font
         header_row = [PHeader(h) for h in headers]
@@ -3422,28 +3495,11 @@ class PDFExporter(ConfigExporterBase):
                 text = str(text)
                 if len(text) > max_chars:
                     text = text[:max_chars-3].rstrip() + '...'
-            
-            al = {'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
-            st = ParagraphStyle(
-                'Cell', 
-                fontSize=size, 
-                alignment=al,
-                fontName='Helvetica-Bold' if bold else 'Helvetica',
-                textColor=colors.HexColor(color) if color else colors.black,
-                leading=size + 2,
-            )
-            return Paragraph(str(text or ''), st)
+
+            return Paragraph(str(text or ''), _cell_style_plain(size, bold, align, color))
         
         def PHeader(text):
-            st = ParagraphStyle(
-                'Header', 
-                fontSize=7, 
-                alignment=TA_CENTER,
-                fontName='Helvetica-Bold',
-                textColor=colors.white,
-                leading=9,
-            )
-            return Paragraph(str(text or ''), st)
+            return Paragraph(str(text or ''), _header_style_white7())
         
         header_row = [PHeader(h) for h in headers]
         
@@ -3853,15 +3909,7 @@ class PDFExporter(ConfigExporterBase):
         
         # Create paragraphs for wrapping
         def P(text, bold=False, align='LEFT'):
-            styles = getSampleStyleSheet()
-            st = ParagraphStyle(
-                'Cell', parent=styles['Normal'],
-                fontSize=10,
-                alignment={'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
-            )
-            if bold:
-                st.fontName = 'Helvetica-Bold'
-            return Paragraph(str(text or ''), st)
+            return Paragraph(str(text or ''), _cell_style_normal_parent(10, bold, align))
         
         header_cells = [P(h, bold=True, align='CENTER') for h in headers]
         wrapped_rows = []
@@ -4013,15 +4061,7 @@ class PDFExporter(ConfigExporterBase):
         
         # Create paragraphs
         def P(text, bold=False, align='LEFT'):
-            styles = getSampleStyleSheet()
-            st = ParagraphStyle(
-                'Cell', parent=styles['Normal'],
-                fontSize=8,
-                alignment={'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
-            )
-            if bold:
-                st.fontName = 'Helvetica-Bold'
-            return Paragraph(str(text or ''), st)
+            return Paragraph(str(text or ''), _cell_style_normal_parent(8, bold, align))
         
         header_cells = [P(h, bold=True, align='CENTER') for h in headers]
         
@@ -4509,22 +4549,11 @@ class PDFExporter(ConfigExporterBase):
                 # Don't truncate name - let Paragraph handle wrapping
                 full_display_name = f"{indent}{name}"
                 
-                name_cell = Paragraph(full_display_name, ParagraphStyle(
-                    'NameCell', parent=getSampleStyleSheet()['Normal'],
-                    fontSize=font_size,
-                    fontName=font_name,
-                    alignment=0,
-                    wordWrap='CJK',  # Enable word wrap
-                    leading=font_size + 2,  # Line height
-                ))
-                
+                name_cell = Paragraph(
+                    full_display_name, _gantt_name_style(font_size, font_name))
+
                 # UNIFIED: Create Volume and Satuan cells
-                data_cell_style = ParagraphStyle(
-                    'DataCell', parent=getSampleStyleSheet()['Normal'],
-                    fontSize=font_size,
-                    fontName=font_name,
-                    alignment=2,  # RIGHT align
-                )
+                data_cell_style = _gantt_data_style(font_size, font_name)
                 volume_cell = Paragraph(str(volume) if volume else '', data_cell_style)
                 satuan_cell = Paragraph(str(satuan) if satuan else '', data_cell_style)
                 
