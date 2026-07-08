@@ -495,6 +495,10 @@ class ExportManager:
         adapter = HargaItemsAdapter(self.project)
         data = adapter.get_export_data()
 
+        # Doc 32 Fase 2 — PILOT aktivasi style registry (per-report).
+        # Hanya PDFExporter yang mengonsumsi flag ini; Word menyusul Fase 3.
+        data['style_registry'] = True
+
         # Get exporter
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:

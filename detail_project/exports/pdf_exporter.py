@@ -674,6 +674,12 @@ class PDFExporter(ConfigExporterBase):
         # text-exporter boundary (only column_formats-tagged tables are touched).
         from .cell_format import materialize_display_rows
         data = materialize_display_rows(data)
+
+        # Doc 32 Fase 2 — aktivasi style registry per-report (flag dari
+        # export_manager). Builder yang sadar-registry mem-branch pada atribut
+        # ini; report tanpa flag tetap memakai jalur legacy piksel-per-piksel.
+        self._style_registry_active = bool(data.get('style_registry'))
+
         buffer = BytesIO()
 
         # Determine page size based on orientation
@@ -1954,19 +1960,30 @@ class PDFExporter(ConfigExporterBase):
     
     def _build_header(self, title_override: str = None) -> List:
         """Build document header"""
+        registry_active = getattr(self, '_style_registry_active', False)
         elements = []
-        
+
         # Title
         the_title = title_override or self.config.title
-        title = Paragraph(f"<b>{the_title}</b>", self.styles['title'])
+        if registry_active:
+            from .styles.tokens import Palette, TypeScale
+            title_style = ParagraphStyle(
+                'CustomTitleRegistry',
+                parent=self.styles['title'],
+                fontSize=TypeScale.DOC_TITLE,
+                textColor=colors.HexColor(Palette.TITLE),
+            )
+        else:
+            title_style = self.styles['title']
+        title = Paragraph(f"<b>{the_title}</b>", title_style)
         elements.append(title)
-        
+
         # Project info (aligned with page identity) built from single helper
         from ..export_config import build_identity_rows
         info_data = build_identity_rows(self.config)
-        
+
         info_table = Table(info_data, colWidths=[40*mm, 5*mm, 120*mm])
-        info_table.setStyle(TableStyle([
+        identity_cmds = [
             ('FONTSIZE', (0, 0), (-1, -1), self.config.font_size_normal),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
@@ -1974,10 +1991,18 @@ class PDFExporter(ConfigExporterBase):
             # Tighter spacing between identity rows
             ('TOPPADDING', (0, 0), (-1, -1), 0.5*mm),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5*mm),
-        ]))
-        
+        ]
+        if registry_active:
+            from .styles.tokens import TypeScale
+            identity_cmds.extend([
+                # Token caption (7pt) + kolom label bold (identity_label)
+                ('FONTSIZE', (0, 0), (-1, -1), TypeScale.CAPTION),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ])
+        info_table.setStyle(TableStyle(identity_cmds))
+
         elements.append(info_table)
-        
+
         return elements
     
     def _build_simple_table(self, data: Dict[str, Any]) -> Table:
@@ -2050,11 +2075,34 @@ class PDFExporter(ConfigExporterBase):
         
         # Create table
         table = Table(table_rows, colWidths=col_widths if col_widths else None, repeatRows=1)
-        
+
+        # Doc 32 Fase 2 — jalur registry (aktif per-report via flag manager)
+        registry_active = getattr(self, '_style_registry_active', False)
+        col_aligns = None
+        if registry_active:
+            from .styles.alignment import alignment_for_columns
+            from .styles.tokens import Palette, TypeScale
+            col_aligns = alignment_for_columns(headers, table_data.get('column_formats'))
+
         # Base style
-        style_cmds = self._get_base_table_style()
-        style_cmds.append(('FONTSIZE', (0, 1), (-1, -1), 8))
-        
+        if registry_active:
+            style_cmds = self._get_base_table_style(header_bg=Palette.HEADER_BG)
+            style_cmds.append(('FONTSIZE', (0, 0), (-1, 0), TypeScale.TABLE_HEADER))
+            style_cmds.append(('FONTSIZE', (0, 1), (-1, -1), TypeScale.BODY))
+            category_bg = colors.HexColor(Palette.TOTAL_BG)
+            subcategory_bg = colors.HexColor(Palette.TOTAL_BG)
+        else:
+            style_cmds = self._get_base_table_style()
+            style_cmds.append(('FONTSIZE', (0, 1), (-1, -1), 8))
+            category_bg = colors.HexColor('#D0D0D0')
+            subcategory_bg = colors.HexColor('#E8E8E8')
+
+        # Perataan per-kolom berbasis tipe (helper 1.4) — diterapkan SEBELUM
+        # styling baris kategori agar ALIGN kategori (LEFT) tetap menang.
+        if col_aligns:
+            for col_idx, col_align in enumerate(col_aligns):
+                style_cmds.append(('ALIGN', (col_idx, 1), (col_idx, -1), col_align))
+
         # Apply category and subcategory row styling
         for row_idx, row_type in enumerate(row_types):
             table_row = row_idx + 1  # +1 for header
@@ -2063,25 +2111,27 @@ class PDFExporter(ConfigExporterBase):
                 if len(headers) > 2:
                     style_cmds.append(('SPAN', (0, table_row), (-2, table_row)))
                 style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
-                style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#D0D0D0')))
+                style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), category_bg))
                 style_cmds.append(('ALIGN', (0, table_row), (-2, table_row), 'LEFT'))
             elif row_type == 'subcategory':
                 # Merge middle cells for subcategory too
                 if len(headers) > 2:
                     style_cmds.append(('SPAN', (0, table_row), (-2, table_row)))
                 style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
-                style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#E8E8E8')))
+                style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), subcategory_bg))
                 style_cmds.append(('ALIGN', (0, table_row), (-2, table_row), 'LEFT'))
                 style_cmds.append(('LEFTPADDING', (0, table_row), (0, table_row), 12))  # Indent sub
-        
-        # Column 0 (Uraian) left-aligned
-        style_cmds.append(('ALIGN', (0, 1), (0, -1), 'LEFT'))
-        # Columns 1 to second-to-last center-aligned
-        if len(headers) > 2:
-            style_cmds.append(('ALIGN', (1, 1), (-2, -1), 'CENTER'))
-        # Last column (Jumlah Harga) right-aligned
-        style_cmds.append(('ALIGN', (-1, 1), (-1, -1), 'RIGHT'))
-        
+
+        if not col_aligns:
+            # Jalur legacy: perataan berbasis posisi kolom
+            # Column 0 (Uraian) left-aligned
+            style_cmds.append(('ALIGN', (0, 1), (0, -1), 'LEFT'))
+            # Columns 1 to second-to-last center-aligned
+            if len(headers) > 2:
+                style_cmds.append(('ALIGN', (1, 1), (-2, -1), 'CENTER'))
+            # Last column (Jumlah Harga) right-aligned
+            style_cmds.append(('ALIGN', (-1, 1), (-1, -1), 'RIGHT'))
+
         table.setStyle(TableStyle(style_cmds))
         return table
 
@@ -2340,6 +2390,12 @@ class PDFExporter(ConfigExporterBase):
     
     def _build_footer_table(self, footer_rows: List) -> Table:
         """Build footer table for totals"""
+        if getattr(self, '_style_registry_active', False):
+            from .styles.tokens import Palette
+            line_color = colors.HexColor(Palette.HEADER_BG)
+        else:
+            line_color = colors.HexColor(UTS.PRIMARY_LIGHT)
+
         # Right-align footer table
         table = Table(footer_rows, colWidths=[120*mm, 60*mm])
         table.setStyle(TableStyle([
@@ -2349,8 +2405,8 @@ class PDFExporter(ConfigExporterBase):
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('LINEABOVE', (0, 0), (-1, 0), 1, colors.HexColor(UTS.PRIMARY_LIGHT)),
-            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor(UTS.PRIMARY_LIGHT)),
+            ('LINEABOVE', (0, 0), (-1, 0), 1, line_color),
+            ('LINEABOVE', (0, -1), (-1, -1), 2, line_color),
         ]))
 
         return table
