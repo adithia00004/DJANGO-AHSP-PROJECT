@@ -215,6 +215,12 @@ class WordExporter:
             getattr(self.config, 'page_size', 'A4') or 'A4',
             getattr(self.config, 'page_orientation', 'portrait') or 'portrait',
         )
+
+        # Doc 32 Fase 3 — aktivasi style registry per-report (flag yang sama
+        # dengan PDF Fase 2); report tanpa flag tetap jalur legacy.
+        self._registry_active = bool(data.get('style_registry'))
+        if self._registry_active:
+            self._apply_registry_base_styles()
         
         # Handle single-table data (e.g., Harga Items) vs multi-page data
         pages = data.get('pages', [])
@@ -228,13 +234,17 @@ class WordExporter:
             self._build_section_header(title)
             
             # Project identity
-            from ..export_config import build_identity_rows
-            for label, _, value in build_identity_rows(self.config):
-                para = self.doc.add_paragraph()
-                para.add_run(f"{label}: ").bold = True
-                para.add_run(str(value))
-            
-            self.doc.add_paragraph()  # Spacing
+            if getattr(self, '_registry_active', False):
+                # Fase 3.4: identitas = tabel 3 kolom, paritas dengan PDF
+                self._build_identity_table()
+            else:
+                from ..export_config import build_identity_rows
+                for label, _, value in build_identity_rows(self.config):
+                    para = self.doc.add_paragraph()
+                    para.add_run(f"{label}: ").bold = True
+                    para.add_run(str(value))
+
+            self.doc.add_paragraph()  # Spacing (pemisah wajib antar tabel)
             
             # Build table from page data
             table_data = page.get('table_data', {})
@@ -242,7 +252,19 @@ class WordExporter:
             rows = table_data.get('rows', [])
             row_types = page.get('row_types', [])
             is_pengesahan_page = page.get('include_signatures', False)
-            
+
+            # Fase 3.5: perataan per-tipe kolom dari column_formats (helper 1.4)
+            col_aligns = None
+            if getattr(self, '_registry_active', False):
+                from .styles.alignment import alignment_for_columns
+                col_aligns = alignment_for_columns(
+                    headers, table_data.get('column_formats'))
+            wd_align_map = {
+                'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
+                'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
+                'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
+            }
+
             if headers and rows:
                 if is_pengesahan_page:
                     # Pengesahan page - use dedicated 3-column table
@@ -276,11 +298,12 @@ class WordExporter:
                                 for run in para.runs:
                                     run.bold = True
                                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                            # Apply gray background using shading
+                            # Apply background using shading (registry: tint navy)
                             from docx.oxml.ns import qn
                             from docx.oxml import OxmlElement
                             shading = OxmlElement('w:shd')
-                            shading.set(qn('w:fill'), 'E8E8E8')
+                            cat_fill = 'E8EDF3' if getattr(self, '_registry_active', False) else 'E8E8E8'
+                            shading.set(qn('w:fill'), cat_fill)
                             table_row.cells[0]._tc.get_or_add_tcPr().append(shading)
                         else:
                             # Normal item row
@@ -299,6 +322,10 @@ class WordExporter:
                                                 cell.add_paragraph(line)
                                     else:
                                         cell.text = text
+                                    if col_aligns and col_idx < len(col_aligns):
+                                        cell_align = wd_align_map[col_aligns[col_idx]]
+                                        for cell_para in cell.paragraphs:
+                                            cell_para.alignment = cell_align
                     
                     self._enable_header_repeat(table)
                     
@@ -905,11 +932,15 @@ class WordExporter:
         for col_idx, header_text in enumerate(headers[:num_cols]):
             cell = table.rows[0].cells[col_idx]
             cell.text = str(header_text)
-            # Style header cell (bold)
-            for para in cell.paragraphs:
-                for run in para.runs:
-                    run.bold = True
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if getattr(self, '_registry_active', False):
+                # Fase 3.5: header navy putih — paritas pengesahan PDF
+                self._style_header_cell(cell)
+            else:
+                # Style header cell (bold)
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.bold = True
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         # Data rows
         for row_idx, row_data in enumerate(rows):
@@ -1036,19 +1067,59 @@ class WordExporter:
     # SECTION HEADERS
     # =========================================================================
     
+    def _apply_registry_base_styles(self):
+        """Doc 32 Fase 3.1/3.2: font default dokumen (Arial, skala body) +
+        named styles token — dokumen jadi 'native Word' (Navigation Pane
+        hidup, edit user tidak merusak format)."""
+        from .styles.tokens import FontFamily, TypeScale, ensure_word_styles
+        normal = self.doc.styles['Normal']
+        normal.font.name = FontFamily.WORD
+        normal.font.size = Pt(TypeScale.BODY)
+        ensure_word_styles(self.doc)
+
+    def _build_identity_table(self):
+        """Doc 32 Fase 3.4: blok identitas = tabel 3 kolom (Label : Nilai),
+        struktur & lebar sama dengan PDF; caption 7pt, label bold."""
+        from ..export_config import build_identity_rows
+        from .styles.tokens import FontFamily, TypeScale
+
+        identity_rows = build_identity_rows(self.config)
+        table = self.doc.add_table(rows=len(identity_rows), cols=3)
+        widths = (Mm(40), Mm(5), Mm(120))
+        for r_idx, (label, sep, value) in enumerate(identity_rows):
+            cells = table.rows[r_idx].cells
+            for c_idx, text in enumerate((label, sep, str(value))):
+                cell = cells[c_idx]
+                cell.width = widths[c_idx]
+                para = cell.paragraphs[0]
+                para.paragraph_format.space_before = Pt(1)
+                para.paragraph_format.space_after = Pt(1)
+                run = para.add_run(str(text))
+                run.font.name = FontFamily.WORD
+                run.font.size = Pt(TypeScale.CAPTION)
+                run.font.bold = (c_idx == 0)
+
     def _build_section_header(self, title: str):
         """
         Build section header with styling.
-        
+
         Args:
             title: Section title text
         """
+        if getattr(self, '_registry_active', False):
+            # Fase 3.2: judul memakai named style token (16pt bold navy) +
+            # spasi native via paragraph_format, bukan paragraf kosong
+            from .styles.tokens import word_style_name
+            para = self.doc.add_paragraph(title, style=word_style_name('doc_title'))
+            para.paragraph_format.space_after = Pt(10)
+            return
+
         para = self.doc.add_paragraph()
         run = para.add_run(title)
         run.bold = True
         run.font.size = Pt(14)
         run.font.color.rgb = RGBColor.from_string(UTS.PRIMARY_LIGHT[1:])
-        
+
         self.doc.add_paragraph()  # Spacing
     
     # =========================================================================
@@ -1122,17 +1193,26 @@ class WordExporter:
     
     def _style_header_cell(self, cell):
         """Apply header cell styling."""
+        # Registry (Fase 3.5): navy tunggal + skala header 8pt; legacy tetap
+        if getattr(self, '_registry_active', False):
+            from .styles.tokens import Palette, TypeScale
+            fill = Palette.HEADER_BG.lstrip('#').upper()
+            header_pt = TypeScale.TABLE_HEADER
+        else:
+            fill = UTS.PRIMARY_LIGHT[1:]
+            header_pt = 7
+
         # Background color
         shading = OxmlElement('w:shd')
-        shading.set(qn('w:fill'), UTS.PRIMARY_LIGHT[1:])
+        shading.set(qn('w:fill'), fill)
         cell._tc.get_or_add_tcPr().append(shading)
-        
+
         # Text styling
         for para in cell.paragraphs:
             para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             for run in para.runs:
                 run.bold = True
-                run.font.size = Pt(7)  # 7pt for headers
+                run.font.size = Pt(header_pt)
                 run.font.name = 'Arial'
                 run.font.color.rgb = RGBColor(255, 255, 255)
     
