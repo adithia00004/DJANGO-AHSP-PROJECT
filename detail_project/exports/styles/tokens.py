@@ -21,7 +21,8 @@ class Palette:
     TITLE = '#1e3a5f'
     BODY_TEXT = '#1a1a1a'
     CAPTION_TEXT = '#4a5568'
-    TOTAL_BG = '#e8edf3'       # tint navy untuk baris total (pengganti hijau lokal)
+    TOTAL_BG = '#e8edf3'        # tint navy untuk baris total (pengganti hijau lokal)
+    TOTAL_BG_STRONG = '#d7e0ec'  # tint navy lebih kuat untuk grand total (G)
     GRID = '#808080'
 
 

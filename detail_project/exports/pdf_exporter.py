@@ -834,7 +834,15 @@ class PDFExporter(ConfigExporterBase):
             rekap_table_data = [rekap_headers] + rekap_rows
             rekap_col_widths = [8*mm, 20*mm, 55*mm, 30*mm, 30*mm, 32*mm]
             rekap_table = Table(rekap_table_data, colWidths=rekap_col_widths, repeatRows=1)
-            rekap_style = self._get_base_table_style()
+            # Doc 32 Fase 2 — registry: header navy + perataan per-tipe (2.3)
+            if getattr(self, '_style_registry_active', False):
+                from .styles.tokens import Palette, TypeScale
+                rekap_style = self._get_base_table_style(header_bg=Palette.HEADER_BG)
+                rekap_style.append(('FONTSIZE', (0, 0), (-1, 0), TypeScale.TABLE_HEADER))
+                rekap_style.append(('ALIGN', (0, 1), (1, -1), 'CENTER'))   # No, Kode
+                rekap_style.append(('ALIGN', (3, 1), (5, -1), 'RIGHT'))    # E, F, G (uang)
+            else:
+                rekap_style = self._get_base_table_style()
             rekap_style.append(('FONTNAME', (0, 1), (-1, -1), 'Helvetica'))
             rekap_style.append(('FONTSIZE', (0, 1), (-1, -1), 8))
             rekap_style.append(('FONTNAME', (5, 1), (5, -1), 'Helvetica-Bold'))  # G column bold
@@ -925,7 +933,22 @@ class PDFExporter(ConfigExporterBase):
                 detail_col_widths = [10*mm, 50*mm, 25*mm, 15*mm, 20*mm, 25*mm, 30*mm]
                 detail_table = Table(table_data, colWidths=detail_col_widths, repeatRows=1)
                 
-                detail_style = self._get_base_table_style()
+                # Doc 32 Fase 2 — registry: header navy, perataan per-tipe (2.3),
+                # total hijau → tint navy. Body tetap 7pt (tabel padat, aturan
+                # minimum skala) dan compact tanpa page break (R-11) dipertahankan.
+                if getattr(self, '_style_registry_active', False):
+                    from .styles.tokens import Palette, TypeScale
+                    detail_style = self._get_base_table_style(header_bg=Palette.HEADER_BG)
+                    detail_style.append(('FONTSIZE', (0, 0), (-1, 0), TypeScale.TABLE_HEADER))
+                    detail_style.append(('ALIGN', (0, 1), (0, -1), 'CENTER'))  # No
+                    detail_style.append(('ALIGN', (2, 1), (3, -1), 'CENTER'))  # Kode, Satuan
+                    detail_style.append(('ALIGN', (4, 1), (6, -1), 'RIGHT'))   # Koef, Harga, Jumlah
+                    total_ef_bg = colors.HexColor(Palette.TOTAL_BG)
+                    total_g_bg = colors.HexColor(Palette.TOTAL_BG_STRONG)
+                else:
+                    detail_style = self._get_base_table_style()
+                    total_ef_bg = colors.HexColor('#e8f5e9')
+                    total_g_bg = colors.HexColor('#c8e6c9')
                 detail_style.append(('FONTSIZE', (0, 1), (-1, -1), 7))
                 
                 # Apply row-specific styling with SPAN for merged cells
@@ -946,14 +969,14 @@ class PDFExporter(ConfigExporterBase):
                         detail_style.append(('SPAN', (0, table_row), (5, table_row)))
                         detail_style.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
                         detail_style.append(('ALIGN', (0, table_row), (5, table_row), 'RIGHT'))
-                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#e8f5e9')))
+                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), total_ef_bg))
                     elif row_type == 'total_g':
                         # Merge columns 0-5 for HSP total
                         detail_style.append(('SPAN', (0, table_row), (5, table_row)))
                         detail_style.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
                         detail_style.append(('FONTSIZE', (0, table_row), (-1, table_row), 9))
                         detail_style.append(('ALIGN', (0, table_row), (5, table_row), 'RIGHT'))
-                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#c8e6c9')))
+                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), total_g_bg))
                 
                 detail_table.setStyle(TableStyle(detail_style))
                 
