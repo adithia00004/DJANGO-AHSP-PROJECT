@@ -704,7 +704,8 @@ class PDFExporter(ConfigExporterBase):
         
         story = []
 
-        def build_page(section: Dict[str, Any], is_pengesahan: bool = False):
+        def build_page(section: Dict[str, Any], is_pengesahan: bool = False,
+                       skip_footer: bool = False):
             # Header with page-specific title
             story.extend(self._build_header(section.get('title') or self.config.title))
             story.append(Spacer(1, 5*mm))
@@ -759,7 +760,7 @@ class PDFExporter(ConfigExporterBase):
                     story.append(KeepTogether(bundle))
                 else:
                     story.append(table)
-                    if section.get('footer_rows'):  # Also check if non-empty
+                    if section.get('footer_rows') and not skip_footer:
                         story.append(Spacer(1, 3*mm))
                         story.append(self._build_footer_table(section['footer_rows']))
 
@@ -1021,8 +1022,16 @@ class PDFExporter(ConfigExporterBase):
                     # Spacing between pekerjaan tables (no page break - more compact)
                     story.append(Spacer(1, 10*mm))  # ~2 lines spacing
         else:
-            build_page(data)
-            if self.config.signature_config.enabled:
+            # 1.1 (owner 2026-07-13): footer ringkasan dirender SEKALI saja —
+            # di lembar terakhir bersama tanda tangan (bundle di bawah).
+            # Sebelumnya build_page DAN bundle sama-sama merender footer,
+            # sehingga blok ringkasan muncul berulang di tiap lembar.
+            has_signature_bundle = self.config.signature_config.enabled
+            build_page(
+                data,
+                skip_footer=has_signature_bundle and bool(data.get('footer_rows')),
+            )
+            if has_signature_bundle:
                 bundle = []
                 if 'footer_rows' in data:
                     bundle.append(self._build_footer_table(data['footer_rows']))

@@ -47,6 +47,7 @@ mencatat keputusan tersebut agar tidak menabraknya lagi.
 | R-15 | **Kontrak presisi WP Export**: nilai kanonik Decimal dari backend; 2dp id-ID diformat di boundary exporter via `materialize_display_rows`; hanya tabel ber-`column_formats` | Doc 30; `exports/cell_format.py` | 2026-07-08 |
 | R-16 | **NULL/kosong ≠ 0,00 pada Harga Items export** — harga belum diisi tampil kosong/`-`, BUKAN `0,00`; nol finansial sungguhan tetap `0,00` | Commit `4ce0870f` (WP Export slice Harga Items) | 2026-07-08 |
 | R-17 | **Kebijakan nilai kosong 3 kelas** (doc 32 item 2.4): (a) `None`/tidak diisi → `-`; (b) 0% grid progress → suppressed (R-10); (c) nol finansial → tampil `0,00` (R-16) | Doc 32 v1.1 §5 Fase 2 | 2026-07-08 |
+| R-18 | **Footer Rekap Kebutuhan: TANPA baris "Total Quantity" per kategori** (agregat kuantitas lintas satuan tidak relevan), dan **blok ringkasan footer hanya tampil SEKALI di lembar terakhir** (bersama tanda tangan), tidak diulang per lembar | Keputusan owner 2026-07-13 (temuan manual 1.1 & 1.2); `rekap_kebutuhan_adapter.py`, `pdf_exporter.py` build_page `skip_footer` | 2026-07-13 |
 
 ## Keputusan arsitektur terkait (bukan visual, jangan dilanggar)
 
