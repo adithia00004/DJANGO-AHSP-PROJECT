@@ -197,20 +197,9 @@ class RekapKebutuhanAdapter:
         if summary.get('grand_total_cost'):
             footer_rows.append(['Grand Total Harga', self._to_dec(summary['grand_total_cost'])])
 
-        qty_totals = (self.summary or {}).get('quantity_totals')
-        if qty_totals:
-            # N-1 (doc 32 §13.1): satu baris per kategori — nilai pendek tidak
-            # menabrak kolom footer 60mm; kuantitas diformat kanonik id-ID 3dp
-            # via cell_format (sumber services._format_decimal = string
-            # titik-desimal polos, bukan tampilan id-ID).
-            from .cell_format import format_cell_display
-            for kat in ('TK', 'BHN', 'ALT', 'LAIN'):
-                raw = qty_totals.get(kat, '0')
-                try:
-                    display = format_cell_display(Decimal(str(raw)), '#,##0.000')
-                except Exception:
-                    display = str(raw)
-                footer_rows.append([f'Total Quantity {kat}', display])
+        # Baris "Total Quantity per kategori" DIHAPUS — keputusan owner
+        # 2026-07-13 (registri R-18): agregat kuantitas lintas satuan tidak
+        # relevan di footer. Jangan ditambahkan kembali tanpa keputusan baru.
 
         filters_meta = self.summary.get('filters') if self.summary else None
         if self.summary.get('filters_applied') and filters_meta:
