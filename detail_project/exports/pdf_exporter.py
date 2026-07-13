@@ -2166,19 +2166,31 @@ class PDFExporter(ConfigExporterBase):
         
         # Create table
         table = Table(table_rows, colWidths=col_widths_pt, repeatRows=1)
-        
+
+        # Doc 32 Fase 2 — registry: header pengesahan ikut palet navy tunggal
+        # (menutup drift T-1 #1976D2) + skala tipografi 8pt
+        if getattr(self, '_style_registry_active', False):
+            from .styles.tokens import Palette, TypeScale
+            header_bg = colors.HexColor(Palette.HEADER_BG)
+            header_fs = TypeScale.TABLE_HEADER
+            body_fs = TypeScale.BODY
+        else:
+            header_bg = colors.HexColor('#1976D2')  # Primary blue
+            header_fs = 9
+            body_fs = 9
+
         # Style
         style_cmds = [
             # Header styling
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1976D2')),  # Primary blue
+            ('BACKGROUND', (0, 0), (-1, 0), header_bg),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 0), (-1, 0), header_fs),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            
+
             # Data styling
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), body_fs),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),  # Border gray
             ('TOPPADDING', (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),

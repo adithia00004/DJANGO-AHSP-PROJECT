@@ -165,8 +165,10 @@ class ExportManager:
         data = {
             'pages': [page1, page2],
             'include_signatures': True,  # Enable signatures for document
+            # Doc 32 Fase 2 — replikasi style registry (pola pilot Harga Items)
+            'style_registry': True,
         }
-        
+
         # Get exporter
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:
