@@ -377,24 +377,39 @@ class WordExporter:
             getattr(self.config, 'page_orientation', 'portrait') or 'portrait',
         )
 
+        # Doc 32 Fase 3 — registry per-report (jalur ini keluar sebelum
+        # export() generik, jadi flag di-set di sini juga)
+        self._registry_active = bool(data.get('style_registry'))
+        if self._registry_active:
+            self._apply_registry_base_styles()
+
         sections = data.get('sections', [])
-        
+
         # ========== SECTION 1: REKAP ==========
         title_para = self.doc.add_paragraph()
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title_run = title_para.add_run('REKAP ANALISA HARGA SATUAN PEKERJAAN')
         title_run.bold = True
-        title_run.font.size = Pt(16)
-        
+        if self._registry_active:
+            # 2.7/T-5: judul rata kiri kompak — paritas PDF Rincian (9pt bold)
+            title_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            title_run.font.size = Pt(9)
+        else:
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title_run.font.size = Pt(16)
+
         # Identity rows
-        identity_rows = build_identity_rows(self.config)
-        if identity_rows:
-            self.doc.add_paragraph()
-            id_table = self.doc.add_table(rows=len(identity_rows), cols=3)
-            for i, row_data in enumerate(identity_rows):
-                for j, cell_text in enumerate(row_data):
-                    id_table.rows[i].cells[j].text = str(cell_text)
-        
+        if self._registry_active:
+            # Fase 3.4: identitas = tabel 3 kolom, paritas PDF
+            self._build_identity_table()
+        else:
+            identity_rows = build_identity_rows(self.config)
+            if identity_rows:
+                self.doc.add_paragraph()
+                id_table = self.doc.add_table(rows=len(identity_rows), cols=3)
+                for i, row_data in enumerate(identity_rows):
+                    for j, cell_text in enumerate(row_data):
+                        id_table.rows[i].cells[j].text = str(cell_text)
+
         self.doc.add_paragraph()
         
         # Rekap table
@@ -424,6 +439,14 @@ class WordExporter:
             for para in row.cells[5].paragraphs:
                 for run in para.runs:
                     run.bold = True
+            if self._registry_active:
+                # 2.3: No/Kode center, uang (E/F/G) kanan
+                for c_idx in (0, 1):
+                    for para in row.cells[c_idx].paragraphs:
+                        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for c_idx in (3, 4, 5):
+                    for para in row.cells[c_idx].paragraphs:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         
         # Column widths for rekap
         rekap_widths = [Mm(8), Mm(20), Mm(55), Mm(30), Mm(30), Mm(32)]
@@ -435,10 +458,14 @@ class WordExporter:
         
         # ========== SECTION 2: RINCIAN ==========
         rincian_title = self.doc.add_paragraph()
-        rincian_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         rincian_run = rincian_title.add_run('RINCIAN ANALISA HARGA SATUAN PEKERJAAN')
         rincian_run.bold = True
-        rincian_run.font.size = Pt(16)
+        if self._registry_active:
+            rincian_title.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            rincian_run.font.size = Pt(9)
+        else:
+            rincian_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            rincian_run.font.size = Pt(16)
         
         self.doc.add_paragraph()
         
@@ -497,14 +524,26 @@ class WordExporter:
                             run.bold = True
                             run.italic = True
                             run.font.size = Pt(9)
+                    if self._registry_active:
+                        # Paritas PDF: latar abu muda utk judul grup
+                        self._shade_cells(table.rows[row_idx].cells, 'F0F0F0')
                     row_idx += 1
-                
+
                 # Group detail rows
                 for row_data in group_rows:
                     if row_idx < len(table.rows):
                         for col_idx, val in enumerate(row_data):
                             if col_idx < 7:
                                 table.rows[row_idx].cells[col_idx].text = str(val) if val else ''
+                        if self._registry_active:
+                            # 2.3: No/Kode/Satuan center, angka kanan
+                            detail_cells = table.rows[row_idx].cells
+                            for c_idx in (0, 2, 3):
+                                for para in detail_cells[c_idx].paragraphs:
+                                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            for c_idx in (4, 5, 6):
+                                for para in detail_cells[c_idx].paragraphs:
+                                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                         row_idx += 1
                 
                 # Subtotal row
@@ -516,6 +555,8 @@ class WordExporter:
                             run.bold = True
                     table.rows[row_idx].cells[6].text = str(group_subtotal)
                     for para in table.rows[row_idx].cells[6].paragraphs:
+                        if self._registry_active:
+                            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                         for run in para.runs:
                             run.bold = True
                     row_idx += 1
@@ -529,8 +570,12 @@ class WordExporter:
                         run.bold = True
                 table.rows[row_idx].cells[6].text = totals.get('E', '0')
                 for para in table.rows[row_idx].cells[6].paragraphs:
+                    if self._registry_active:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     for run in para.runs:
                         run.bold = True
+                if self._registry_active:
+                    self._shade_cells(table.rows[row_idx].cells, 'E8EDF3')
                 row_idx += 1
             
             # Total F (Profit/Margin)
@@ -543,8 +588,12 @@ class WordExporter:
                         run.bold = True
                 table.rows[row_idx].cells[6].text = totals.get('F', '0')
                 for para in table.rows[row_idx].cells[6].paragraphs:
+                    if self._registry_active:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     for run in para.runs:
                         run.bold = True
+                if self._registry_active:
+                    self._shade_cells(table.rows[row_idx].cells, 'E8EDF3')
                 row_idx += 1
             
             # Total G (Harga Satuan Pekerjaan)
@@ -557,9 +606,13 @@ class WordExporter:
                         run.font.size = Pt(10)
                 table.rows[row_idx].cells[6].text = totals.get('G', '0')
                 for para in table.rows[row_idx].cells[6].paragraphs:
+                    if self._registry_active:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     for run in para.runs:
                         run.bold = True
                         run.font.size = Pt(10)
+                if self._registry_active:
+                    self._shade_cells(table.rows[row_idx].cells, 'D7E0EC')
             
             # Column widths
             widths = [Mm(10), Mm(50), Mm(25), Mm(15), Mm(20), Mm(25), Mm(30)]
@@ -1191,6 +1244,13 @@ class WordExporter:
         
         self.doc.add_paragraph()  # Spacing after table
     
+    def _shade_cells(self, cells, fill_hex: str):
+        """Beri warna latar (w:shd) pada kumpulan sel — util registry Fase 3."""
+        for cell in cells:
+            shading = OxmlElement('w:shd')
+            shading.set(qn('w:fill'), fill_hex)
+            cell._tc.get_or_add_tcPr().append(shading)
+
     def _style_header_cell(self, cell):
         """Apply header cell styling."""
         # Registry (Fase 3.5): navy tunggal + skala header 8pt; legacy tetap
