@@ -2396,8 +2396,21 @@ class PDFExporter(ConfigExporterBase):
         else:
             line_color = colors.HexColor(UTS.PRIMARY_LIGHT)
 
+        # N-1 (doc 32 §13.1): nilai footer panjang (mis. baris 'Filters') di-wrap
+        # ke Paragraph agar tidak keluar dari kolom 60mm; nilai pendek tetap
+        # string polos (render identik dengan sebelumnya).
+        wrapped_rows = []
+        for row in footer_rows:
+            if (isinstance(row, (list, tuple)) and len(row) > 1
+                    and isinstance(row[1], str) and len(row[1]) > 45):
+                st = _cell_style_normal_parent(
+                    self.config.font_size_normal, True, 'RIGHT')
+                wrapped_rows.append([row[0], Paragraph(row[1], st)])
+            else:
+                wrapped_rows.append(row)
+
         # Right-align footer table
-        table = Table(footer_rows, colWidths=[120*mm, 60*mm])
+        table = Table(wrapped_rows, colWidths=[120*mm, 60*mm])
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), self.config.font_size_normal),

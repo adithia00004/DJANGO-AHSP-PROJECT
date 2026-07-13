@@ -199,13 +199,18 @@ class RekapKebutuhanAdapter:
 
         qty_totals = (self.summary or {}).get('quantity_totals')
         if qty_totals:
-            footer_rows.append([
-                'Total Quantity',
-                f"TK {qty_totals.get('TK', '0')} | "
-                f"BHN {qty_totals.get('BHN', '0')} | "
-                f"ALT {qty_totals.get('ALT', '0')} | "
-                f"LAIN {qty_totals.get('LAIN', '0')}"
-            ])
+            # N-1 (doc 32 §13.1): satu baris per kategori — nilai pendek tidak
+            # menabrak kolom footer 60mm; kuantitas diformat kanonik id-ID 3dp
+            # via cell_format (sumber services._format_decimal = string
+            # titik-desimal polos, bukan tampilan id-ID).
+            from .cell_format import format_cell_display
+            for kat in ('TK', 'BHN', 'ALT', 'LAIN'):
+                raw = qty_totals.get(kat, '0')
+                try:
+                    display = format_cell_display(Decimal(str(raw)), '#,##0.000')
+                except Exception:
+                    display = str(raw)
+                footer_rows.append([f'Total Quantity {kat}', display])
 
         filters_meta = self.summary.get('filters') if self.summary else None
         if self.summary.get('filters_applied') and filters_meta:
