@@ -436,6 +436,9 @@ class ExportManager:
             if summary:
                 data.setdefault('meta', summary)
 
+        # Doc 32 Fase 2 — replikasi style registry (pola pilot Harga Items)
+        data['style_registry'] = True
+
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:
             raise ValueError(f"Unsupported format: {format_type}")
