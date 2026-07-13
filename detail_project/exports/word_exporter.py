@@ -208,7 +208,13 @@ class WordExporter:
             return self._export_rincian_ahsp(data)
 
         self.doc = Document()
-        self._setup_page_layout('A4', 'portrait')
+        # N-2 (doc 32 §13.1): ukuran & orientasi mengikuti config report —
+        # sebelumnya hardcoded A4 portrait, sehingga jadwal_full (config A3
+        # landscape, 15+ kolom) terjepit; kini paritas dengan PDF.
+        self._setup_page_layout(
+            getattr(self.config, 'page_size', 'A4') or 'A4',
+            getattr(self.config, 'page_orientation', 'portrait') or 'portrait',
+        )
         
         # Handle single-table data (e.g., Harga Items) vs multi-page data
         pages = data.get('pages', [])
@@ -337,8 +343,13 @@ class WordExporter:
         3. Lembar Pengesahan (at bottom of last rincian page)
         """
         self.doc = Document()
-        self._setup_page_layout('A4', 'portrait')
-        
+        # N-2: ikuti config (Rincian AHSP tetap portrait dari manager — tanpa
+        # perubahan visual; konsistensi jalur saja)
+        self._setup_page_layout(
+            getattr(self.config, 'page_size', 'A4') or 'A4',
+            getattr(self.config, 'page_orientation', 'portrait') or 'portrait',
+        )
+
         sections = data.get('sections', [])
         
         # ========== SECTION 1: REKAP ==========
