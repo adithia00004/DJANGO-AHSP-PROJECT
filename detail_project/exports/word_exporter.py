@@ -288,9 +288,10 @@ class WordExporter:
                         row_type = row_types[row_idx] if row_idx < len(row_types) else 'item'
                         table_row = table.rows[row_idx + 1]
                         
-                        if row_type == 'category':
-                            # Category row - merge all cells and bold
-                            # Merge cells for category header
+                        if row_type in ('category', 'subcategory'):
+                            # Baris hierarki: merge semua sel + bold.
+                            # Temuan owner #3: Klasifikasi (category) tint lebih
+                            # kuat daripada Sub-Klasifikasi (subcategory)
                             for col_idx in range(1, num_cols):
                                 table_row.cells[0].merge(table_row.cells[col_idx])
                             table_row.cells[0].text = str(row_data[0]) if row_data else ''
@@ -298,11 +299,13 @@ class WordExporter:
                                 for run in para.runs:
                                     run.bold = True
                                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                            # Apply background using shading (registry: tint navy)
                             from docx.oxml.ns import qn
                             from docx.oxml import OxmlElement
                             shading = OxmlElement('w:shd')
-                            cat_fill = 'E8EDF3' if getattr(self, '_registry_active', False) else 'E8E8E8'
+                            if getattr(self, '_registry_active', False):
+                                cat_fill = 'D7E0EC' if row_type == 'category' else 'E8EDF3'
+                            else:
+                                cat_fill = 'E8E8E8' if row_type == 'category' else 'F0F0F0'
                             shading.set(qn('w:fill'), cat_fill)
                             table_row.cells[0]._tc.get_or_add_tcPr().append(shading)
                         else:

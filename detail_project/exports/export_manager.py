@@ -616,6 +616,25 @@ class ExportManager:
 
         data = adapter.get_export_data()
 
+        # Temuan owner 2026-07-13 (jadwal header/hierarki): turunkan row_types
+        # dari hierarchy_levels per halaman (pola sama dengan Rekap RAB) agar
+        # baris Klasifikasi/Sub-Klasifikasi/Pekerjaan terbedakan di PDF & Word,
+        # lalu aktifkan style registry (paritas dengan 5 report jalur A).
+        for page in data.get('pages', []):
+            hierarchy = page.get('hierarchy_levels') or {}
+            n_rows = len((page.get('table_data') or {}).get('rows') or [])
+            page_row_types = []
+            for i in range(n_rows):
+                level = hierarchy.get(i, 3)
+                if level == 1:
+                    page_row_types.append('category')
+                elif level == 2:
+                    page_row_types.append('subcategory')
+                else:
+                    page_row_types.append('item')
+            page['row_types'] = page_row_types
+        data['style_registry'] = True
+
         # Add metadata
         data['report_type'] = report_type
         data['mode'] = mode

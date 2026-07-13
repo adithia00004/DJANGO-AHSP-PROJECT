@@ -102,6 +102,26 @@ def _cell_style_plain(size, bold=False, align='LEFT', color=None):
     return st
 
 
+def _simple_table_header_style():
+    """Header `_build_simple_table` jalur registry: 8pt bold putih center,
+    wordWrap CJK agar token panjang (mis. rentang tanggal header minggu)
+    dijamin patah DI DALAM cell (temuan owner #1)."""
+    key = ('simple-header',)
+    st = _CELL_STYLE_CACHE.get(key)
+    if st is None:
+        st = ParagraphStyle(
+            'SimpleTableHeader',
+            fontSize=8,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold',
+            textColor=colors.white,
+            leading=10,
+            wordWrap='CJK',
+        )
+        _CELL_STYLE_CACHE[key] = st
+    return st
+
+
 def _header_style_white7():
     """Style PHeader: 7pt bold putih center, leading 9."""
     key = ('pheader',)
@@ -2065,8 +2085,14 @@ class PDFExporter(ConfigExporterBase):
             fontName='Helvetica-Bold'
         )
         
-        # Build table data with Paragraphs for wrapping
-        table_rows = [headers]
+        # Build table data with Paragraphs for wrapping.
+        # Registry (temuan owner #1): header dibungkus Paragraph agar teks
+        # panjang (mis. header minggu jadwal) wrap DI DALAM cell, tidak keluar.
+        if getattr(self, '_style_registry_active', False):
+            header_par_style = _simple_table_header_style()
+            table_rows = [[Paragraph(str(h or ''), header_par_style) for h in headers]]
+        else:
+            table_rows = [headers]
         
         # Detect which columns should wrap based on headers
         wrap_columns = set()
@@ -2121,7 +2147,9 @@ class PDFExporter(ConfigExporterBase):
             style_cmds = self._get_base_table_style(header_bg=Palette.HEADER_BG)
             style_cmds.append(('FONTSIZE', (0, 0), (-1, 0), TypeScale.TABLE_HEADER))
             style_cmds.append(('FONTSIZE', (0, 1), (-1, -1), TypeScale.BODY))
-            category_bg = colors.HexColor(Palette.TOTAL_BG)
+            # Temuan owner #3: bedakan hierarki — Klasifikasi tint lebih kuat
+            # daripada Sub-Klasifikasi; Pekerjaan tetap putih
+            category_bg = colors.HexColor(Palette.TOTAL_BG_STRONG)
             subcategory_bg = colors.HexColor(Palette.TOTAL_BG)
         else:
             style_cmds = self._get_base_table_style()
