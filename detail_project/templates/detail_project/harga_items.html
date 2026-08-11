@@ -2,6 +2,7 @@
 {% load static %}
 {% block dp_topbar_extra %}
 {% include "detail_project/_sync_led.html" with scope="harga" watch="ahsp" change_status=change_status %}
+{% include "detail_project/_rab_total_badge.html" %}
 {% endblock %}
 {% block title %}Harga Items – {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="harga_items"{% endblock %}
@@ -288,6 +289,7 @@
 
 {% block extra_js %}
 {{ block.super }}
+<script defer src="{% static 'detail_project/js/rab_total_badge.js' %}"></script>
 <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
 
 

@@ -2,6 +2,7 @@
 {% load static i18n %}
 {% block dp_topbar_extra %}
 {% include "detail_project/_sync_led.html" with scope="template" watch="pekerjaan,harga" change_status=change_status %}
+{% include "detail_project/_rab_total_badge.html" %}
 {% endblock %}
 {% block title %}Template AHSP - {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="template_ahsp"{% endblock %}
@@ -811,6 +812,7 @@
 
 {% block extra_js %}
 {{ block.super }}
+<script src="{% static 'detail_project/js/rab_total_badge.js' %}" defer></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
 <script src="{% static 'detail_project/js/vol_formula_engine.js' %}" defer></script>
 <script src="{% static 'detail_project/js/shared/param_store.js' %}" defer></script>

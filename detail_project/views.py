@@ -1,6 +1,7 @@
 # ================================
 # detail_project/views.py (web views)
 # ================================
+import logging
 from functools import wraps
 
 from django.contrib import messages
@@ -9,6 +10,8 @@ from django.conf import settings
 from django.shortcuts import render, get_object_or_404, redirect
 
 from .models import Pekerjaan, ProjectChangeStatus, VolumePekerjaan
+
+logger = logging.getLogger(__name__)
 
 
 def staff_only_page(view_func):
@@ -76,6 +79,28 @@ def _get_sync_initial_timestamps(project):
     }
 
 
+def _get_rab_total_context(project):
+    """Nilai awal badge total RAB, di-bootstrap SSR agar tidak ada flash fetch.
+
+    Mengikuti pola bootstrap halaman Volume/Harga/Template: nilai pertama ikut
+    HTML, lalu JS hanya menyegarkan setelah save berhasil.
+
+    Kegagalan sengaja ditelan. Ini angka tampilan pelengkap; membiarkan satu
+    perhitungan gagal menjatuhkan seluruh halaman Volume atau Harga Items jelas
+    bukan pertukaran yang benar. Badge-nya cukup tidak muncul, dan JS akan
+    mencoba lagi lewat endpoint pada save berikutnya.
+    """
+    from .services import compute_rab_grand_total
+
+    try:
+        data = compute_rab_grand_total(project)
+    except Exception:
+        logger.exception("Gagal menghitung total RAB untuk project %s", project.id)
+        return {"rab_total": None}
+
+    return {"rab_total": data}
+
+
 # --- Transisi aman: terima pid ATAU project_id ---
 def coerce_project_id(view_func):
     @wraps(view_func)
@@ -136,6 +161,7 @@ def volume_pekerjaan_view(request, project_id: int):
         "formula_label_only_ui_enabled": getattr(settings, "FORMULA_LABEL_ONLY_UI_ENABLED", False),
         "change_status": _ensure_change_status(project),
         **_get_sync_initial_timestamps(project),
+        **_get_rab_total_context(project),
     }
     return render(request, "detail_project/volume_pekerjaan.html", context)
 
@@ -180,6 +206,7 @@ def template_ahsp_view(request, project_id: int):
         "opaque_id_enabled": getattr(settings, "OPAQUE_ID_ENABLED", True),
         "change_status": _ensure_change_status(project),
         **_get_sync_initial_timestamps(project),
+        **_get_rab_total_context(project),
     }
     return render(request, "detail_project/template_ahsp.html", ctx)
 
@@ -197,6 +224,7 @@ def harga_items_view(request, project_id: int):
         "side_active": "harga_items",
         "change_status": _ensure_change_status(project),
         **_get_sync_initial_timestamps(project),
+        **_get_rab_total_context(project),
     }
     return render(request, "detail_project/harga_items.html", context)
 

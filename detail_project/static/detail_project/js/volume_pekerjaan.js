@@ -6712,6 +6712,10 @@
       setBtnSaveEnabled();
       resolveVolumeJobs(postingIds);
       acknowledgeGlobalSyncLed({ volume: true });
+      // Volume yang baru tersimpan mengubah total RAB; badge di toolbar ikut
+      // disegarkan. Ditaruh di sini, bukan di cabang status di bawah, supaya
+      // simpan sebagian pun tetap memperbarui angkanya.
+      document.dispatchEvent(new CustomEvent('dp:saved', { detail: { scope: 'volume' } }));
       if (pendingAfterSaveCount > 0) scheduleAutosave(700);
 
       const realChanges = changes.filter(c => savedIdSet.has(Number(c.id)) && roundHalfUp(c.before, STORE_PLACES) !== roundHalfUp(c.after, STORE_PLACES));

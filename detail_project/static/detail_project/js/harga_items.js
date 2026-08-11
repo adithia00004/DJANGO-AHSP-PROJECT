@@ -763,6 +763,8 @@
         const userMsg = j.user_message || `✅ Berhasil menyimpan ${j.updated ?? payload.items.length} item.`;
         toast(userMsg, 'success');
         setDirty(false);  // Mark as clean after successful save
+        // Harga yang berubah mengubah total RAB; segarkan badge di toolbar.
+        document.dispatchEvent(new CustomEvent('dp:saved', { detail: { scope: 'harga' } }));
 
         // Tandai baris-baris yang tersimpan dan bersihkan status dirty/empty
         idsSaving.forEach(({ id, canon }) => {

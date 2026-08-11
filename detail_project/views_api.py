@@ -114,6 +114,7 @@ from .services import (
     DEFAULT_PROJECT_MARKUP_PERCENT,
     build_project_cache_signature,
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
+    compute_rab_grand_total,
     compute_kebutuhan_items, summarize_kebutuhan_rows,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
     expand_bundle_to_components,  # NEW: Dual storage expansion (Pekerjaan)
@@ -3792,6 +3793,35 @@ def api_save_conversion_profile(request: HttpRequest, project_id: int):
         "profile_id": profile.id,
         "created": created,
         "message": "Conversion profile saved",
+    })
+
+
+# ---------- View: Total RAB (badge lintas halaman) ----------
+@login_required
+@rate_limit(category='read_interactive', methods=('GET',))
+@require_http_methods(["GET"])
+def api_project_rab_total(request: HttpRequest, project_id: int):
+    """
+    GET -> { ok, subtotal, ppn_percent, ppn, grand_total, rounding_base, rounded_total }
+
+    Menyuplai badge total RAB di halaman Volume, Harga Items, dan Template AHSP.
+    Halaman-halaman itu sudah membawa nilai awal lewat SSR, jadi endpoint ini
+    hanya dipanggil ulang setelah save berhasil -- di halaman itulah pengguna
+    mengubah angkanya, jadi nilai statis akan langsung basi.
+
+    Perhitungannya menumpang cache signature ``compute_rekap_for_project``,
+    sehingga pemanggilan berulang tanpa perubahan data tidak menghitung ulang.
+    """
+    project = _owner_or_404(project_id, request.user)
+    data = compute_rab_grand_total(project)
+    return JsonResponse({
+        "ok": True,
+        "subtotal": to_dp_str(data["subtotal"], 2),
+        "ppn_percent": to_dp_str(data["ppn_percent"], 2),
+        "ppn": to_dp_str(data["ppn"], 2),
+        "grand_total": to_dp_str(data["grand_total"], 2),
+        "rounding_base": data["rounding_base"],
+        "rounded_total": to_dp_str(data["rounded_total"], 2),
     })
 
 

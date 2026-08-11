@@ -1,0 +1,22 @@
+{% load humanize %}
+{% comment %}
+Badge total RAB (nilai pembulatan, sudah termasuk PPN) untuk halaman Volume,
+Harga Items, dan Template AHSP.
+
+Nilai awal ikut SSR supaya tidak ada flash fetch, mengikuti pola bootstrap
+halaman-halaman ini. Sesudah itu rab_total_badge.js menyegarkannya setiap kali
+save berhasil -- justru di halaman inilah pengguna mengubah angkanya, jadi nilai
+statis akan basi begitu ia menyimpan.
+
+`rab_total` bisa None kalau perhitungannya gagal (lihat _get_rab_total_context);
+badge cukup tidak dirender, halaman tetap jalan.
+{% endcomment %}
+{% if rab_total %}
+<div class="dp-rab-total" role="status" aria-live="polite"
+     data-rab-total
+     data-endpoint="{% url 'detail_project:api_project_rab_total' project.id %}"
+     title="Total RAB termasuk PPN {{ rab_total.ppn_percent|floatformat:2 }}%, dibulatkan ke kelipatan Rp {{ rab_total.rounding_base|intcomma }}">
+  <span class="dp-rab-total__label">Total RAB</span>
+  <span class="dp-rab-total__value" data-rab-total-value>Rp {{ rab_total.rounded_total|floatformat:0|intcomma }}</span>
+</div>
+{% endif %}

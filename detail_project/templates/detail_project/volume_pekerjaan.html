@@ -15,6 +15,7 @@
 
 {% block dp_topbar_extra %}
 {% include "detail_project/_sync_led.html" with scope="volume" watch="pekerjaan" change_status=change_status %}
+{% include "detail_project/_rab_total_badge.html" %}
 {% endblock %}
 
 {% block dp_content %}
@@ -640,6 +641,7 @@
 {% block extra_js %}
 {{ block.super }}
 
+<script defer src="{% static 'detail_project/js/rab_total_badge.js' %}"></script>
 <script defer src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
 <!-- XLSX untuk import .xlsx -->
 <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>

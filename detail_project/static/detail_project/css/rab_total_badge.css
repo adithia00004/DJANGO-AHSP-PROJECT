@@ -1,0 +1,37 @@
+/*
+ * Badge total RAB di topbar halaman Volume, Harga Items, dan Template AHSP.
+ * Pasangan dari partial `_rab_total_badge.html` dan `js/rab_total_badge.js`.
+ *
+ * Memakai variabel Bootstrap (bukan warna mati) supaya ikut tema yang berlaku,
+ * sama seperti komponen topbar lain di halaman-halaman ini.
+ */
+
+.dp-rab-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .4rem;
+  padding: .25rem .6rem;
+  border: 1px solid var(--bs-border-color, rgba(0, 0, 0, .15));
+  border-radius: .5rem;
+  background: var(--bs-tertiary-bg, rgba(0, 0, 0, .03));
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.dp-rab-total__label {
+  font-size: .75rem;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.dp-rab-total__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums; /* angka tidak bergeser saat disegarkan */
+  color: var(--bs-emphasis-color, #212529);
+}
+
+/* Layar sempit: label disembunyikan, angkanya yang dipertahankan. */
+@media (max-width: 575.98px) {
+  .dp-rab-total__label {
+    display: none;
+  }
+}

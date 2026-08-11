@@ -19,7 +19,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import date, timedelta
 from collections import defaultdict
 from .numeric import quantize_half_up, to_dp_str, DECIMAL_SPEC
@@ -2692,6 +2692,59 @@ def compute_rekap_for_project(project):
         ))
     cache.set(cache_key, {"sig": signature, "data": result}, 300)  # 5 menit (atau sesuai kebutuhan)
     return result
+
+
+def compute_rab_grand_total(project):
+    """Total RAB proyek: subtotal, PPN, grand total, dan nilai pembulatan.
+
+    Sampai sekarang angka-angka ini hanya hidup di browser, di footer halaman
+    Rekap RAB (``rekap_rab.js``). Halaman lain yang ingin menampilkannya harus
+    menyalin rumusnya, dan salinan itu pasti menyimpang. Fungsi ini menjadikan
+    servernya sumber tunggal.
+
+    Rumusnya sengaja identik dengan footer tersebut, termasuk urutannya:
+    ``ppn = subtotal x pct/100`` lalu ``grand = subtotal + ppn`` lalu
+    ``rounded = round(grand / base) * base``. Membulatkan lebih awal akan
+    membuat badge berbeda dari halaman Rekap RAB, dan pengguna membandingkan
+    keduanya.
+
+    Sumber persentase dan basis pembulatan adalah ``ProjectPricing`` — bukan
+    localStorage yang dipakai halaman Rekap RAB sebagai cache preferensi UI.
+
+    Perhitungan berat menumpang ``compute_rekap_for_project`` yang sudah
+    ber-cache signature, jadi pemanggilan berulang tanpa perubahan data murah.
+    """
+    rows = compute_rekap_for_project(project)
+    subtotal = sum((Decimal(str(r.get("total") or 0)) for r in rows), Decimal("0"))
+
+    pricing = (
+        ProjectPricing.objects
+        .filter(project=project)
+        .only("ppn_percent", "rounding_base")
+        .first()
+    )
+    ppn_percent = Decimal(str(getattr(pricing, "ppn_percent", None) or 0)) if pricing else Decimal("11")
+    rounding_base = int(getattr(pricing, "rounding_base", 0) or 0) if pricing else 10000
+
+    ppn = subtotal * ppn_percent / Decimal("100")
+    grand_total = subtotal + ppn
+
+    # rounding_base 0 berarti "jangan bulatkan"; tanpa penjagaan ini pembagiannya
+    # melempar dan seluruh halaman ikut gagal hanya karena satu angka tampilan.
+    if rounding_base > 0:
+        base = Decimal(rounding_base)
+        rounded_total = (grand_total / base).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * base
+    else:
+        rounded_total = grand_total
+
+    return {
+        "subtotal": subtotal,
+        "ppn_percent": ppn_percent,
+        "ppn": ppn,
+        "grand_total": grand_total,
+        "rounding_base": rounding_base,
+        "rounded_total": rounded_total,
+    }
 
 
 def compute_kebutuhan_items(

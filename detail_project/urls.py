@@ -112,6 +112,7 @@ urlpatterns = [
     
     # ===== API: Project Pricing (Profit/Margin) =====
     path('api/project/<int:project_id>/pricing/', views_api.api_project_pricing, name='api_project_pricing'),
+    path('api/project/<int:project_id>/rab-total/', views_api.api_project_rab_total, name='api_project_rab_total'),
     
     # Pricing per-pekerjaan
     path('api/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/pricing/', views_api.api_pekerjaan_pricing, name='api_pekerjaan_pricing'),

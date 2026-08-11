@@ -2032,6 +2032,8 @@
         }
 
       toast(userMsg, 'success');
+      // Koefisien AHSP yang tersimpan mengubah total RAB; segarkan badge toolbar.
+      document.dispatchEvent(new CustomEvent('dp:saved', { detail: { scope: 'template' } }));
       console.log('[SAVE] Success - Raw:', rawRows, 'Expanded:', expandedRows, 'Expansion:', expandedRows - rawRows);
 
       // TA-22: the active job can shift mid-save (concurrent reloadJobs / job
