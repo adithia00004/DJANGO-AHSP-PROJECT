@@ -174,10 +174,20 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ahsp_celery_beat
-    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    # Default PersistentScheduler. DatabaseScheduler needs django-celery-beat,
+    # which is not in requirements.txt: beat died on import and was restarted
+    # 1212 times without ever scheduling a task. Schedule state is kept outside
+    # the bind-mounted repo so it does not show up as an untracked file.
+    command: celery -A config beat -l info --schedule /tmp/celerybeat-schedule
     healthcheck:
-      # Beat is a scheduler (no worker ping, no HTTP); disable inherited healthcheck.
-      disable: true
+      # Beat serves no HTTP and answers no worker ping, so health is "the
+      # scheduler is still syncing its schedule". This used to be disabled
+      # outright, which is exactly why 1212 restarts went unnoticed.
+      test: ["CMD-SHELL", "python -c \"import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/celerybeat-schedule') < 900 else 1)\""]
+      interval: 60s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
     environment:
       DJANGO_ENV: ${DJANGO_ENV:-development}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
