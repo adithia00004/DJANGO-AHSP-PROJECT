@@ -23,6 +23,20 @@ by using separate threads"*. Gejalanya dilihat, workaround dibuat, lalu jalan te
 selama tujuh bulan. Jadi celahnya bukan hanya cakupan, tapi **workaround yang diterima
 tanpa ditanya "kenapa?"**.
 
+## Konteks model deployment
+
+Ditegaskan owner 2026-08-11, dan menentukan bobot triase di bawah:
+
+- **1 project = 1 user.** Tidak ada kolaborasi, berbagi, atau tim — sudah sesuai kode
+  (`dashboard/models.py:12` `owner` FK tunggal, nol model Collaborator/Share/Team).
+  Konsekuensinya pekerjaan "concurrent editing" turun prioritas.
+- **Satu server dipakai banyak user.** Ini SaaS web-based; 91 user / 178 project /
+  30 pemilik di database dev. Konsekuensinya **throughput dan isolasi kegagalan adalah
+  isu nyata**, bukan hipotetis — satu tenant tidak boleh menjatuhkan tenant lain.
+
+Keduanya berdiri bersama: konkurensi *di dalam satu project* bukan masalah; konkurensi
+*di seluruh server* adalah masalah.
+
 ## Hasil probe
 
 | Probe | Perintah | Hasil 2026-08-11 |
@@ -44,7 +58,7 @@ tanpa ditanya "kenapa?"**.
 | RT-01 | `celery_beat` crash-loop; semua tugas terjadwal (`config/celery.py:32`) tidak pernah berjalan | `RestartCount=1212`, `ModuleNotFoundError: django_celery_beat` | **Perbaiki** — buang flag `--scheduler` (nol dependency, nol migrasi) atau hentikan container |
 | RT-02 | Healthcheck `celery_beat` dimatikan, sehingga crash-loop tak pernah terdeteksi | `healthcheck: disable: true` di compose; `State.Health = none` | **Perbaiki** — container yang rusak justru satu-satunya yang tak dipantau |
 | RT-03 | Silk memakan 94 MB dan ~5 transaksi DB per request di dev | `silk_sqlquery` 54 MB/25197, `silk_response` 25 MB, `silk_request` 15 MB; 152 xact / 30 request | **Backlog** — turunkan `SILKY_INTERCEPT_PERCENT` atau nyalakan hanya saat profiling |
-| RT-04 | Tidak ada memory limit di container mana pun | `HostConfig.Memory = 0` | **Terima** di dev; tetapkan di prod |
+| RT-04 | Tidak ada memory limit di container mana pun | `HostConfig.Memory = 0` | **Backlog pra-launch** — di SaaS, satu request boros bisa meng-OOM host dan menjatuhkan seluruh tenant sekaligus |
 | RT-05 | `web` menjalankan gunicorn tanpa `--reload`; perubahan kode butuh `docker restart` manual | `CMD` di Dockerfile; tidak ada auto-reload | **Terima sadar** — dokumentasikan, atau aktifkan runserver bersama RT-06 |
 | RT-06 | Tidak ada pelindung request menggantung di jalur `runserver` | `TimeoutMiddleware` dihapus (`53edafe7`); `--timeout` gunicorn tak berlaku di runserver | **Backlog** — wajib dikerjakan bersama jika RT-05 diaktifkan |
 
