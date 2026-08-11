@@ -167,10 +167,25 @@ else:
         "connect_timeout": int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "10")),
     }
 
+    conn_max_age = 0 if using_pgbouncer else int(os.getenv("POSTGRES_CONN_MAX_AGE", "600"))
+
     # CRITICAL: PgBouncer doesn't support 'options' parameter
     # Only set PostgreSQL-specific options when NOT using PgBouncer
     if not using_pgbouncer:
-        db_options["options"] = "-c statement_timeout=60000 -c idle_in_transaction_session_timeout=120000"
+        # idle_session_timeout is a safety net, not a fix: a connection that a
+        # worker abandons gets reclaimed by the server instead of holding a slot
+        # until the process restarts. Derived from CONN_MAX_AGE so it always
+        # stays above it -- Django must retire its own persistent connections
+        # first, and CONN_HEALTH_CHECKS reconnects transparently if the server
+        # wins the race. Requires PostgreSQL 14+. Set to 0 to disable.
+        idle_session_timeout_ms = int(
+            os.getenv("POSTGRES_IDLE_SESSION_TIMEOUT_MS", str((conn_max_age + 300) * 1000))
+        )
+        db_options["options"] = (
+            "-c statement_timeout=60000"
+            " -c idle_in_transaction_session_timeout=120000"
+            f" -c idle_session_timeout={idle_session_timeout_ms}"
+        )
 
     DATABASES = {
         "default": {
@@ -182,7 +197,7 @@ else:
             "PORT": db_port,
             # CRITICAL: When using PgBouncer transaction pooling, set CONN_MAX_AGE to 0
             # This prevents Django from holding persistent connections that conflict with pooling
-            "CONN_MAX_AGE": 0 if using_pgbouncer else int(os.getenv("POSTGRES_CONN_MAX_AGE", "600")),
+            "CONN_MAX_AGE": conn_max_age,
             # CRITICAL: Disable health checks when using PgBouncer (it handles connection health)
             "CONN_HEALTH_CHECKS": False if using_pgbouncer else (os.getenv("POSTGRES_CONN_HEALTH_CHECKS", "True").lower() == "true"),
             "OPTIONS": db_options,
