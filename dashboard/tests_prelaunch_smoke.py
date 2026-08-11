@@ -3,10 +3,9 @@ import json
 from io import BytesIO
 from decimal import Decimal
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
@@ -17,14 +16,8 @@ from detail_project.models import Klasifikasi, SubKlasifikasi, Pekerjaan, Volume
 
 
 User = get_user_model()
-TEST_MIDDLEWARE = [
-    middleware
-    for middleware in settings.MIDDLEWARE
-    if middleware != "config.middleware.timeout.TimeoutMiddleware"
-]
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class PrelaunchFunctionalSmokeTests(TestCase):
     def setUp(self):
         self.password = "StrongPass123!@#"

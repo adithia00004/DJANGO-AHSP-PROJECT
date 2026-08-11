@@ -7,9 +7,8 @@ out of the script context. See dashboard.views._safe_inline_json.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -17,16 +16,10 @@ from dashboard.models import Project
 
 
 User = get_user_model()
-TEST_MIDDLEWARE = [
-    middleware
-    for middleware in settings.MIDDLEWARE
-    if middleware != "config.middleware.timeout.TimeoutMiddleware"
-]
 
 XSS_PAYLOAD = "</script><script>alert(1)</script>"
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class DashboardChartXssTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(

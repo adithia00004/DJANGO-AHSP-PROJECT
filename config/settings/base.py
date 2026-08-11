@@ -69,7 +69,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     # Error handling (must be first to catch all exceptions)
     "config.middleware.exception_handler.ExceptionHandlerMiddleware",
-    "config.middleware.timeout.TimeoutMiddleware",
     # Django core
     "django.middleware.security.SecurityMiddleware",
     "config.middleware.csp.ContentSecurityPolicyMiddleware",  # WP-A2: CSP report-only
@@ -86,9 +85,6 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "referensi.middleware.ImportRateLimitMiddleware",  # Rate limiting for imports
 ]
-
-# Request timeout configuration (3 minutes)
-REQUEST_TIMEOUT_SECONDS = 180
 
 # --- Content Security Policy (WP-A2) ---------------------------------------
 # Report-only first (non-breaking): the browser only reports what WOULD be

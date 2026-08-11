@@ -71,14 +71,6 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
 ]
 
-# Disable TimeoutMiddleware in tests (it breaks force_login by using separate threads)
-# The middleware creates a new thread for each request, which breaks Django Test Client
-# authentication because request.user is stored in thread-local storage
-MIDDLEWARE = [
-    m for m in MIDDLEWARE  # noqa: F405
-    if m != 'config.middleware.timeout.TimeoutMiddleware'
-]
-
 # Disable import rate limiting in the test suite. The shared LocMemCache
 # accumulates counters across import tests, so an active limit would spuriously
 # 429 later tests. The dedicated ImportRateLimitMiddlewareTests re-enables it
