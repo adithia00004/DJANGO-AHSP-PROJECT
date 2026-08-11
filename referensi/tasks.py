@@ -62,8 +62,9 @@ def async_import_ahsp(self, file_path: str, sumber: str, user_id: int = None) ->
             # Create audit log
             if user_id:
                 SecurityAuditLog.objects.create(
-                    event_type=SecurityAuditLog.EVENT_IMPORT,
-                    severity=SecurityAuditLog.SEVERITY_HIGH,
+                    event_type='import_failed',
+                    category=SecurityAuditLog.CATEGORY_IMPORT,
+                    severity=SecurityAuditLog.SEVERITY_ERROR,
                     message=f"Import failed: {file_path}",
                     user_id=user_id,
                     metadata={'errors': parse_result.errors[:10]},  # First 10 errors
@@ -84,7 +85,8 @@ def async_import_ahsp(self, file_path: str, sumber: str, user_id: int = None) ->
         # Create audit log
         if user_id:
             SecurityAuditLog.objects.create(
-                event_type=SecurityAuditLog.EVENT_IMPORT,
+                event_type='import_completed',
+                category=SecurityAuditLog.CATEGORY_IMPORT,
                 severity=SecurityAuditLog.SEVERITY_INFO,
                 message=f"Import completed: {summary.jobs_created} created, {summary.jobs_updated} updated",
                 user_id=user_id,
@@ -112,7 +114,8 @@ def async_import_ahsp(self, file_path: str, sumber: str, user_id: int = None) ->
         # Create audit log
         if user_id:
             SecurityAuditLog.objects.create(
-                event_type=SecurityAuditLog.EVENT_IMPORT,
+                event_type='import_exception',
+                category=SecurityAuditLog.CATEGORY_IMPORT,
                 severity=SecurityAuditLog.SEVERITY_CRITICAL,
                 message=f"Import failed with exception: {str(exc)}",
                 user_id=user_id,
@@ -225,7 +228,7 @@ def send_audit_alerts_task() -> Dict[str, Any]:
 
     critical_events = SecurityAuditLog.objects.filter(
         timestamp__gte=one_hour_ago,
-        severity__in=[SecurityAuditLog.SEVERITY_CRITICAL, SecurityAuditLog.SEVERITY_HIGH],
+        severity__in=[SecurityAuditLog.SEVERITY_CRITICAL, SecurityAuditLog.SEVERITY_ERROR],
         resolved=False  # Only unresolved events
     ).order_by('-timestamp')[:10]  # Max 10 per email
 
