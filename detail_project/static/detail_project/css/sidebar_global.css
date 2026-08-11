@@ -3,12 +3,30 @@
 #dp-sidebar { color: var(--dp-c-text); }
 
 /* Header & meta */
-.dp-sidebar__project { padding: 10px 8px 6px; border-bottom: 1px dashed var(--dp-c-border); }
+.dp-sidebar__project {
+  /* Item flex bersebelahan dengan tombol close (.btn-close.d-lg-none), jadi hanya
+     di bawah breakpoint lg ada dua anak yang berebut ruang. Tanpa min-width:0,
+     flex item memakai min-width:auto dan menolak menyusut di bawah lebar
+     minimum isinya -- nama project panjang lalu mendorong tombol close keluar.
+     Itu sebabnya tata letaknya hanya rusak saat jendela sempit. */
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 8px 6px;
+  border-bottom: 1px dashed var(--dp-c-border);
+}
 .dp-sidebar__title{
-  font-size: clamp(.9rem, 2.2vw, 1rem);
-  font-weight: 600; line-height: 1.25;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
-  word-break: break-word; white-space: normal; overflow: hidden;
+  /* Sidebar lebarnya TETAP 300px (--dp-sidebar-w, tanpa media query), jadi
+     mengikat ukuran font ke viewport justru mengecilkan teks di wadah yang
+     tidak ikut mengecil: di bawah ~654px, clamp lama terkunci di .9rem. */
+  font-size: .95rem;
+  font-weight: 600; line-height: 1.3;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  /* `anywhere` hanya memecah kata saat benar-benar tidak muat, dan ikut
+     memperkecil min-content sehingga menopang min-width:0 di atas. Nilai lama
+     `word-break: break-word` memotong kata meski masih ada peluang pemenggalan
+     yang lebih baik, membuat nama seperti "Rehabilitasi" terpotong di tengah. */
+  overflow-wrap: anywhere; word-break: normal;
+  white-space: normal; overflow: hidden;
 }
 .dp-sidebar__meta{ font-size: .875rem; opacity: .62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
