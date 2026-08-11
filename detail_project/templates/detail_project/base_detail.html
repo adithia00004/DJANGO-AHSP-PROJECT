@@ -30,7 +30,7 @@
     </button>
 
     <!-- Brand/identitas project -->
-    <span class="navbar-text fw-semibold me-2">
+    <span class="navbar-text fw-semibold me-2" title="{{ project.nama|default:'Project' }}">
       {{ project.nama|default:"Project" }}
     </span>
     <span class="text-muted small">ID: {{ project.id }}</span>

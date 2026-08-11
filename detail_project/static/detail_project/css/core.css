@@ -1199,6 +1199,28 @@ body[data-page="rincian_ahsp"] {
 }
 
 /* ===========================================================
+   Topbar (nama project; SSoT)
+   =========================================================== */
+
+/* Nama project di topbar sebelumnya tanpa batas apa pun. Ia item flex yang
+   bersebelahan dengan tombol Menu, label ID, dan blok aksi `ms-auto` (sync LED,
+   badge total RAB). Item flex bawaannya min-width:auto, jadi nama panjang --
+   yang terpanjang di data 113 karakter -- menolak menyusut dan mendorong blok
+   aksi keluar layar saat jendela sempit.
+
+   Aman dipotong karena nama lengkapnya tetap tampil utuh tanpa clamp di kartu
+   identitas persis di bawah topbar (_project_identity.html, dirender di setiap
+   halaman detail), jadi tidak ada informasi yang hilang -- hanya dipindahkan ke
+   tempat yang memang bertugas menampungnya. */
+#dp-topbar .navbar-text {
+  min-width: 0;
+  max-width: min(48ch, 38vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===========================================================
    Sidebar Global (layout & transisi; SSoT)
    =========================================================== */
 :root {
