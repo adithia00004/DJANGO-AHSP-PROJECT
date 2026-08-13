@@ -7,7 +7,7 @@ Parameter yang menentukan bentuk rencana ini (ditegaskan owner 2026-08-11):
 | Parameter | Nilai | Akibatnya pada rencana |
 |---|---|---|
 | Tenggat | Tidak ada tanggal tetap, kualitas dulu | Boleh menutup akar masalah, bukan menambal. Tapi butuh gate eksplisit agar tidak molor tanpa ujung |
-| Skala awal | Puluhan user, soft launch terbatas | Kerja kapasitas **turun drastis**. 4 worker cukup. Fokus geser ke data, uang, dan observabilitas |
+| Skala awal | Puluhan user saat launching, **berpotensi ratusan jika berhasil** | Bukan alasan membangun untuk ratusan sekarang. Aturannya: pastikan naik skala jadi **perubahan konfigurasi, bukan penulisan ulang**. Lihat §Kapasitas |
 | Pembayaran | **Belum didaftarkan karena belum ada server** | Server jadi jalur kritis; pendaftaran merchant terkunci di belakangnya |
 | Model | SaaS multi-tenant, 1 project = 1 user | Tak ada kerja concurrent-editing. Isolasi antar-tenant tetap wajib |
 
@@ -121,7 +121,39 @@ Midtrans sudah terpasang lengkap di kode (`subscriptions/midtrans.py`, sandbox/p
 | 4.3 | N+1 pada dua jalur di atas | Jadi jauh lebih penting kalau database dipindah ke jaringan |
 | 4.4 | Aset besar — hanya perbaikan murah | echarts 1 MB, bundle jadwal 1,1 MB, `volume_pekerjaan.js` 309 KB tanpa minifikasi |
 
-**Ditunda sadar** (aman pada puluhan user, tinjau ulang kalau tumbuh): sizing worker gunicorn, pemisahan penyajian static dari gunicorn, uji beban konkurensi sungguhan, self-hosting 7 dependensi CDN.
+---
+
+## Kapasitas: bangun agar naik skala itu murah
+
+Owner mengoreksi 2026-08-11: puluhan user adalah target launching, tapi bisa jadi **ratusan kalau berhasil**. Itu tidak berarti membangun untuk ratusan sekarang — itu berarti memastikan lompatan ke ratusan adalah perubahan konfigurasi, bukan pembongkaran.
+
+Pemilahannya memakai satu pertanyaan: **apakah item ini lebih mahal kalau dikerjakan belakangan?**
+
+### Murah sekarang, mahal nanti → kerjakan sebelum launching
+
+| Item | Kenapa tidak boleh ditunda |
+|---|---|
+| **Sajikan static langsung dari Caddy** | Saat ini Caddyfile mem-proxy *segalanya* ke `web:8000`, jadi setiap file JS/CSS memakan satu dari 4 sync worker. Satu page load menarik belasan aset. Ini kelas request terbesar, dan memindahkannya cuma beberapa baris di Caddyfile — tapi setelah ada trafik nyata, mengubah jalur penyajian jadi perubahan berisiko |
+| **`STATICFILES_STORAGE` → `STORAGES`** (item 1.4) | Tanpa nama ber-hash, tak ada cache `immutable`. Pada ratusan user itu berarti 1,7 MB aset diunduh ulang berkali-kali tanpa perlu. Ini bug, bukan optimasi |
+| **Pastikan export berat lewat Celery** | Generasi sudah async (`generate_export_async.delay`), tapi ada jalur kedua `export_finalize` yang docstring-nya menyebut "generate PDF/Word file". **Perlu diverifikasi mana yang dipakai UI.** Kalau UI memakai jalur sinkron, satu export panjang mengunci 1 dari 4 worker — dan pada ratusan user itu plafon keras |
+| **Rekonsiliasi plafon limiter dengan kapasitas server** | Limiter mengizinkan **240 req/menit per user** untuk autosave/sync. Dua puluh user aktif serentak = 4.800 req/menit = 80 req/detik, jauh di atas kemampuan 4 sync worker. Angka limiter dan angka kapasitas harus dibaca bersama, bukan ditetapkan terpisah |
+
+### Sama mahalnya kapan pun → tunda sampai ada data
+
+| Item | Catatan |
+|---|---|
+| Sizing worker gunicorn | Murni angka di `CMD`. Kebocoran koneksi sudah ditutup (`53edafe7`), jadi menaikkan worker kini **aman** — sebelumnya justru melipatgandakan kebocoran. Host terlihat 12 core, sekarang 4 worker |
+| Uji beban konkurensi | Butuh server Fase 0. Lakukan sebelum membuka pendaftaran umum, bukan sebelum soft launch |
+| Self-hosting 7 dependensi CDN | Perbaikan keandalan dan latensi, bukan kapasitas |
+| Minifikasi `volume_pekerjaan.js` (309 KB) | Kompresi Caddy sudah menutupi sebagian besarnya |
+
+**Pemicu tinjau ulang:** kalau pengguna aktif harian melewati ~50, atau p95 waktu respons melewati 1 detik, buka kembali tabel kedua.
+
+---
+
+## Fase 4 lanjutan — ditunda sadar
+
+Lihat §Kapasitas di atas untuk pemilahan lengkap. Ringkasnya: yang murah-sekarang-mahal-nanti dinaikkan ke pra-launching; sizing worker, uji beban, self-hosting CDN, dan minifikasi ditunda sampai ada data trafik nyata.
 
 ---
 
