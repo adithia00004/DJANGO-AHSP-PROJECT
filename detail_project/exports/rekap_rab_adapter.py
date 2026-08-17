@@ -3,7 +3,7 @@
 # Copy this entire file
 # =====================================================================
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 from typing import Dict, Any, List
 
 
@@ -175,7 +175,14 @@ class RekapRABAdapter:
 
         ppn_value = (grand_total * ppn_pct / Decimal('100')).quantize(Decimal('1.'), rounding=ROUND_HALF_UP)
         grand_with_ppn = (grand_total + ppn_value).quantize(Decimal('1.'), rounding=ROUND_HALF_UP)
-        rounded = int((Decimal(grand_with_ppn) / Decimal(rounding_base)).to_integral_value(rounding=ROUND_HALF_UP)) * rounding_base
+        # Pembulatan grand total SELALU ke bawah (keputusan owner 2026-08-18):
+        # nilai RAB yang ditagihkan tidak boleh melebihi hasil hitungan. Harus
+        # sama dengan rekap_rab.js, ExcelExporter.js, RekapRABPrint.js, dan
+        # services.compute_rab_grand_total() -- kalau tidak, angka di laporan
+        # resmi berbeda dari yang dilihat pengguna di layar.
+        # (ROUND_HALF_UP di dua baris di atas hanya membulatkan ke rupiah utuh,
+        # bukan ke kelipatan rounding_base -- itu memang tetap ke terdekat.)
+        rounded = int((Decimal(grand_with_ppn) / Decimal(rounding_base)).to_integral_value(rounding=ROUND_FLOOR)) * rounding_base
 
         footer_rows = [
             ['TOTAL BIAYA LANGSUNG', grand_total],
