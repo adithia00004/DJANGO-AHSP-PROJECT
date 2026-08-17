@@ -19,7 +19,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from datetime import date, timedelta
 from collections import defaultdict
 from .numeric import quantize_half_up, to_dp_str, DECIMAL_SPEC
@@ -2704,9 +2704,15 @@ def compute_rab_grand_total(project):
 
     Rumusnya sengaja identik dengan footer tersebut, termasuk urutannya:
     ``ppn = subtotal x pct/100`` lalu ``grand = subtotal + ppn`` lalu
-    ``rounded = round(grand / base) * base``. Membulatkan lebih awal akan
+    ``rounded = floor(grand / base) * base``. Membulatkan lebih awal akan
     membuat badge berbeda dari halaman Rekap RAB, dan pengguna membandingkan
     keduanya.
+
+    Pembulatan **selalu ke bawah** (keputusan owner 2026-08-18), bukan ke
+    terdekat: nilai RAB yang ditagihkan tidak boleh melebihi hasil hitungan.
+    Rumus yang sama juga hidup di ``rekap_rab.js``, ``ExcelExporter.js``, dan
+    ``RekapRABPrint.js`` -- keempatnya harus diubah bersama atau angkanya
+    akan berbeda antar-tampilan.
 
     Sumber persentase dan basis pembulatan adalah ``ProjectPricing`` — bukan
     localStorage yang dipakai halaman Rekap RAB sebagai cache preferensi UI.
@@ -2733,7 +2739,7 @@ def compute_rab_grand_total(project):
     # melempar dan seluruh halaman ikut gagal hanya karena satu angka tampilan.
     if rounding_base > 0:
         base = Decimal(rounding_base)
-        rounded_total = (grand_total / base).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * base
+        rounded_total = (grand_total / base).quantize(Decimal("1"), rounding=ROUND_FLOOR) * base
     else:
         rounded_total = grand_total
 

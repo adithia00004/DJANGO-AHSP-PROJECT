@@ -224,7 +224,9 @@ class RekapRABPrintHandler {
     const ppn = totalD * (parseFloat(ppnPercent) / 100);
     const grandTotal = totalD + ppn;
     const base = parseInt(roundingBase);
-    const rounded = Math.round(grandTotal / base) * base;
+    // Ke bawah, bukan ke terdekat — samakan dengan rekap_rab.js, ExcelExporter.js,
+    // dan services.compute_rab_grand_total(). Nilai RAB tidak boleh melebihi hitungan.
+    const rounded = Math.floor(grandTotal / base) * base;
     
     return {
       totalD: this.formatNumber(Math.round(totalD)),

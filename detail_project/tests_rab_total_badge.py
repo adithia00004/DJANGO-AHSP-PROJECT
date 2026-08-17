@@ -67,8 +67,28 @@ class RabGrandTotalCalculationTests(TestCase):
         self.assertEqual(result["subtotal"], Decimal("1234567.55"))
         self.assertEqual(result["ppn"], Decimal("1234567.55") * Decimal("11") / Decimal("100"))
         self.assertEqual(result["grand_total"], result["subtotal"] + result["ppn"])
-        # 1.370.369,98... -> kelipatan 10.000 terdekat
+        # 1.370.369,98... -> kelipatan 10.000 ke bawah
         self.assertEqual(result["rounded_total"], Decimal("1370000"))
+
+    def test_rounds_down_never_up(self):
+        """Pembulatan selalu ke bawah, termasuk saat pecahannya melewati tengah.
+
+        Kasus ini yang membedakannya dari pembulatan ke terdekat: 123,6 akan
+        naik ke 124 dan totalnya jadi Rp 1.240.000 -- di ATAS hasil hitungan.
+        Nilai RAB yang ditagihkan tidak boleh melebihi yang dihitung.
+        """
+        ProjectPricing.objects.update_or_create(
+            project=self.project,
+            defaults={"ppn_percent": Decimal("0"), "rounding_base": 10000},
+        )
+        with patch(
+            "detail_project.services.compute_rekap_for_project",
+            return_value=[{"total": 1236000.0}],
+        ):
+            result = compute_rab_grand_total(self.project)
+
+        self.assertEqual(result["grand_total"], Decimal("1236000"))
+        self.assertEqual(result["rounded_total"], Decimal("1230000"))
 
     def test_rounding_base_zero_does_not_divide_by_zero(self):
         """0 berarti 'jangan bulatkan'; sebelum penjagaan ini halaman ikut gagal."""

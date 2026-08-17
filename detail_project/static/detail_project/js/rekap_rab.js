@@ -439,7 +439,10 @@
     const ppn = D * (pct / 100);
     const grand = D + ppn;
     const base = Number(selBase?.value || 10000);
-    const rounded = Math.round(grand / base) * base;
+    // Selalu ke bawah, bukan ke terdekat: nilai RAB yang ditagihkan tidak boleh
+    // melebihi hasil hitungan. Rumus kembar ada di baris ~756 file ini,
+    // ExcelExporter.js, RekapRABPrint.js, dan services.compute_rab_grand_total().
+    const rounded = Math.floor(grand / base) * base;
 
     elD.textContent     = rupiah(D);
     elPPN.textContent   = rupiah(ppn);
@@ -753,8 +756,8 @@
     const ppn = D * (pct / 100);
     const grand = D + ppn;
     const base = Number(selBase?.value || 10000);
-    const rounded = Math.round(grand / base) * base;
-    
+    const rounded = Math.floor(grand / base) * base;  // ke bawah, lihat recalcFooter
+
     lines.push('');
     lines.push(['', '', '', '', 'Total Proyek (D)', String(Math.round(D))].join(';'));
     lines.push(['', '', '', '', `PPN ${pct}%`, String(Math.round(ppn))].join(';'));

@@ -172,7 +172,9 @@ class RekapRABExcelExporter {
     // Calculate
     const ppn = totalD * (ppnPercent / 100);
     const grandTotal = totalD + ppn;
-    const rounded = Math.round(grandTotal / roundingBase) * roundingBase;
+    // Ke bawah, bukan ke terdekat — samakan dengan rekap_rab.js, RekapRABPrint.js,
+    // dan services.compute_rab_grand_total(). Nilai RAB tidak boleh melebihi hitungan.
+    const rounded = Math.floor(grandTotal / roundingBase) * roundingBase;
 
     const summary = {
       totalD: Math.round(totalD),
