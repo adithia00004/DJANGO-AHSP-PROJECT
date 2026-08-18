@@ -1,7 +1,7 @@
 # 32 — Rencana Perbaikan Visual & Keterbacaan Export PDF/Word
 
 **Tanggal:** 2026-07-08
-**Status:** v1.2 — AKTIF; O-8 + Fase 0 SELESAI (log §12); Fase 1 siap jalan
+**Status:** v1.3 — AKTIF; Fase 0-1 SELESAI; pilot Fase 2 menunggu keputusan owner; Fase 4 XLSX diusulkan
 **Penyusun:** Claude (audit sesi 2026-07-08, tanpa perubahan kode)
 **Reviewer:** Codex (review independen atas v1.0 — koreksi diadopsi, lihat §11)
 **Referensi terkait:** Doc 30 (keputusan presisi 2dp WP Export), Doc 12 (Export System review)
@@ -25,6 +25,7 @@ server, bukan menaikkannya.
 - **Fase 2** — PDF jalur data (behavior-changing terkendali: perubahan visual yang disetujui).
 - **Fase 3** — Word jalur data (paritas dengan PDF).
 - **Bagian 7** — Item OPEN yang menunggu keputusan owner per-item (TIDAK dieksekusi tanpa jawaban).
+- **Fase 4 (usulan, §13.3)** — XLSX: konsolidasi visual workbook dengan pola pilot yang sama.
 
 ---
 
@@ -279,7 +280,7 @@ bila ternyata lebih lambat, itu temuan yang akan dilaporkan apa adanya.
 
 **Yang secara eksplisit TIDAK dilakukan dalam rencana ini:**
 - Tidak mengubah nilai/angka apa pun (kontrak R-15 utuh).
-- Tidak menyentuh Excel exporter (di luar scope).
+- Tidak menyentuh Excel exporter di Fase 1-3 (XLSX ditangani terpisah sebagai usulan Fase 4 — §13.3).
 - Tidak menyentuh grid Jadwal, laporan bulanan/mingguan professional, jalur daily DOCX, jalur screenshot — kecuali item O yang Anda setujui.
 - Tidak menambah dependensi baru, font embed, atau proses background baru.
 
@@ -289,8 +290,10 @@ bila ternyata lebih lambat, itu temuan yang akan dilaporkan apa adanya.
 
 - [x] Fase 0 (✅ 2026-07-08): baseline test/timing/ukuran file/render PNG tersimpan; matriks Lampiran A terkonfirmasi penuh via trace; tooling visual-diff siap & tervalidasi (lihat §12)
 - [x] Fase 1 (✅ 2026-07-08): style registry + hoist + helper alignment; **image-diff = nol (24/24)**; 118 test PASS; timing ≤ baseline (lihat §12)
-- [ ] Fase 2: 5 halaman PDF memakai skala tipografi, perataan, warna, spasi terstandar (pilot Harga Items dulu); approved owner per-report
-- [ ] Fase 3: Word paritas dengan PDF; approved owner; teruji Word+LibreOffice
+- [x] Fase 2 (✅ 2026-07-13): 5/5 report PDF jalur A memakai skala tipografi, perataan per-tipe, warna navy tunggal (pilot Harga Items → replikasi 4 report; spacing 2.6 ditunda); owner menetapkan spec doc 32 sebagai acuan approve
+- [x] Fase 3 (✅ 2026-07-13 `5b76847e` + `d1d35b15`): Word paritas PDF LENGKAP 5/5 report ber-flag (generik + Rincian AHSP); verifikasi struktural docx (LibreOffice tak tersedia) — uji buka manual MS Word oleh owner dianjurkan
+- [ ] Fase 4 (usulan §13.3): XLSX memakai token/named styles, freeze panes, print setup, angka numerik; pilot Harga Items approved sebelum replikasi
+- [ ] Bug N-1/N-2 (§13.1) diperbaiki — dapat dikerjakan kapan pun, tidak menunggu fase
 - [ ] Item O-1..O-8: masing-masing berstatus diputuskan (ya/tidak/ditunda)
 - [ ] Registri keputusan desain terdokumentasi permanen (bila O-8 disetujui)
 
@@ -328,6 +331,7 @@ per-panggilan (bukan per-sel) — jauh lebih ringan dari dugaan awal.
 
 | Versi | Tanggal | Perubahan |
 |---|---|---|
+| v1.3 | 2026-07-13 | Konsolidasi audit visual lintas-format ke §13; tambah bug N-1/N-2, improvement N-3..N-5, serta usulan Fase 4 XLSX; audit duplikat dihapus |
 | v1.0 | 2026-07-08 | Draft awal (audit Claude) |
 | v1.2 | 2026-07-08 | Eksekusi O-8 + Fase 0 selesai (log di §12); Lampiran A terkonfirmasi penuh via trace empiris — koreksi: Volume Pekerjaan lewat `_build_simple_table` ×2 (bukan `_build_table`); `_build_table` tidak dipakai jalur A sama sekali |
 | v1.1 | 2026-07-08 | Revisi pasca-review independen Codex: (1) **Fase 1 tidak mengubah nilai visual apa pun** — style registry semantik + adapter per format; legacy constants `ExportColors`/`ExportFonts` TIDAK dialias ke nilai UTS/ED (mencegah perubahan diam-diam pada konsumen legacy spt. Excel); (2) T-11 di-scope ke `_build_table` + builder professional — `_build_simple_table` sudah selektif; (3) T-14 direframe: `save()` = penanda fitur two-pass belum selesai → digabung ke O-2; (4) kebijakan nol dipertajam 3 kelas: `None`→`-`, 0% grid suppressed (R-10), nol finansial tetap `0,00` — ditambah R-16 (NULL≠0.00, commit `4ce0870f`); (5) Fase 0 diperkaya: script baseline CSV, render PNG, tooling visual-diff otomatis, matriks builder (Lampiran A); (6) Fase 2 pola pilot mulai Harga Items, aktivasi registry per-report; (7) helper alignment jadi item eksplisit 1.4 (dibangun Fase 1, diaktifkan Fase 2); (8) O-8 direkomendasikan diputuskan pertama |
@@ -394,9 +398,179 @@ image-diff tidak meng-cover perubahan. Gate final = 24 halaman PNG (jalur A+B).
 nol; timing sama-atau-lebih-cepat (fixture kecil — perbaikan nyata terlihat di
 `jadwal_prof_rekap`: 0,109s → 0,066s; tidak ada yang melambat).
 
-### Berikutnya
-**Fase 2 (behavior-changing, butuh persetujuan owner per-report):** pilot **Harga
-Items** — aktifkan registry (warna header tunggal, skala tipografi, helper
-alignment, kebijakan nilai kosong 3 kelas) lalu serahkan PDF SEBELUM vs SESUDAH
-untuk review owner sebelum replikasi ke report lain. Keputusan O-1..O-7 masih
-terbuka (§7).
+### Fase 2 — Pilot Harga Items TERIMPLEMENTASI, menunggu keputusan owner (2026-07-08)
+
+Commit `eda7626b`: flag `data['style_registry']` di `export_harga_items` (satu-satunya
+report yang aktif); PDFExporter mem-branch di 4 titik (`_build_header` judul navy +
+identitas caption 7pt label bold; `_build_simple_table` header navy 8pt + perataan
+per-tipe via helper 1.4 + kategori tint `#e8edf3`; `_build_footer_table` garis navy).
+**Gate isolasi: 23/24 halaman identik — hanya `harga_items_p01` berubah (9,7% piksel,
+intended). 63 test PASS.** Kebijakan nilai kosong 2.4 tidak butuh perubahan di report
+ini (adapter sudah patuh R-16). Spacing 2.6 DITUNDA ke replikasi (spacer di
+`build_page` bersifat lintas-report).
+
+Deliverable review owner: artifact "Review Pilot: Export Harga Items"
+(perbandingan PNG SEBELUM/SESUDAH + tabel perubahan + bukti gate).
+
+### Fase 2 — REPLIKASI SELESAI 5/5 (2026-07-13)
+
+Owner menetapkan pilot = sesuai spec doc 32 (§5 + §3) → replikasi dibuka.
+Urutan aktual: bugfix N-1 (`50a92e8c`) + N-2 (`c5d6008e`) dulu, lalu replikasi
+satu commit + gate isolasi per report (baseline segar `BASE_N_20260713`):
+
+| Report | Commit | Catatan | Gate |
+|---|---|---|---|
+| Rekap Kebutuhan | `4bae5d80` | Flag saja (builder sudah registry-aware); meliputi mode full & per-periode | 22/24 — hanya 2 hal. kebutuhan |
+| Volume Pekerjaan | `aef98d88` | Flag saja | 22/24 — hanya 2 hal. volume |
+| Rekap RAB | `4faf2840` | Flag + cabang registry `_build_pengesahan_table`: `#1976D2`→navy (tutup T-1), 9pt→8pt | 22/24 — hanya 2 hal. rekap_rab |
+| Rincian AHSP | `7897540b` | Flag + cabang registry builder inline: header navy, perataan per-tipe (angka kiri→kanan), total E/F `#e8f5e9`→`#e8edf3`, G `#c8e6c9`→`#d7e0ec` (token baru `TOTAL_BG_STRONG`); body 7pt & compact R-11 dipertahankan | 21/24 — hanya 3 hal. rincian |
+
+**Gate akhir: 144 test PASS** (seluruh suite export + rincian + rekap RAB +
+kebutuhan + jadwal). Fase 2 PDF jalur data: **SELESAI 5/5 report**.
+Item spacing (2.6) masih ditunda (spacer `build_page` lintas-report).
+Keputusan O-1..O-7 masih terbuka (§7); Fase 4 XLSX tetap usulan (keputusan
+owner 2026-07-13: "nanti").
+
+### Temuan manual owner Rekap Kebutuhan — FIXED (2026-07-13)
+
+| Temuan | Commit | Isi |
+|---|---|---|
+| 1.2 Baris `Total Quantity *` tidak relevan | `827e9390` | Dihapus dari footer adapter (menggantikan bentuk per-kategori N-1); dicatat **R-18** di registri |
+| 1.1 Footer ringkasan diulang tiap lembar | `bf9faad3` | Akar masalah: dirender DOBEL (build_page + bundle ttd). Kini `skip_footer` — footer sekali, di lembar terakhir bersama tanda tangan | 
+
+Gate gabungan: 22/24 identik (hanya 2 hal. kebutuhan); 37 test PASS.
+
+### Fase 3 — Word jalur data: jalur generik SELESAI (2026-07-13, `5b76847e`)
+
+Aktif untuk 4 report ber-flag (harga items, kebutuhan, volume, rekap RAB —
+flag yang sama dengan PDF): 3.1 Normal=Arial 8pt (tutup T-3) · 3.2 named
+styles token + judul `AHSP doc_title` + spasi native (T-7/T-8) · 3.4
+identitas tabel 3 kolom paritas PDF (T-6) · 3.5 header navy 8pt (termasuk
+pengesahan yang sebelumnya polos), perataan per-tipe via helper 1.4,
+kategori → tint navy.
+
+Verifikasi (LibreOffice tak tersedia → inspeksi struktural docx): 4 report
+ber-flag = Normal Arial/8pt + token styles + header `1E3A5F`; jadwal_full &
+rincian_ahsp tak berubah; PDF image-diff 24/24 identik; 66 test PASS.
+
+**Rincian AHSP Word SELESAI** (commit lanjutan): flag di-set di dalam
+`_export_rincian_ahsp`; judul rata-kiri kompak 9pt (paritas PDF, T-5),
+identitas tabel, perataan per-tipe di Rekap+detail, judul grup `#F0F0F0`,
+total E/F `#E8EDF3`, G `#D7E0EC`. Probe docx: Normal Arial/8pt + token styles
++ 5 header navy; PDF 24/24 identik; 36 test PASS. **Fase 3: LENGKAP 5/5
+report.** Uji buka manual di MS Word oleh owner tetap dianjurkan (§8 poin 6).
+
+### Temuan manual owner — Jadwal full (2026-07-13, FIXED)
+
+3 poin owner: (1) header PDF keluar cell; (2) header Word kecil & jomplang
+vs isi baris; (3) tak ada pembeda Klasifikasi/Sub/Pekerjaan. Fix (1 commit):
+header `_build_simple_table` registry = Paragraph 8pt wordWrap-CJK (patah
+dalam cell); `jadwal_full` kini ber-flag registry (Word Normal Arial 8pt +
+header navy 8pt); `row_types` diturunkan dari `hierarchy_levels` adapter
+(pola RAB) → Klasifikasi bold tint `#D7E0EC`, Sub bold `#E8EDF3` (Word:
+branch subcategory baru), Pekerjaan putih — PDF & Word.
+
+**Efek samping intended:** baris kategori Harga Items/RAB/Volume naik ke
+tint kuat (hierarki level-1 konsisten se-produk); header semua report
+ber-flag jadi wrap-capable. Gate: 17/24 — 7 halaman berubah (2 jadwal +
+5 efek intended); 55 test PASS. Registry aktif kini **6 report** (5 jalur A
++ jadwal_full).
+
+---
+
+## 13. Addendum Audit Lintas-Format (2026-07-13)
+
+Bagian ini mengonsolidasikan temuan unik dari audit visual lanjutan. Dokumen audit
+terpisah dihapus agar roadmap visual hanya memiliki satu sumber. Semua rekomendasi
+di bawah tunduk pada `docs/DESIGN_REGISTRY_EXPORT.md`; ruang kosong akibat pemisahan
+section dan reservasi tanda tangan R-13 bukan defect.
+
+### 13.1 Bug terkonfirmasi
+
+| ID | Format | Temuan | Tindakan | Status |
+|---|---|---|---|---|
+| N-1 | PDF | Footer `Total Quantity` Rekap Kebutuhan dapat bertabrakan karena ringkasan panjang ditempatkan pada kolom 60 mm tanpa wrap; format quantity juga keluar dari formatter kanonik | Pecah ringkasan per kategori atau gunakan paragraph wrap; format melalui `cell_format` | ✅ FIXED `50a92e8c` (2026-07-13): per-kategori + `format_cell_display` 3dp id-ID + wrap Paragraph utk nilai >45 char (termasuk baris 'Filters'); mengalir ke semua format; gate 22/24 |
+| N-2 | Word | `jadwal_full.docx` memakai A4 portrait untuk tabel 15 kolom sehingga teks menjadi sangat sempit | Turunkan orientasi report dari konfigurasi yang sama dengan PDF; pertahankan Arial 7 pt sesuai R-3 | ✅ FIXED `c5d6008e` (2026-07-13): kedua call site jalur hidup baca `config.page_size/orientation`; bukti sectPr: hanya jadwal_full → A3 landscape (paritas PDF); PDF 24/24 identik |
+
+### 13.2 Improvement lintas-format
+
+| ID | Temuan | Status keputusan |
+|---|---|---|
+| N-3 | Label campur bahasa: identitas (`Pemilik Project`, `Project Anggaran` — sumber: `export_config.py:483`), footer (`Total Items`, `Grand Total`, `Profit/Margin`), dan cover professional memakai set label + format berbeda (`Anggaran : Rp 0` vs `Project Anggaran : Rp 0,00`) | Boleh dikonsolidasikan di sumber label bersama setelah wording disetujui; label seksi R-7 TIDAK termasuk |
+| N-4 | Cover professional menampilkan placeholder logo kosong ketika proyek tidak memiliki logo | Kandidat perubahan; catat sebagai keputusan registry saat disetujui |
+| N-5 | Struktur dua kolom tanda tangan Word tidak selalu mengambil konfigurasi yang sama | Wajib memakai `signature_config.py`; tidak boleh mengubah tinggi reservasi atau aturan anti-orphan R-13 |
+
+### 13.3 Fase 4 — XLSX (usulan, belum dieksekusi)
+
+XLSX sebelumnya berada di luar scope visual Fase 1-3. Audit render workbook menemukan
+drift yang perlu ditangani sebagai fase tersendiri, bukan disisipkan ke perubahan PDF/
+Word:
+
+1. Buat adapter openpyxl untuk token semantik yang sudah ada; jangan mengubah nilai
+   legacy secara global. Target utama: satu palet header menggantikan drift 3 warna
+   saat ini (`4472C4` / `2D5A8E` / `B45309` — `excel_exporter.py:138, 307, 682`),
+   plus font body 9pt vs 11pt dan bold label identitas yang beda antar workbook.
+2. Pilot pada Harga Items, kemudian review visual sebelum replikasi.
+3. Tetapkan lebar kolom, wrap, tinggi baris, freeze panes, print area, orientasi,
+   margin, dan fit-to-width per tipe report.
+4. Simpan angka sebagai numeric value dengan `number_format`, bukan string display.
+5. Gunakan named styles untuk title, metadata, header, body, subtotal, dan grand total.
+6. Ambil blok pengesahan dari `signature_config.py` dan pertahankan aturan ruang tanda
+   tangan yang disengaja.
+7. Pendekkan nama sheet secara eksplisit; jangan mengandalkan truncation 31 karakter.
+8. Pertahankan aksen khusus sheet `Kontrol Kalkulasi` hanya bila dicatat sebagai
+   keputusan desain baru di registry.
+
+Gate Fase 4: nilai/formula tetap sesuai kontrak Doc 30, tidak ada clipping pada render,
+print preview terkontrol, dan perubahan visual hanya muncul pada workbook pilot sebelum
+approval replikasi.
+
+### 13.4 Hasil verifikasi temuan (2026-07-13, diverifikasi terhadap kode)
+
+| ID | Verdict | Bukti & catatan presisi |
+|---|---|---|
+| N-1 | ✅ TERKONFIRMASI | `_build_footer_table` = string polos di kolom [120, 60] mm tanpa wrap (`pdf_exporter.py:2341`); nilai 'Total Quantity' = string gabungan `"TK … \| BHN … \| ALT … \| LAIN …"` (`rekap_kebutuhan_adapter.py:202-208`) sehingga `footer_value_format '#,##0.00'` tidak menyentuhnya (string lolos `format_cell_display` apa adanya; hanya 'Grand Total Harga' yang Decimal → terformat kanonik). **Tambahan:** baris 'Filters' (`:229-232`) berisiko sama dan bisa jauh lebih panjang — masukkan ke scope fix N-1 |
+| N-2 | ✅ TERKONFIRMASI | SEMUA call `_setup_page_layout` di Word hardcoded (`word_exporter.py:118, 211, 340, 681, 725` = 'A4','portrait'; hanya `:610` A3 landscape utk grid professional). Jalur generik mengabaikan `config.page_orientation='landscape'` yang sudah di-set `export_jadwal_pekerjaan`. Arah fix benar: turunkan dari config (PDF sudah melakukannya); R-3 tak tersentuh |
+| N-3 | ✅ TERKONFIRMASI | `export_config.py:483` 'Pemilik Project', `:499` 'Project Anggaran'; 'Total Items' (`rekap_kebutuhan_adapter.py:186`, `csv_exporter.py:143`); 'Profit/Margin' (`base.py:150`). **Bukti tambahan:** cover professional memakai label BERBEDA lagi — 'Anggaran' (`pdf_exporter.py:2893`) — 3 varian label utk field yang sama |
+| N-4 | ✅ TERKONFIRMASI + koreksi | Lebih tajam dari temuan: **tidak ada jalur render logo sama sekali** — kotak kosong 40×25 mm opacity 40% SELALU digambar (`pdf_exporter.py:2776-2789`, komentar "Empty box - no text, just placeholder"). Keputusannya bukan "sembunyikan bila tak ada logo" melainkan: sembunyikan box, ATAU implement dukungan logo proyek |
+| N-5 | ✅ TERKONFIRMASI + presisi | Word `_build_signature_section` SUDAH membaca `config.signature_config` (`word_exporter.py:822`). Gap sebenarnya: (a) **fallback hardcode** 2 ttd 'Pemilik Proyek'/'Konsultan Perencana' saat config kosong (`:827-830`); (b) **aturan layout SLR/anti-orphan R-13 tidak diterapkan di sisi Word** (hanya PDF); (c) jalur daily punya builder terpisah `_daily_add_signatures` (`:1624`) |
+| 13.3 (klaim kode XLSX) | ✅ TERKONFIRMASI PERSIS | `2D5A8E` (`excel_exporter.py:138`), `4472C4` (`:307` + `:338, 369, 394, 939`), `B45309` (`:682, 697` — aksen Kontrol Kalkulasi); campuran `size=9`/`size=11` = 34 kemunculan |
+
+Konsekuensi verifikasi: N-1 dan N-2 layak dikerjakan sebagai bugfix terpisah dari
+replikasi pilot (masing-masing satu commit + gate isolasi); N-3/N-4/N-5 menunggu
+keputusan wording/desain owner sebelum dieksekusi; klaim teknis dasar Fase 4 valid
+sehingga usulannya layak diputuskan owner sebagai fase resmi.
+
+### 13.5 Klasifikasi sumber dokumen
+
+- Dokumen ini: satu-satunya roadmap dan log audit visual PDF/Word/XLSX.
+- `docs/DESIGN_REGISTRY_EXPORT.md`: sumber keputusan yang disengaja dan do-not-touch.
+- Doc 30: kontrak nilai, presisi, dan formula export.
+- `visual_diff_report.csv`: bukti mesin, bukan roadmap atau sumber keputusan.
+- Doc 12 dan audit laporan harian: audit fungsional/arsitektur; tidak digabung karena
+  cakupannya berbeda.
+
+---
+
+## Temuan owner 2026-08-18 — sisa paritas Word terhadap PDF
+
+Ditemukan saat menguji paket perencanaan. **Bukan** cacat paket: ketiganya juga
+muncul pada export Word tunggal. Dicatat sebagai sisa pekerjaan paritas Word.
+
+| # | Temuan | Status |
+|---|---|---|
+| W-1 | Tabel identitas project tidak konsisten antar dokumen (63/63/63 mm alih-alih 40/5/120) | ✅ **SELESAI** `ec52cd50` — sebabnya bendera `style_registry` tidak ikut ke paket |
+| W-2 | Blok **Grand Total / PPN / pembulatan** tidak menonjol. PDF memberinya desain tersendiri (highlight); Word menampilkannya sebagai baris tabel biasa sehingga terasa tidak penting | ⬜ **Terbuka** |
+| W-3 | Tabel **Rincian AHSP** salah merge — nilai dipaksakan ke satu sel tanpa mempertimbangkan konteks kolom. PDF sudah benar | ⬜ **Terbuka** |
+| W-4 | Polishing umum lain (spasi, perataan, konsistensi ukuran huruf) | ⬜ **Terbuka** |
+
+Cara memverifikasi W-2/W-3 tanpa membuka Word: bandingkan struktur tabel
+export tunggal dengan PDF-nya. Selisihnya ada di jalur `word_exporter`, bukan
+di adapter -- data yang masuk ke keduanya sama.
+
+## Temuan owner 2026-08-18 — keterbacaan Excel
+
+| # | Temuan | Status |
+|---|---|---|
+| X-1 | Workbook paket rusak saat dibuka: *"Removed Records: Formula from /xl/worksheets/sheet6.xml"* | ✅ **SELESAI** `3d6efe74` — kolom Formula Volume berisi teks berawalan `=`, ditulis sebagai formula Excel |
+| X-2 | Keterbacaan tabel belum digarap: usulan owner = **wrap text**, **lebar kolom disesuaikan**, dan polishing keterbacaan lain | ⬜ **Terbuka** |
