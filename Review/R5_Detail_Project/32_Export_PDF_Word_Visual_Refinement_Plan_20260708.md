@@ -559,10 +559,18 @@ muncul pada export Word tunggal. Dicatat sebagai sisa pekerjaan paritas Word.
 
 | # | Temuan | Status |
 |---|---|---|
-| W-1 | Tabel identitas project tidak konsisten antar dokumen (63/63/63 mm alih-alih 40/5/120) | ✅ **SELESAI** `ec52cd50` — sebabnya bendera `style_registry` tidak ikut ke paket |
+| W-1 | Tabel identitas project tidak konsisten antar dokumen (63/63/63 mm alih-alih 40/5/120) | ✅ **SELESAI** `ec52cd50` — sebabnya bendera `style_registry` tidak ikut ke paket. Keenam tabel identitas kini 40/5/120 mm |
 | W-2 | Blok **Grand Total / PPN / pembulatan** tidak menonjol. PDF memberinya desain tersendiri (highlight); Word menampilkannya sebagai baris tabel biasa sehingga terasa tidak penting | ⬜ **Terbuka** |
 | W-3 | Tabel **Rincian AHSP** salah merge — nilai dipaksakan ke satu sel tanpa mempertimbangkan konteks kolom. PDF sudah benar | ⬜ **Terbuka** |
 | W-4 | Polishing umum lain (spasi, perataan, konsistensi ukuran huruf) | ⬜ **Terbuka** |
+
+**Catatan penting tentang Fase 3.** Dokumen ini menyatakan Fase 3 (paritas Word
+terhadap PDF) SELESAI 5/5 report `5b76847e`+`d1d35b15`, dengan catatan sendiri:
+*"verifikasi struktural docx (LibreOffice tak tersedia) — uji buka manual MS
+Word oleh owner dianjurkan"*. Owner melakukan uji buka itu pada 2026-08-18 dan
+menemukan W-2/W-3/W-4. **Verifikasi struktural tidak cukup untuk paritas
+visual** — pelajaran yang sama dengan temuan lain hari ini: yang diperiksa
+harus lapisan yang benar-benar dilihat pengguna.
 
 Cara memverifikasi W-2/W-3 tanpa membuka Word: bandingkan struktur tabel
 export tunggal dengan PDF-nya. Selisihnya ada di jalur `word_exporter`, bukan
@@ -573,4 +581,18 @@ di adapter -- data yang masuk ke keduanya sama.
 | # | Temuan | Status |
 |---|---|---|
 | X-1 | Workbook paket rusak saat dibuka: *"Removed Records: Formula from /xl/worksheets/sheet6.xml"* | ✅ **SELESAI** `3d6efe74` — kolom Formula Volume berisi teks berawalan `=`, ditulis sebagai formula Excel |
-| X-2 | Keterbacaan tabel belum digarap: usulan owner = **wrap text**, **lebar kolom disesuaikan**, dan polishing keterbacaan lain | ⬜ **Terbuka** |
+| X-2 | Keterbacaan tabel belum digarap: usulan owner = **wrap text**, **lebar kolom disesuaikan**, dan polishing keterbacaan lain | ✅ **SELESAI** `1769e5c1` — `_improve_readability()`: lebar dari isi, wrap pada kolom teks, freeze header. Dipasang di jalur generik + 2 jalur khusus. 9/10 sheet paket terpengaruh (sisanya lembar pengesahan, bukan tabel) |
+
+### ⚠️ Penyimpangan prosedur pada X-2 (dicatat sengaja)
+
+Fase 4 (§13.3) menetapkan **pilot Harga Items di-approve owner sebelum
+replikasi**. X-2 dikerjakan langsung ke semua sheet tanpa melewati tahap pilot
+itu, karena diminta sebagai perbaikan keterbacaan, bukan sebagai Fase 4.
+
+Akibatnya sebagian Fase 4 (freeze panes, lebar kolom) kini sudah terpasang di
+luar urutan yang direncanakan. Yang BELUM dikerjakan dari Fase 4: token/named
+styles, print setup, dan angka numerik. Owner perlu memutuskan apakah hasil
+X-2 diterima apa adanya, atau disesuaikan mengikuti pola pilot.
+
+Lebar kolom yang sudah ditetapkan adapter **tidak ditimpa** — itu keputusan
+tata letak yang disengaja (mis. Rekap Kebutuhan, Volume).
