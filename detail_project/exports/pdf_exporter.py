@@ -6,6 +6,8 @@
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, A3, landscape
+from xml.sax.saxutils import escape
+
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -2752,18 +2754,30 @@ class PDFExporter(ConfigExporterBase):
         details = [sig.get('details') or [] for sig in sigs]
         max_details = max((len(d) for d in details), default=0)
 
+        # Nama digarisbawahi sebagai penanda tanda tangan (keputusan owner
+        # 2026-08-18) -- menggantikan baris garis bawah terpisah yang dulu
+        # dicetak di atas nama. Dibungkus Paragraph karena garis bawah harus
+        # selebar teksnya, bukan selebar kolom seperti LINEBELOW.
+        name_style = ParagraphStyle(
+            'SignatureName', alignment=TA_CENTER, fontName='Helvetica-Bold',
+            fontSize=9, leading=12,
+        )
+
         connective_row = [sig.get('connective', '') for sig in sigs]
         label_row = [sig.get('label', '') for sig in sigs]
         blank_rows = [[''] * n for _ in range(3)]  # ruang tanda tangan basah
-        line_row = ['_' * 20] * n
-        name_row = [(sig.get('name') or '') for sig in sigs]
+        name_row = [
+            Paragraph(f"<u>{escape(sig.get('name') or '')}</u>", name_style)
+            if (sig.get('name') or '') else ''
+            for sig in sigs
+        ]
         detail_rows = [
             [(d[i] if i < len(d) else '') for d in details]
             for i in range(max_details)
         ]
 
         sig_data = (
-            [connective_row, label_row] + blank_rows + [line_row, name_row] + detail_rows
+            [connective_row, label_row] + blank_rows + [name_row] + detail_rows
         )
 
         # Lebar diturunkan dari lebar cetak sebenarnya. Nilai lama 250mm adalah
@@ -2774,18 +2788,15 @@ class PDFExporter(ConfigExporterBase):
         )
         col_width = (usable_w_mm * mm) / n
 
-        name_row_idx = 2 + len(blank_rows) + 1
-
         sig_table = Table(sig_data, colWidths=[col_width] * n)
         sig_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             # Sebutan peran ditebalkan; kata penghubung dibiarkan biasa.
+            # Baris nama membawa gayanya sendiri lewat Paragraph.
             ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 1), (-1, 1), 10),
-            # Nama penanda tangan ditebalkan sesuai lazimnya dokumen resmi.
-            ('FONTNAME', (0, name_row_idx), (-1, name_row_idx), 'Helvetica-Bold'),
             ('TOPPADDING', (0, 2), (-1, 2 + len(blank_rows) - 1), 9*mm),
         ]))
 

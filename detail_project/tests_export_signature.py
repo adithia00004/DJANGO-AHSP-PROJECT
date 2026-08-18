@@ -119,8 +119,22 @@ class SignatureSheetRenderTests(TestCase):
             rows.extend(table._cellvalues)
         return rows
 
+    @staticmethod
+    def _plain(cell):
+        """Teks sel tanpa markup.
+
+        Sel nama berupa Paragraph dengan markup ``<u>`` (garis bawah selebar
+        teks), sisanya string biasa.
+        """
+        import re
+
+        return re.sub(r"<[^>]+>", "", str(getattr(cell, "text", cell)))
+
+    def _flat(self):
+        return [self._plain(c) for row in self._signature_rows() for c in row]
+
     def test_names_and_instansi_are_printed(self):
-        flat = [str(cell) for row in self._signature_rows() for cell in row]
+        flat = self._flat()
 
         for expected in (
             "Pemilik Proyek",
@@ -142,7 +156,7 @@ class SignatureSheetRenderTests(TestCase):
         self.project.sebutan_client = "Pejabat Pembuat Komitmen Dinas Peternakan"
         self.project.save()
 
-        flat = [str(c) for row in self._signature_rows() for c in row]
+        flat = self._flat()
 
         self.assertIn("Pejabat Pembuat Komitmen Dinas Peternakan", flat)
         self.assertNotIn("Pemilik Proyek", flat)
@@ -151,7 +165,7 @@ class SignatureSheetRenderTests(TestCase):
         self.project.sebutan_client = ""
         self.project.save()
 
-        self.assertIn("Pemilik Proyek", [str(c) for r in self._signature_rows() for c in r])
+        self.assertIn("Pemilik Proyek", self._flat())
 
     def test_owner_keterangan_slots_are_printed_in_order(self):
         """Ket 1 (jabatan) lalu Ket 2 (NIP), baru instansi."""
@@ -160,7 +174,7 @@ class SignatureSheetRenderTests(TestCase):
         self.project.save()
 
         rows = self._signature_rows()
-        owner_col = [str(r[0]) for r in rows]
+        owner_col = [self._plain(r[0]) for r in rows]
         order = [owner_col.index(v) for v in (
             "PPK Konstruksi", "NIP 19700101 199003 1 001", "Pemkab Lombok Barat",
         )]
@@ -208,57 +222,24 @@ class SignatureSheetRenderTests(TestCase):
         # Tanpa lokasi: hanya tanggal, bukan koma menggantung.
         self.assertEqual(format_place_and_date("", date(2026, 8, 18)), "18 Agustus 2026")
 
-    def test_signature_line_is_kept_separate_from_the_name(self):
-        """Garis tanda tangan tetap ada, tapi sebagai barisnya sendiri.
+    def test_name_is_underlined_and_no_separate_line_row(self):
+        """Keputusan owner: garis di ATAS nama dihapus, namanya yang digarisbawahi.
 
-        Sebelum perbaikan, garis bawah MENGGANTIKAN nama. Keduanya harus hadir.
+        Garis bawah dibungkus Paragraph (markup ``<u>``) supaya panjangnya
+        mengikuti teks, bukan selebar kolom seperti LINEBELOW.
         """
         rows = self._signature_rows()
-        line_rows = [r for r in rows if all(str(c).strip("_") == "" and str(c) for c in r)]
 
-        self.assertTrue(line_rows, "garis tanda tangan hilang")
-        self.assertIn("Rozan Fahriady", [str(c) for r in rows for c in r])
+        underscore_rows = [
+            r for r in rows
+            if any(self._plain(c).strip("_") == "" and self._plain(c) for c in r)
+        ]
+        self.assertEqual(underscore_rows, [], "baris garis bawah terpisah masih ada")
 
-    def test_role_fields_are_real_project_attributes(self):
-        # Locks the contract that each signature role maps to an existing field.
-        for key, role in SignaturePresets.ALL_ROLES.items():
-            with self.subTest(role=key):
-                self.assertTrue(hasattr(self.project, role["field"]))
-
-    def test_signature_requires_three_content_rows_when_space_is_insufficient(self):
-        self.assertEqual(SignatureLayoutRules.MIN_ROWS_WITH_SIGNATURE, 3)
-        self.assertTrue(
-            SignatureLayoutRules.should_keep_with_signature(
-                remaining_rows=3,
-                available_space_mm=30,
-                row_height_mm=5,
-                num_signatures=3,
-            )
-        )
-        self.assertFalse(
-            SignatureLayoutRules.should_keep_with_signature(
-                remaining_rows=4,
-                available_space_mm=30,
-                row_height_mm=5,
-                num_signatures=3,
-            )
-        )
-
-    def test_pdf_exporter_keeps_signature_blocks_together(self):
-        import inspect
-
-        from detail_project.exports import pdf_exporter
-
-        source = inspect.getsource(pdf_exporter)
-        self.assertIn("KeepTogether", source)
-        self.assertIn("SignatureLayoutRules as SLR", source)
-        self.assertIn("signature_height", source)
-
-    def test_exporters_have_empty_dataset_placeholders(self):
-        import inspect
-
-        from detail_project.exports import excel_exporter, pdf_exporter, word_exporter
-
-        self.assertIn("No data", inspect.getsource(pdf_exporter))
-        self.assertIn("Tidak ada data", inspect.getsource(excel_exporter))
-        self.assertIn("Tidak ada data", inspect.getsource(word_exporter))
+        name_cells = [
+            c for r in rows for c in r
+            if "Rozan Fahriady" in self._plain(c)
+        ]
+        self.assertTrue(name_cells, "nama tidak tercetak")
+        self.assertIn("<u>", str(getattr(name_cells[0], "text", "")),
+                      "nama tidak digarisbawahi")

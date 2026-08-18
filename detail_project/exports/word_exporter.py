@@ -944,16 +944,17 @@ class WordExporter:
         details = [sig.get('details') or [] for sig in shown]
         max_details = max((len(d) for d in details), default=0)
 
-        ROW_CONNECTIVE, ROW_LABEL, ROW_SPACE, ROW_LINE, ROW_NAME = 0, 1, 2, 3, 4
-        table = self.doc.add_table(rows=5 + max_details, cols=num_cols)
+        ROW_CONNECTIVE, ROW_LABEL, ROW_SPACE, ROW_NAME = 0, 1, 2, 3
+        table = self.doc.add_table(rows=4 + max_details, cols=num_cols)
 
-        def _put(row_idx, col_idx, text, bold=False):
+        def _put(row_idx, col_idx, text, bold=False, underline=False):
             cell = table.rows[row_idx].cells[col_idx]
             cell.text = text or ''
             for para in cell.paragraphs:
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in para.runs:
                     run.bold = bold
+                    run.underline = underline
 
         for col_idx, sig in enumerate(shown):
             _put(ROW_CONNECTIVE, col_idx, sig.get('connective', ''))
@@ -964,10 +965,9 @@ class WordExporter:
             space_cell.text = ''
             space_cell.paragraphs[0].add_run('\n\n\n')
 
-            # Garis tanda tangan. Word sebelumnya tidak punya ini sama sekali,
-            # sehingga dokumen yang sama terbit berbeda antara PDF dan Word.
-            _put(ROW_LINE, col_idx, '_' * 24)
-            _put(ROW_NAME, col_idx, sig.get('name', ''), bold=True)
+            # Nama digarisbawahi sebagai penanda tanda tangan (keputusan owner
+            # 2026-08-18), menggantikan baris garis bawah terpisah di atasnya.
+            _put(ROW_NAME, col_idx, sig.get('name', ''), bold=True, underline=True)
 
             for i in range(max_details):
                 value = details[col_idx][i] if i < len(details[col_idx]) else ''
