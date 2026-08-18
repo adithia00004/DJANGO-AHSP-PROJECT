@@ -137,6 +137,77 @@ class SignatureSheetRenderTests(TestCase):
                     f"'{expected}' tidak tercetak di lembar pengesahan PDF.",
                 )
 
+    def test_owner_label_can_be_overridden_per_project(self):
+        """Sebagian instansi mewajibkan sebutan lain untuk pemilik."""
+        self.project.sebutan_client = "Pejabat Pembuat Komitmen Dinas Peternakan"
+        self.project.save()
+
+        flat = [str(c) for row in self._signature_rows() for c in row]
+
+        self.assertIn("Pejabat Pembuat Komitmen Dinas Peternakan", flat)
+        self.assertNotIn("Pemilik Proyek", flat)
+
+    def test_owner_label_falls_back_to_default_when_blank(self):
+        self.project.sebutan_client = ""
+        self.project.save()
+
+        self.assertIn("Pemilik Proyek", [str(c) for r in self._signature_rows() for c in r])
+
+    def test_owner_keterangan_slots_are_printed_in_order(self):
+        """Ket 1 (jabatan) lalu Ket 2 (NIP), baru instansi."""
+        self.project.jabatan_client = "PPK Konstruksi"
+        self.project.ket_client2 = "NIP 19700101 199003 1 001"
+        self.project.save()
+
+        rows = self._signature_rows()
+        owner_col = [str(r[0]) for r in rows]
+        order = [owner_col.index(v) for v in (
+            "PPK Konstruksi", "NIP 19700101 199003 1 001", "Pemkab Lombok Barat",
+        )]
+
+        self.assertEqual(order, sorted(order), "urutan keterangan pemilik tertukar")
+
+    def test_signature_table_fits_the_printable_width(self):
+        """Lebar tabel dulu 250mm mati, melebihi area cetak A4 portrait 190mm."""
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Table
+
+        from detail_project.exports.export_manager import ExportManager
+        from detail_project.exports.pdf_exporter import PDFExporter
+
+        config = ExportManager(self.project)._create_config()
+        exporter = PDFExporter(config)
+        printable_mm = exporter._get_page_width_mm() - (
+            config.margin_left + config.margin_right
+        )
+
+        def _tables(obj):
+            if isinstance(obj, Table):
+                yield obj
+            for attr in ("_content", "_flowables"):
+                for child in getattr(obj, attr, []) or []:
+                    yield from _tables(child)
+
+        for table in _tables(exporter._build_signatures()[0]):
+            total_mm = sum(table._colWidths) / mm
+            self.assertLessEqual(
+                round(total_mm, 1),
+                round(printable_mm, 1),
+                f"tabel tanda tangan {total_mm:.0f}mm melebihi area cetak "
+                f"{printable_mm:.0f}mm -- kolom kanan akan terpotong.",
+            )
+
+    def test_place_and_date_line_is_shared_between_pdf_and_word(self):
+        from datetime import date
+
+        from detail_project.exports.signature_config import format_place_and_date
+
+        line = format_place_and_date("Desa Penimbung, Kecamatan Gunung Sari", date(2026, 8, 18))
+
+        self.assertEqual(line, "Desa Penimbung, 18 Agustus 2026")
+        # Tanpa lokasi: hanya tanggal, bukan koma menggantung.
+        self.assertEqual(format_place_and_date("", date(2026, 8, 18)), "18 Agustus 2026")
+
     def test_signature_line_is_kept_separate_from_the_name(self):
         """Garis tanda tangan tetap ada, tapi sebagai barisnya sendiri.
 

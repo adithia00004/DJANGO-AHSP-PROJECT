@@ -41,7 +41,19 @@ class ProjectForm(forms.ModelForm):
             # Other fields
             "ket_project1": forms.TextInput(attrs={"class": "form-control"}),
             "ket_project2": forms.TextInput(attrs={"class": "form-control"}),
-            "jabatan_client": forms.TextInput(attrs={"class": "form-control"}),
+            # Identitas pemilik pada lembar pengesahan export
+            "sebutan_client": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Pemilik Proyek",
+            }),
+            "jabatan_client": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "mis. PPK Konstruksi",
+            }),
+            "ket_client2": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "mis. NIP 19700101 199003 1 001",
+            }),
             "instansi_client": forms.TextInput(attrs={"class": "form-control"}),
             "nama_kontraktor": forms.TextInput(attrs={"class": "form-control"}),
             "instansi_kontraktor": forms.TextInput(attrs={"class": "form-control"}),
@@ -49,6 +61,19 @@ class ProjectForm(forms.ModelForm):
             "instansi_konsultan_perencana": forms.TextInput(attrs={"class": "form-control"}),
             "nama_konsultan_pengawas": forms.TextInput(attrs={"class": "form-control"}),
             "instansi_konsultan_pengawas": forms.TextInput(attrs={"class": "form-control"}),
+        }
+        labels = {
+            # Ketiganya hanya muncul di lembar pengesahan hasil export, jadi
+            # labelnya menjelaskan itu -- bukan nama field internal.
+            "sebutan_client": "Sebutan Pemilik (pengesahan)",
+            "jabatan_client": "Keterangan 1 Pemilik (jabatan/peran)",
+            "ket_client2": "Keterangan 2 Pemilik (NIP/ID)",
+        }
+        help_texts = {
+            "sebutan_client": (
+                'Kosongkan untuk memakai "Pemilik Proyek". Isi bila instansi '
+                'mewajibkan sebutan lain, mis. "Pejabat Pembuat Komitmen Dinas X".'
+            ),
         }
 
     def __init__(self, *args, **kwargs):

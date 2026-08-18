@@ -19,7 +19,37 @@ Usage:
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Dict, Any
+
+
+# Nama bulan Indonesia. Tidak memakai strftime('%B') karena locale container
+# tidak dijamin id_ID -- dokumen resmi tidak boleh terbit berbahasa Inggris
+# hanya karena sistem operasinya berbeda.
+_BULAN_ID = (
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+)
+
+
+def format_place_and_date(location: str = '', tanggal=None) -> str:
+    """Baris "Kota, 18 Agustus 2026" untuk kepala blok tanda tangan.
+
+    Dipakai bersama oleh exporter PDF dan Word supaya keduanya tidak menyimpang;
+    sebelumnya tidak satu pun mencetak tempat dan tanggal.
+
+    Lokasi project bisa panjang ("Desa X, Kecamatan Y - Kab. Z"), jadi hanya
+    ruas pertama yang dipakai agar barisnya tidak membungkus. Bila lokasi
+    kosong, hanya tanggal yang dicetak -- lebih baik daripada koma menggantung.
+    """
+    tanggal = tanggal or datetime.now()
+    try:
+        tanggal_str = f"{tanggal.day} {_BULAN_ID[tanggal.month - 1]} {tanggal.year}"
+    except (AttributeError, IndexError, TypeError):
+        return ''
+
+    tempat = (location or '').split(',')[0].strip()
+    return f"{tempat}, {tanggal_str}" if tempat else tanggal_str
 
 
 # =============================================================================
@@ -41,26 +71,36 @@ class SignaturePresets:
     # Each role has a label (display name) and field (project model attribute)
     # IMPORTANT: Field names MUST match dashboard.models.Project fields
     
-    ALL_ROLES: Dict[str, Dict[str, str]] = {
+    ALL_ROLES: Dict[str, Dict[str, Any]] = {
         'owner': {
             'label': 'Pemilik Proyek',
             'field': 'nama_client',  # Project.nama_client ✓
             'instansi_field': 'instansi_client',  # Project.instansi_client ✓
+            # Sebagian instansi mewajibkan sebutan lain ("Pejabat Pembuat
+            # Komitmen Dinas X"). Diisi per-project; kosong -> pakai 'label'.
+            'label_field': 'sebutan_client',
+            # Baris keterangan di bawah nama, berurutan. Hanya pemilik yang
+            # punya slot ini; peran lain cukup instansi.
+            'detail_fields': ['jabatan_client', 'ket_client2'],
+            'connective': 'Mengetahui,',
         },
         'perencana': {
             'label': 'Konsultan Perencana',
             'field': 'nama_konsultan_perencana',  # Project.nama_konsultan_perencana ✓
             'instansi_field': 'instansi_konsultan_perencana',
+            'connective': 'Dibuat oleh,',
         },
         'kontraktor': {
             'label': 'Kontraktor Pelaksana',
             'field': 'nama_kontraktor',  # Project.nama_kontraktor ✓
             'instansi_field': 'instansi_kontraktor',
+            'connective': 'Dibuat oleh,',
         },
         'pengawas': {
             'label': 'Konsultan Pengawas',
             'field': 'nama_konsultan_pengawas',  # Project.nama_konsultan_pengawas ✓
             'instansi_field': 'instansi_konsultan_pengawas',
+            'connective': 'Diperiksa oleh,',
         },
     }
     
@@ -143,24 +183,37 @@ class SignaturePresets:
             label = role.get('label', role_key.title())
             field = role.get('field', '')
             
-            # Get name from project if field exists
-            name = ''
-            if field and project:
-                name = getattr(project, field, '') or ''
+            def _field(attr):
+                if not attr or not project:
+                    return ''
+                return (getattr(project, attr, '') or '').strip()
+
+            # Sebutan peran dapat ditimpa per-project (mis. "Pejabat Pembuat
+            # Komitmen Dinas X"); kosong berarti pakai label bawaan peran.
+            label = _field(role.get('label_field', '')) or label
+
+            name = _field(field)
 
             # Instansi tampil di bawah nama pada lembar pengesahan. Slot
             # 'position' sudah lama ada tapi selalu kosong, sehingga baris itu
             # terbit tanpa isi; kini diisi dari field instansi milik peran yang
             # bersangkutan (bukan instansi klien untuk semua peran).
-            instansi_field = role.get('instansi_field', '')
-            position = ''
-            if instansi_field and project:
-                position = getattr(project, instansi_field, '') or ''
+            position = _field(role.get('instansi_field', ''))
+
+            # Baris di bawah nama, berurutan dan tanpa slot kosong: keterangan
+            # khusus peran (pemilik: jabatan lalu NIP/ID) diikuti instansi.
+            # Baris kosong dibuang di sini supaya renderer tidak perlu tahu
+            # peran mana punya slot apa.
+            details = [_field(a) for a in role.get('detail_fields', [])]
+            details.append(position)
+            details = [d for d in details if d]
 
             signatures.append({
                 'label': label,
+                'connective': role.get('connective', ''),
                 'name': name,
                 'position': position,
+                'details': details,
             })
         
         return signatures

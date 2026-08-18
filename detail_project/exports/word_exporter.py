@@ -923,37 +923,55 @@ class WordExporter:
                 {'label': 'Konsultan Perencana', 'name': '', 'position': ''},
             ]
         
-        # Create 2-column table for signatures (side-by-side)
+        # Tempat & tanggal, rata kanan -- memakai SSOT yang sama dengan PDF.
+        from .signature_config import format_place_and_date
+
+        place_date = format_place_and_date(
+            getattr(self.config, 'location', ''),
+            getattr(self.config, 'export_date', None),
+        )
+        if place_date:
+            pd_para = self.doc.add_paragraph()
+            pd_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            pd_para.add_run(place_date)
+
+        # Susunan disamakan persis dengan PDFExporter._build_signatures:
+        # penghubung, sebutan peran, ruang tanda tangan basah, garis, nama,
+        # lalu baris keterangan. Jumlah baris keterangan berbeda antar peran,
+        # jadi tabel dipadatkan ke jumlah terbanyak agar kolom tetap sejajar.
         num_cols = min(len(signatures), 3)
-        table = self.doc.add_table(rows=4, cols=num_cols)
-        
-        for col_idx, sig in enumerate(signatures[:num_cols]):
-            # Row 0: Label
-            cell0 = table.rows[0].cells[col_idx]
-            cell0.text = sig.get('label', '')
-            for para in cell0.paragraphs:
+        shown = signatures[:num_cols]
+        details = [sig.get('details') or [] for sig in shown]
+        max_details = max((len(d) for d in details), default=0)
+
+        ROW_CONNECTIVE, ROW_LABEL, ROW_SPACE, ROW_LINE, ROW_NAME = 0, 1, 2, 3, 4
+        table = self.doc.add_table(rows=5 + max_details, cols=num_cols)
+
+        def _put(row_idx, col_idx, text, bold=False):
+            cell = table.rows[row_idx].cells[col_idx]
+            cell.text = text or ''
+            for para in cell.paragraphs:
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in para.runs:
-                    run.bold = True
-            
-            # Row 1: Blank space for actual signature
-            cell1 = table.rows[1].cells[col_idx]
-            cell1.text = ''
-            cell1.paragraphs[0].add_run('\n\n\n')  # Signature space
-            
-            # Row 2: Name
-            cell2 = table.rows[2].cells[col_idx]
-            name = sig.get('name', '')
-            cell2.text = name if name else '________________________'
-            for para in cell2.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            # Row 3: Position
-            cell3 = table.rows[3].cells[col_idx]
-            position = sig.get('position', '')
-            cell3.text = position if position else ''
-            for para in cell3.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run.bold = bold
+
+        for col_idx, sig in enumerate(shown):
+            _put(ROW_CONNECTIVE, col_idx, sig.get('connective', ''))
+            _put(ROW_LABEL, col_idx, sig.get('label', ''), bold=True)
+
+            # Ruang tanda tangan basah
+            space_cell = table.rows[ROW_SPACE].cells[col_idx]
+            space_cell.text = ''
+            space_cell.paragraphs[0].add_run('\n\n\n')
+
+            # Garis tanda tangan. Word sebelumnya tidak punya ini sama sekali,
+            # sehingga dokumen yang sama terbit berbeda antara PDF dan Word.
+            _put(ROW_LINE, col_idx, '_' * 24)
+            _put(ROW_NAME, col_idx, sig.get('name', ''), bold=True)
+
+            for i in range(max_details):
+                value = details[col_idx][i] if i < len(details[col_idx]) else ''
+                _put(ROW_NAME + 1 + i, col_idx, value)
     
     def _build_pengesahan_word_table(self, table_data: Dict[str, Any], col_widths: List = None):
         """

@@ -240,7 +240,9 @@
                     <th class="field-optional">Durasi</th>
                     <th class="field-optional">Ket 1</th>
                     <th class="field-optional">Ket 2</th>
-                    <th class="field-optional">Jabatan Client</th>
+                    <th class="field-optional" title="Sebutan peran pemilik di lembar pengesahan. Kosong = &quot;Pemilik Proyek&quot;">Sebutan Pemilik</th>
+                    <th class="field-optional" title="Keterangan 1 pemilik pada lembar pengesahan (jabatan/peran)">Ket 1 Pemilik</th>
+                    <th class="field-optional" title="Keterangan 2 pemilik pada lembar pengesahan (NIP/ID)">Ket 2 Pemilik</th>
                     <th class="field-optional">Instansi Client</th>
                     <th class="field-optional">Kontraktor</th>
                     <th class="field-optional">Inst. Kontraktor</th>
@@ -288,7 +290,9 @@
                     </td>
                     <td class="field-optional">{{ form.ket_project1 }}</td>
                     <td class="field-optional">{{ form.ket_project2 }}</td>
+                    <td class="field-optional">{{ form.sebutan_client }}</td>
                     <td class="field-optional">{{ form.jabatan_client }}</td>
+                    <td class="field-optional">{{ form.ket_client2 }}</td>
                     <td class="field-optional">{{ form.instansi_client }}</td>
                     <td class="field-optional">{{ form.nama_kontraktor }}</td>
                     <td class="field-optional">{{ form.instansi_kontraktor }}</td>
@@ -319,7 +323,9 @@
               <td class="field-optional">{{ formset.empty_form.durasi_hari }}</td>
               <td class="field-optional">{{ formset.empty_form.ket_project1 }}</td>
               <td class="field-optional">{{ formset.empty_form.ket_project2 }}</td>
+              <td class="field-optional">{{ formset.empty_form.sebutan_client }}</td>
               <td class="field-optional">{{ formset.empty_form.jabatan_client }}</td>
+              <td class="field-optional">{{ formset.empty_form.ket_client2 }}</td>
               <td class="field-optional">{{ formset.empty_form.instansi_client }}</td>
               <td class="field-optional">{{ formset.empty_form.nama_kontraktor }}</td>
               <td class="field-optional">{{ formset.empty_form.instansi_kontraktor }}</td>

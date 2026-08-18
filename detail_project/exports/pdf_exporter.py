@@ -2700,6 +2700,15 @@ class PDFExporter(ConfigExporterBase):
             no_detail_para = Paragraph("<i>Tidak ada detail item untuk pekerjaan ini</i>", self.styles['normal'])
             story.append(no_detail_para)
 
+    def _format_place_and_date(self) -> str:
+        """Delegasi ke SSOT bersama agar PDF dan Word menghasilkan baris sama."""
+        from .signature_config import format_place_and_date
+
+        return format_place_and_date(
+            getattr(self.config, 'location', ''),
+            getattr(self.config, 'export_date', None),
+        )
+
     def _build_signatures(self) -> List:
         """Build signature section"""
         elements = []
@@ -2711,42 +2720,75 @@ class PDFExporter(ConfigExporterBase):
         )
         elements.append(sig_title)
         elements.append(Spacer(1, 3*mm))
-        
+
+        # Tempat & tanggal, rata kanan di atas blok tanda tangan -- bagian baku
+        # dokumen resmi yang selama ini tidak pernah dicetak. Tempat memakai
+        # lokasi project; tanggal memakai tanggal dokumen dibuat.
+        place_date = self._format_place_and_date()
+        if place_date:
+            elements.append(Paragraph(place_date, ParagraphStyle(
+                'SignaturePlaceDate', alignment=TA_RIGHT, fontSize=9, leading=12,
+            )))
+            elements.append(Spacer(1, 2*mm))
+
         # Get signatures from config
         sigs = self.config.signature_config.signatures
         if self.config.signature_config.custom_signatures:
             sigs = self.config.signature_config.custom_signatures
         
-        # Build signature cells
+        # Susunan baku lembar pengesahan, dari atas ke bawah:
+        #   tempat & tanggal (rata kanan, di luar tabel)
+        #   kata penghubung   -> "Mengetahui," / "Dibuat oleh,"
+        #   sebutan peran     -> dapat ditimpa per-project untuk pemilik
+        #   ruang tanda tangan basah
+        #   garis tanda tangan
+        #   NAMA
+        #   baris keterangan  -> jabatan, NIP/ID, instansi (hanya yang terisi)
         #
-        # Urutan baku lembar pengesahan: label peran, ruang kosong untuk tanda
-        # tangan basah, garis tanda tangan, NAMA, lalu instansi.
-        #
-        # Sebelumnya baris nama diisi 20 garis bawah literal, sehingga nama yang
-        # sudah benar dari build_signatures() tidak pernah terbit -- lembar
-        # pengesahan tampak kosong meski datanya ada di Dashboard. Garis bawah
-        # tetap dipertahankan sebagai garis tanda tangan di baris terpisah.
-        sig_headers = [sig['label'] for sig in sigs]
-        empty_rows = [[''] * len(sigs) for _ in range(3)]  # Space for signature
-        line_rows = [['_' * 20] * len(sigs)]
-        name_rows = [[(sig.get('name') or '') for sig in sigs]]
-        position_rows = [[sig.get('position', '') for sig in sigs]]
+        # Jumlah baris keterangan berbeda antar peran (pemilik punya slot lebih
+        # banyak), jadi tabel dipadatkan ke jumlah terbanyak agar kolom tetap
+        # sejajar.
+        n = len(sigs)
+        details = [sig.get('details') or [] for sig in sigs]
+        max_details = max((len(d) for d in details), default=0)
 
-        sig_data = [sig_headers] + empty_rows + line_rows + name_rows + position_rows
-        
-        # Calculate column width
-        col_width = 250 * mm / len(sigs)
-        
-        sig_table = Table(sig_data, colWidths=[col_width] * len(sigs))
+        connective_row = [sig.get('connective', '') for sig in sigs]
+        label_row = [sig.get('label', '') for sig in sigs]
+        blank_rows = [[''] * n for _ in range(3)]  # ruang tanda tangan basah
+        line_row = ['_' * 20] * n
+        name_row = [(sig.get('name') or '') for sig in sigs]
+        detail_rows = [
+            [(d[i] if i < len(d) else '') for d in details]
+            for i in range(max_details)
+        ]
+
+        sig_data = (
+            [connective_row, label_row] + blank_rows + [line_row, name_row] + detail_rows
+        )
+
+        # Lebar diturunkan dari lebar cetak sebenarnya. Nilai lama 250mm adalah
+        # angka mati yang melebihi area cetak A4 portrait (190mm dengan margin
+        # 10/10), sehingga kolom kanan terpotong saat dicetak.
+        usable_w_mm = self._get_page_width_mm() - (
+            self.config.margin_left + self.config.margin_right
+        )
+        col_width = (usable_w_mm * mm) / n
+
+        name_row_idx = 2 + len(blank_rows) + 1
+
+        sig_table = Table(sig_data, colWidths=[col_width] * n)
         sig_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('TOPPADDING', (0, 1), (-1, 3), 10*mm),  # Space for hand signature
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            # Sebutan peran ditebalkan; kata penghubung dibiarkan biasa.
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 1), (-1, 1), 10),
+            # Nama penanda tangan ditebalkan sesuai lazimnya dokumen resmi.
+            ('FONTNAME', (0, name_row_idx), (-1, name_row_idx), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 2), (-1, 2 + len(blank_rows) - 1), 9*mm),
         ]))
-        
+
         elements.append(sig_table)
         
         # Wrap in KeepTogether so signature section stays together

@@ -28,6 +28,10 @@ def get_project_identity(project) -> dict:
         "ket_project1": _s("ket_project1", ""),
         "ket_project2": _s("ket_project2", ""),
         "jabatan_client": _s("jabatan_client", ""),
+        # Keterangan 2 pemilik (NIP/ID) dan sebutan peran pemilik pada lembar
+        # pengesahan. Sebutan kosong berarti pakai default "Pemilik Proyek".
+        "ket_client2": _s("ket_client2", ""),
+        "sebutan_client": _s("sebutan_client", ""),
         "instansi_client": _s("instansi_client", ""),
         "kontraktor": _s("nama_kontraktor", ""),
         "instansi_kontraktor": _s("instansi_kontraktor", ""),

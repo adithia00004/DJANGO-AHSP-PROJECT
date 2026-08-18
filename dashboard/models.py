@@ -23,7 +23,15 @@ class Project(models.Model):
     # === 10 Kolom Tambahan (opsional) ===
     ket_project1 = models.CharField(max_length=255, blank=True, null=True)
     ket_project2 = models.CharField(max_length=255, blank=True, null=True)
+    # Keterangan 1 pada lembar pengesahan (jabatan/peran, mis. "PPK Konstruksi").
+    # Nama field dipertahankan karena sudah terisi di sebagian besar project.
     jabatan_client = models.CharField(max_length=255, blank=True, null=True)
+    # Keterangan 2 pada lembar pengesahan (NIP atau identitas sejenis).
+    ket_client2 = models.CharField(max_length=255, blank=True, null=True)
+    # Sebutan peran pemilik di lembar pengesahan. Sebagian instansi mewajibkan
+    # sebutan tertentu ("Pejabat Pembuat Komitmen Dinas X", "Penanggung Jawab
+    # Perusahaan Y"). Kosong berarti pakai default "Pemilik Proyek".
+    sebutan_client = models.CharField(max_length=255, blank=True, null=True)
     instansi_client = models.CharField(max_length=255, blank=True, null=True)
     nama_kontraktor = models.CharField(max_length=255, blank=True, null=True)
     instansi_kontraktor = models.CharField(max_length=255, blank=True, null=True)
