@@ -1133,7 +1133,8 @@ class PDFExporter(ConfigExporterBase):
         from reportlab.platypus import PageBreak
 
         story = []
-        for idx, (title, data) in enumerate(documents):
+        for idx, entry in enumerate(documents):
+            title, data = entry['title'], entry['data']
             original_title = self.config.title
             self.config.title = title
             try:

@@ -224,11 +224,21 @@ class ExportManager:
         from .harga_items_adapter import HargaItemsAdapter
 
         titles = [t for t, _ in self.PAKET_PERENCANAAN]
+        volume_adapter = VolumePekerjaanAdapter(self.project, include_signatures=True)
         return [
-            (titles[0], self._build_rekap_rab_data()),
-            (titles[1], RincianAHSPAdapter(self.project).get_export_data()),
-            (titles[2], VolumePekerjaanAdapter(self.project, include_signatures=True).get_export_data()),
-            (titles[3], HargaItemsAdapter(self.project).get_export_data()),
+            {'title': titles[0], 'data': self._build_rekap_rab_data()},
+            {'title': titles[1], 'data': RincianAHSPAdapter(self.project).get_export_data()},
+            {
+                'title': titles[2],
+                'data': volume_adapter.get_export_data(),
+                # Volume punya jalur XLSX khusus (kolom Formula ditulis sebagai
+                # TEKS audit, bukan formula Excel). Tanpa petunjuk ini paket
+                # memakai export() generik, dan openpyxl menganggap string
+                # berawalan "=" sebagai formula -> Excel menolak lalu membuang
+                # isinya ("Removed Records: Formula").
+                'xlsx': ('export_volume_pekerjaan', volume_adapter),
+            },
+            {'title': titles[3], 'data': HargaItemsAdapter(self.project).get_export_data()},
         ]
 
     def export_paket_perencanaan(self, format_type: str) -> HttpResponse:

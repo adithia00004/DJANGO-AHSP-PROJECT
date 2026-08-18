@@ -41,12 +41,12 @@ class PaketPerencanaanTests(TestCase):
         documents = ExportManager(self.project)._collect_paket_documents()
 
         self.assertEqual(
-            [title for title, _ in documents],
+            [d["title"] for d in documents],
             [title for title, _ in ExportManager.PAKET_PERENCANAAN],
         )
-        for title, data in documents:
-            with self.subTest(title=title):
-                self.assertTrue(data, f"data {title} kosong")
+        for entry in documents:
+            with self.subTest(title=entry["title"]):
+                self.assertTrue(entry["data"], f"data {entry['title']} kosong")
 
     def test_every_format_returns_a_single_file(self):
         self.client.force_login(self.owner)
@@ -75,8 +75,41 @@ class PaketPerencanaanTests(TestCase):
         from detail_project.exports.export_manager import ExportManager
 
         manager = ExportManager(self.project)
-        paket_rekap = dict(manager._collect_paket_documents())[
-            "REKAPITULASI RENCANA ANGGARAN BIAYA"
-        ]
+        paket_rekap = {
+            d["title"]: d["data"] for d in manager._collect_paket_documents()
+        }["REKAPITULASI RENCANA ANGGARAN BIAYA"]
 
         self.assertEqual(paket_rekap, manager._build_rekap_rab_data())
+
+    def test_excel_package_has_no_invalid_formulas(self):
+        """Excel menolak berkas berisi formula tak sah dan MEMBUANG isinya.
+
+        Kolom Formula pada Volume berisi teks audit seperti "=Luas + Panjang".
+        openpyxl memperlakukan string berawalan "=" sebagai formula, sehingga
+        bila paket memakai export() generik alih-alih jalur XLSX khusus Volume,
+        Excel menampilkan "Removed Records: Formula" dan membuang isinya.
+        """
+        import re
+        import zipfile
+        from io import BytesIO
+
+        self.client.force_login(self.owner)
+        response = self.client.get(self._url("xlsx"))
+        self.assertEqual(response.status_code, 200)
+
+        archive = zipfile.ZipFile(BytesIO(response.content))
+        valid_start = re.compile(r"^('?[A-Za-z0-9 _]+'?!|SUM|IF|ROUND|ABS|[A-Z]+[0-9])")
+        invalid = []
+        for name in archive.namelist():
+            if not name.startswith("xl/worksheets/sheet"):
+                continue
+            xml = archive.read(name).decode("utf-8", "ignore")
+            for formula in re.findall(r"<f[^>]*>([^<]{0,80})", xml):
+                if formula and not valid_start.match(formula):
+                    invalid.append((name, formula))
+
+        self.assertEqual(
+            invalid,
+            [],
+            f"formula tak sah akan dibuang Excel saat dibuka: {invalid[:3]}",
+        )

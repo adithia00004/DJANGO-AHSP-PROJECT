@@ -670,11 +670,11 @@ class WordExporter:
         self._package_mode = True
         original_title = self.config.title
         try:
-            for idx, (title, data) in enumerate(documents):
+            for idx, entry in enumerate(documents):
                 if idx:
                     self.doc.add_page_break()
-                self.config.title = title
-                self.export(data)
+                self.config.title = entry['title']
+                self.export(entry['data'])
         finally:
             self._package_mode = False
             self.config.title = original_title

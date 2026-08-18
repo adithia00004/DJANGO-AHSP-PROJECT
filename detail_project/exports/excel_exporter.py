@@ -293,9 +293,16 @@ class ExcelExporter(ConfigExporterBase):
         self._sheet_index = 0
         original_title = self.config.title
         try:
-            for title, data in documents:
-                self.config.title = title
-                self.export(data)
+            for entry in documents:
+                self.config.title = entry['title']
+                # Dokumen dapat menunjuk metode exporter khusus untuk format ini
+                # (mis. Volume, yang kolom Formula-nya harus ditulis sebagai teks).
+                spec = entry.get('xlsx')
+                if spec:
+                    method_name, adapter = spec
+                    getattr(self, method_name)(entry['data'], adapter)
+                else:
+                    self.export(entry['data'])
             wb = self._package_wb
         finally:
             self._package_wb = None
@@ -326,7 +333,8 @@ class ExcelExporter(ConfigExporterBase):
         if not OPENPYXL_AVAILABLE:
             raise RuntimeError('openpyxl belum terpasang. Install via "pip install openpyxl".')
 
-        wb = Workbook()
+        # Ikut mode paket bila sedang merakit; lihat catatan di export().
+        wb = self._package_wb if self._package_wb is not None else Workbook()
         border = self._get_thin_border()
         
         pages = data.get('pages', [])
@@ -339,7 +347,7 @@ class ExcelExporter(ConfigExporterBase):
         parameter_cells = data.get('parameter_cells', {})
         
         # ========== SHEET 1: PARAMETERS ==========
-        ws_params = wb.active
+        ws_params = self._create_sheet(wb, "Parameter", is_first=True)
         ws_params.title = "Parameters"
         
         current_row = 1
@@ -507,6 +515,9 @@ class ExcelExporter(ConfigExporterBase):
         
         # Save workbook
         output = BytesIO()
+        if self._package_wb is not None:
+            return None
+
         wb.save(output)
         from .naming import build_export_filename
         filename = build_export_filename(
