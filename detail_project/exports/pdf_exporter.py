@@ -703,7 +703,7 @@ class PDFExporter(ConfigExporterBase):
                 style_cmds.append(('BACKGROUND', (0, row_idx), (-1, row_idx), 
                                   colors.HexColor(UTS.SUB_KLASIFIKASI_BG)))
     
-    def export(self, data: Dict[str, Any]) -> HttpResponse:
+    def export(self, data: Dict[str, Any], collect_only: bool = False) -> HttpResponse:
         """Export to PDF (supports single or multi-page payload)"""
         # WP Export: format canonical Decimal cells to display strings at this
         # text-exporter boundary (only column_formats-tagged tables are touched).
@@ -1101,6 +1101,14 @@ class PDFExporter(ConfigExporterBase):
             except Exception:
                 continue
 
+        # Paket perencanaan: kembalikan flowable-nya saja supaya beberapa dokumen
+        # dapat dirangkai ke dalam SATU berkas PDF. Tanpa ini penggabungan butuh
+        # pustaka merge (pypdf/pikepdf) yang tidak terpasang, dan hasilnya pun
+        # tidak menyatu -- nomor halaman tiap dokumen akan mulai dari 1 lagi.
+        # Aman karena keempat dokumen perencanaan sama-sama portrait A4.
+        if collect_only:
+            return story
+
         # Build PDF
         # Note: NumberedCanvas temporarily disabled due to ReportLab compatibility
         # TODO: Re-enable with proper implementation
@@ -1112,6 +1120,52 @@ class PDFExporter(ConfigExporterBase):
         
         from .naming import build_export_filename  # WP-B5 inc-B5c
         filename = build_export_filename(self.config.project_name, self.config.title, 'pdf', self.config.export_date)
+        return self._create_response(pdf_content, filename, 'application/pdf')
+
+    def export_package(self, documents, filename_title: str = 'Paket Perencanaan') -> HttpResponse:
+        """Rangkai beberapa dokumen menjadi SATU berkas PDF.
+
+        ``documents`` adalah urutan ``(judul, data)``. Tiap dokumen dirender
+        memakai jalur ``export()`` yang sama persis dengan unduhan tunggal --
+        termasuk lembar pengesahannya masing-masing (keputusan owner) -- lalu
+        disambung dengan pemisah halaman.
+        """
+        from reportlab.platypus import PageBreak
+
+        story = []
+        for idx, (title, data) in enumerate(documents):
+            original_title = self.config.title
+            self.config.title = title
+            try:
+                if idx:
+                    story.append(PageBreak())
+                story.extend(self.export(data, collect_only=True))
+            finally:
+                self.config.title = original_title
+
+        # Ukuran halaman diturunkan sama seperti export(); keempat dokumen
+        # perencanaan sama-sama portrait sehingga satu ukuran cukup.
+        orientation = getattr(self.config, 'page_orientation', 'portrait')
+        base_size = PAGE_SIZE_MAP.get((getattr(self.config, 'page_size', 'A4') or 'A4').upper(), A4)
+        pagesize = base_size if orientation == 'portrait' else landscape(base_size)
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=pagesize,
+            topMargin=self.config.margin_top * mm,
+            bottomMargin=self.config.margin_bottom * mm,
+            leftMargin=self.config.margin_left * mm,
+            rightMargin=self.config.margin_right * mm,
+        )
+        doc.build(story)
+        pdf_content = buffer.getvalue()
+        buffer.close()
+
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            self.config.project_name, filename_title, 'pdf', self.config.export_date
+        )
         return self._create_response(pdf_content, filename, 'application/pdf')
 
     def export_professional(self, data: Dict[str, Any]) -> HttpResponse:

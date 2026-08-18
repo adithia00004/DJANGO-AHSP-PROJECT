@@ -124,9 +124,21 @@ class ExportManager:
         Returns:
             HttpResponse with exported file
         """
-        # Create export config
         config = self._create_config()
-        
+        data = self._build_rekap_rab_data()
+
+        exporter_class = self.EXPORTER_MAP.get(format_type)
+        if not exporter_class:
+            raise ValueError(f"Unsupported format: {format_type}")
+        return exporter_class(config).export(data)
+
+    def _build_rekap_rab_data(self) -> Dict[str, Any]:
+        """Rakit payload dua halaman Rekap RAB.
+
+        Dipisahkan dari ``export_rekap_rab`` supaya paket perencanaan dapat
+        memakai data yang SAMA PERSIS tanpa menyalin logikanya -- perakitan
+        halaman dan penurunan row_types hanya hidup di satu tempat.
+        """
         # Get data
         adapter = RekapRABAdapter(self.project)
         data_raw = adapter.get_export_data()
@@ -184,23 +196,60 @@ class ExportManager:
             'keep_together': True,  # Keep table + footer + signatures together
         }
 
-        data = {
+        return {
             'pages': [page1, page2],
             'include_signatures': True,  # Enable signatures for document
             # Doc 32 Fase 2 — replikasi style registry (pola pilot Harga Items)
             'style_registry': True,
         }
+    
+    # Urutan dokumen dalam paket perencanaan. Judul di sini menjadi judul
+    # bagian di dalam berkas gabungan sekaligus nama sheet Excel.
+    PAKET_PERENCANAAN = (
+        ('REKAPITULASI RENCANA ANGGARAN BIAYA', 'Rekap RAB'),
+        ('RINCIAN ANALISA HARGA SATUAN PEKERJAAN', 'Rincian AHSP'),
+        ('VOLUME PEKERJAAN', 'Volume Pekerjaan'),
+        ('DAFTAR HARGA ITEMS', 'Harga Items'),
+    )
 
-        # Get exporter
+    def _collect_paket_documents(self):
+        """Kumpulkan data keempat dokumen perencanaan.
+
+        Memakai adapter yang sama persis dengan unduhan tunggal, sehingga isi
+        paket tidak pernah berbeda dari dokumen satuannya. Tiap dokumen tetap
+        membawa lembar pengesahannya sendiri (keputusan owner 2026-08-18).
+        """
+        from .rincian_ahsp_adapter import RincianAHSPAdapter
+        from .volume_pekerjaan_adapter import VolumePekerjaanAdapter
+        from .harga_items_adapter import HargaItemsAdapter
+
+        titles = [t for t, _ in self.PAKET_PERENCANAAN]
+        return [
+            (titles[0], self._build_rekap_rab_data()),
+            (titles[1], RincianAHSPAdapter(self.project).get_export_data()),
+            (titles[2], VolumePekerjaanAdapter(self.project, include_signatures=True).get_export_data()),
+            (titles[3], HargaItemsAdapter(self.project).get_export_data()),
+        ]
+
+    def export_paket_perencanaan(self, format_type: str) -> HttpResponse:
+        """Unduh keempat dokumen perencanaan sebagai SATU berkas.
+
+        PDF dan Word dirangkai berurutan dengan pemisah halaman; Excel menjadi
+        satu workbook berisi sheet tiap dokumen -- format itu memang tidak
+        mengenal "dokumen berurutan".
+        """
+        config = self._create_config_simple('PAKET PERENCANAAN', page_orientation='portrait')
+        documents = self._collect_paket_documents()
+
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:
             raise ValueError(f"Unsupported format: {format_type}")
-        
+
         exporter = exporter_class(config)
-        
-        # Export!
-        return exporter.export(data)
-    
+        if not hasattr(exporter, 'export_package'):
+            raise ValueError(f"Format {format_type} belum mendukung paket perencanaan")
+        return exporter.export_package(documents)
+
     def _create_config(self) -> ExportConfig:
         """Create export configuration for Rekap RAB (uses PERENCANAAN preset)"""
         from .table_styles import ExportDefaults as ED

@@ -6072,6 +6072,38 @@ def export_rekap_rab_csv(request: HttpRequest, project_id: int):
         return export_error_response(e, context="export rekap RAB CSV")
 
 
+# ============== PAKET PERENCANAAN (gabungan 4 dokumen) ==============
+
+@login_required
+@rate_limit(category='export')
+@require_GET
+def export_paket_perencanaan(request: HttpRequest, project_id: int, format_type: str):
+    """Unduh Rekap RAB + Rincian AHSP + Volume + Harga Items sebagai SATU berkas.
+
+    Isinya memakai adapter yang sama persis dengan unduhan tunggal, sehingga
+    paket tidak pernah berbeda dari dokumen satuannya. Rate limit memakai
+    kategori 'export' karena biayanya empat dokumen sekaligus.
+    """
+    if format_type not in ('pdf', 'word', 'xlsx'):
+        return JsonResponse(
+            {"ok": False, "error": "Format paket harus pdf, word, atau xlsx."},
+            status=400,
+        )
+    # Cek kepemilikan DI LUAR try: `except Exception` akan menelan Http404 dan
+    # mengubah penolakan akses yang normal menjadi 500 -- selain status yang
+    # salah, itu juga membanjiri log produksi dengan "Internal Server Error"
+    # untuk hal yang sebenarnya biasa. Endpoint export lain masih mengidap ini
+    # (mis. export_rekap_rab_pdf); diperbaiki terpisah.
+    project = _owner_or_404(project_id, request.user)
+
+    try:
+        from .exports.export_manager import ExportManager
+        return ExportManager(project, request.user).export_paket_perencanaan(format_type)
+
+    except Exception as e:
+        return export_error_response(e, context=f"export paket perencanaan {format_type}")
+
+
 # ============== FUNCTION 2: PDF EXPORT (REFACTORED) ==============
 # REPLACE function export_rekap_rab_pdf() yang lama (line ~1231-1405)
 # dengan function ini:

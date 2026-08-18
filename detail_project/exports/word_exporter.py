@@ -66,6 +66,8 @@ class WordExporter:
         """
         self.config = config
         self.doc = None
+        # Dinyalakan export_package(); lihat catatan di export().
+        self._package_mode = False
     
     # =========================================================================
     # PUBLIC EXPORT METHODS
@@ -207,7 +209,11 @@ class WordExporter:
         if is_rincian_ahsp:
             return self._export_rincian_ahsp(data)
 
-        self.doc = Document()
+        # Mode paket: dokumen dan tata halaman sudah disiapkan export_package(),
+        # dan responsnya dibuat sekali di akhir. Tanpa penjagaan ini tiap dokumen
+        # akan membuat Document() baru dan menimpa isi sebelumnya.
+        if not self._package_mode:
+            self.doc = Document()
         # N-2 (doc 32 §13.1): ukuran & orientasi mengikuti config report —
         # sebelumnya hardcoded A4 portrait, sehingga jadwal_full (config A3
         # landscape, 15+ kolom) terjepit; kini paritas dengan PDF.
@@ -363,6 +369,8 @@ class WordExporter:
             if idx < len(pages) - 1:
                 self.doc.add_page_break()
         
+        if self._package_mode:
+            return None
         return self._create_response('export')
 
     def _export_rincian_ahsp(self, data: Dict[str, Any]) -> HttpResponse:
@@ -374,7 +382,11 @@ class WordExporter:
         2. Rincian (detail per pekerjaan)
         3. Lembar Pengesahan (at bottom of last rincian page)
         """
-        self.doc = Document()
+        # Mode paket: dokumen dan tata halaman sudah disiapkan export_package(),
+        # dan responsnya dibuat sekali di akhir. Tanpa penjagaan ini tiap dokumen
+        # akan membuat Document() baru dan menimpa isi sebelumnya.
+        if not self._package_mode:
+            self.doc = Document()
         # N-2: ikuti config (Rincian AHSP tetap portrait dari manager — tanpa
         # perubahan visual; konsistensi jalur saja)
         self._setup_page_layout(
@@ -638,8 +650,37 @@ class WordExporter:
         self.doc.add_paragraph()
         self._build_signature_section()
         
+        if self._package_mode:
+            return None
         return self._create_response('rincian_ahsp')
     
+    def export_package(self, documents, filename_title: str = 'Paket Perencanaan') -> HttpResponse:
+        """Rangkai beberapa dokumen menjadi SATU berkas Word.
+
+        ``documents`` adalah urutan ``(judul, data)``. Tiap dokumen dirender
+        lewat jalur yang sama persis dengan unduhan tunggal -- termasuk lembar
+        pengesahannya masing-masing -- lalu dipisah page break.
+        """
+        self.doc = Document()
+        self._setup_page_layout(
+            getattr(self.config, 'page_size', 'A4') or 'A4',
+            getattr(self.config, 'page_orientation', 'portrait') or 'portrait',
+        )
+
+        self._package_mode = True
+        original_title = self.config.title
+        try:
+            for idx, (title, data) in enumerate(documents):
+                if idx:
+                    self.doc.add_page_break()
+                self.config.title = title
+                self.export(data)
+        finally:
+            self._package_mode = False
+            self.config.title = original_title
+
+        return self._create_response(filename_title)
+
     def export_rekap(self, data: Dict[str, Any]) -> HttpResponse:
         """
         Export Rekap Laporan to Word document.

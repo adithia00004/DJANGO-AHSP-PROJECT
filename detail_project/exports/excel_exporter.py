@@ -168,6 +168,10 @@ DIMENSIONS = {
 class ExcelExporter(ConfigExporterBase):
     """Excel (XLSX) exporter."""
 
+    # Diisi export_package() selama merakit paket; lihat catatan di export().
+    _package_wb = None
+    _package_first_used = False
+
     def _get_thin_border(self):
         """Get standard thin border."""
         side = Side(style='thin', color=COLORS['BORDER'])
@@ -190,9 +194,12 @@ class ExcelExporter(ConfigExporterBase):
         if is_rincian_ahsp:
             return self._export_rincian_ahsp_2sheet(data)
 
-        # Standard export logic (unchanged)
-        wb = Workbook()
-        self._sheet_index = 0
+        # Mode paket: workbook sudah disiapkan export_package() dan responsnya
+        # dibuat sekali di akhir, sehingga keempat dokumen menulis sheet ke
+        # workbook yang SAMA alih-alih membuat berkas masing-masing.
+        wb = self._package_wb if self._package_wb is not None else Workbook()
+        if self._package_wb is None:
+            self._sheet_index = 0
 
         def write_section_to_sheet(section: Dict[str, Any], is_first: bool = False):
             title = section.get('title') or self.config.title
@@ -261,10 +268,45 @@ class ExcelExporter(ConfigExporterBase):
             except Exception:
                 ws_img.cell(row=1, column=1, value="Lampiran tidak dapat ditampilkan")
 
+        if self._package_wb is not None:
+            return None
+
         output = BytesIO()
         wb.save(output)
         from .naming import build_export_filename  # WP-B5 inc-B5c
         filename = build_export_filename(self.config.project_name, self.config.title, 'xlsx', self.config.export_date)
+        return self._create_response(
+            output.getvalue(),
+            filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    def export_package(self, documents, filename_title: str = 'Paket Perencanaan'):
+        """Gabungkan beberapa dokumen menjadi SATU workbook.
+
+        Excel tidak mengenal "dokumen berurutan", jadi paket di format ini
+        berarti satu berkas berisi sheet dari tiap dokumen. Nama sheet diambil
+        dari judul bagian; openpyxl menjamin keunikannya.
+        """
+        self._package_wb = Workbook()
+        self._package_first_used = False
+        self._sheet_index = 0
+        original_title = self.config.title
+        try:
+            for title, data in documents:
+                self.config.title = title
+                self.export(data)
+            wb = self._package_wb
+        finally:
+            self._package_wb = None
+            self.config.title = original_title
+
+        output = BytesIO()
+        wb.save(output)
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            self.config.project_name, filename_title, 'xlsx', self.config.export_date
+        )
         return self._create_response(
             output.getvalue(),
             filename,
@@ -566,13 +608,16 @@ class ExcelExporter(ConfigExporterBase):
         1. Rekap - Summary with references to Rincian sheet
         2. Rincian - Full detail per pekerjaan
         """
-        wb = Workbook()
+        # Ikut mode paket: menulis ke workbook bersama bila sedang merakit paket.
+        wb = self._package_wb if self._package_wb is not None else Workbook()
         border = self._get_thin_border()
         sections = data.get('sections', [])
 
         # ========== SHEET 1: RINCIAN (Detail) ==========
-        ws_rincian = wb.active
-        ws_rincian.title = "Rincian"
+        # Lewat _create_sheet agar penjagaan mode paket berlaku: wb.active hanya
+        # boleh dipakai dokumen pertama. Sebelumnya jalur ini memakainya langsung
+        # dan menimpa sheet dokumen sebelumnya saat merakit paket.
+        ws_rincian = self._create_sheet(wb, "Rincian", is_first=True)
         
         current_row = 1
         
@@ -617,7 +662,10 @@ class ExcelExporter(ConfigExporterBase):
         ws_rincian.column_dimensions['G'].width = 18
 
         # ========== SHEET 2: REKAP (Summary with References) ==========
-        ws_rekap = wb.create_sheet("Rekap", 0)  # Insert at beginning
+        # Dalam paket, jangan sisipkan di posisi 0 -- itu akan mendahului
+        # sheet dokumen sebelumnya dan mengacak urutan paket.
+        ws_rekap = (wb.create_sheet("Rekap") if self._package_wb is not None
+                    else wb.create_sheet("Rekap", 0))
         
         current_row = 1
         
@@ -737,6 +785,8 @@ class ExcelExporter(ConfigExporterBase):
             self.config.project_name, "Rincian AHSP", "xlsx",
             self.config.export_date,
         )
+        if self._package_wb is not None:
+            return None
         return self._create_response(
             output.getvalue(),
             filename,
@@ -884,9 +934,15 @@ class ExcelExporter(ConfigExporterBase):
 
     def _create_sheet(self, wb: Workbook, title: str, is_first: bool = False):
         sanitized = self._sanitize_title(title)
-        if is_first:
+        # Dalam paket, wb.active hanya boleh dipakai oleh sheet pertama dari
+        # dokumen PERTAMA. Tanpa penjagaan ini dokumen kedua menulis ulang ke
+        # sheet yang sudah berisi merged cell -> "MergedCell is read-only".
+        use_active = is_first and (self._package_wb is None or not self._package_first_used)
+        if use_active:
             ws = wb.active
             ws.title = sanitized
+            if self._package_wb is not None:
+                self._package_first_used = True
         else:
             ws = wb.create_sheet(sanitized)
         return ws

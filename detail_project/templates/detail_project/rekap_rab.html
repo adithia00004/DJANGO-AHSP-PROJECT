@@ -86,6 +86,29 @@
         <span class="d-none d-md-inline">Refresh</span>
       </button>
 
+      <!-- Paket Perencanaan: 4 dokumen (Rekap RAB, Rincian AHSP, Volume, Harga Items)
+           dalam SATU berkas. Tombol mandiri di samping dropdown export dokumen
+           tunggal -- keduanya tetap tersedia (keputusan owner 2026-08-18). -->
+      <div class="btn-group ux-dropdown" role="group">
+        <button type="button" class="btn btn-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
+          aria-expanded="false" aria-label="Unduh paket perencanaan"
+          title="Unduh Rekap RAB + Rincian AHSP + Volume Pekerjaan + Harga Items sebagai satu berkas">
+          <i class="bi bi-box-seam" aria-hidden="true"></i>
+          <span class="d-none d-md-inline">Unduh Paket</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-paket-pdf" label="Paket PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed title="Paket perencanaan sebagai satu PDF" %}
+          </li>
+          <li>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-paket-word" label="Paket Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed title="Paket perencanaan sebagai satu dokumen Word" %}
+          </li>
+          <li>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-paket-xlsx" label="Paket Excel" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed title="Paket perencanaan sebagai satu workbook" %}
+          </li>
+        </ul>
+      </div>
+
       <!-- Export Dropdown (CSV/PDF/Word) -->
       <div class="btn-group ux-dropdown" role="group">
         <button type="button" class="btn btn-outline-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
@@ -304,6 +327,29 @@
 
     // WP-P6 (RR-14): satu initializer per aksi, TANPA clone-replace. rekap_rab.js sudah
     // tidak lagi mem-bind tombol export/print, jadi tak ada listener ganda untuk dibuang.
+    // Paket perencanaan: unduhan langsung (bukan lewat ExportManager, yang
+    // terikat satu pageType). Endpoint mengembalikan berkas jadi, sehingga
+    // cukup diarahkan ke lokasi unduhan.
+    const handlePaket = (format, e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (isExporting) return;
+      isExporting = true;
+      try {
+        window.location.href =
+          `/detail_project/api/project/${projectId}/export/paket-perencanaan/${format}/`;
+      } finally {
+        // Unduhan tidak mengubah halaman; lepas kunci setelah jeda singkat
+        // supaya klik ganda tidak memicu empat dokumen dua kali.
+        setTimeout(() => { isExporting = false; }, 3000);
+      }
+    };
+    [['btn-paket-pdf', 'pdf'], ['btn-paket-word', 'word'], ['btn-paket-xlsx', 'xlsx']]
+      .forEach(([id, fmt]) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', (e) => handlePaket(fmt, e));
+      });
+
     const btnXLSX = document.getElementById('btn-export-xlsx');
     const btnPDF = document.getElementById('btn-export-pdf');
     const btnWord = document.getElementById('btn-export-word');

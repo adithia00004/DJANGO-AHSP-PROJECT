@@ -154,6 +154,11 @@ urlpatterns = [
 
     # Export endpoints
     # Export Rekap RAB
+    # Paket perencanaan: 4 dokumen dalam satu berkas
+    path('api/project/<int:project_id>/export/paket-perencanaan/<str:format_type>/',
+         views_api.export_paket_perencanaan,
+         name='export_paket_perencanaan'),
+
     path('api/project/<int:project_id>/export/rekap-rab/csv/', 
          views_api.export_rekap_rab_csv, 
          name='export_rekap_rab_csv'),
