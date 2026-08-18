@@ -58,6 +58,7 @@ mencatat keputusan tersebut agar tidak menabraknya lagi.
 | R-26 | **Indentasi hierarki DIGANTI jarak bawah** (`HIER_SPACE_AFTER_*` 4/3/1pt) — indentasi `LEFTPADDING 12pt` memakan lebar kolom uraian yang sudah sempit. Indentasi berbasis spasi di `_render_uraian_text` TIDAK ikut diubah: itu milik tabel Kurva-S | Keputusan owner 2026-08-18; commit `9932d0a4` | 2026-08-18 |
 | R-27 | **Lebar tabel tanda tangan diturunkan dari lebar cetak sebenarnya**, bukan angka mati. Nilai lama 250mm melebihi area cetak A4 portrait 190mm sehingga kolom kanan terpotong. Dikunci tes | Commit `d2570b08`; `tests_export_signature.SignatureSheetRenderTests` | 2026-08-18 |
 | R-28 | **Lembar pengesahan wajib di 5 dokumen perencanaan** (Rekap RAB, Rincian AHSP, Volume, Harga Items, Rekap Kebutuhan) memakai SATU blok bersama. Dikunci `SignatureCoverageTests` | Keputusan owner 2026-08-18; commit `982a96b1` | 2026-08-18 |
+| R-29 | **Paket perencanaan = 4 dokumen dalam SATU berkas** (Rekap RAB, Rincian AHSP, Volume, Harga Items), tersedia PDF/Word/Excel, **lembar pengesahan tetap per dokumen** (bukan satu di akhir). Tombol "Unduh Paket" berdiri sendiri; dropdown export dokumen tunggal TETAP ada | Keputusan owner 2026-08-18; commit `354c66e8`; `tests_export_paket.py` | 2026-08-18 |
 
 ## Keputusan arsitektur terkait (bukan visual, jangan dilanggar)
 
@@ -68,6 +69,8 @@ mencatat keputusan tersebut agar tidak menabraknya lagi.
 | A-3 | Penamaan file export via `build_export_filename` (naming.py); identitas proyek via `get_project_identity` (identity.py) | `exports/naming.py:24`, `exports/identity.py` |
 | A-4 | **Lembar pengesahan HANYA lewat `_build_signatures()` (PDF) / `_build_signature_section()` (Word).** Dilarang membuat tabel tanda tangan inline baru | `SignatureCoverageTests`; commit `982a96b1` |
 | A-5 | **`include_signatures` ≠ tata letak pengesahan.** `include_signatures` hanya memutuskan ADA/TIDAK blok tanda tangan; penggantian tabel halaman jadi tabel pengesahan 3 kolom dipilih terpisah lewat `pengesahan_layout`. Menggabungkan keduanya pernah menghilangkan kolom Nilai di halaman parameter Volume | Ditangkap `tests_wp_export_parity`; commit `982a96b1` |
+| A-7 | **Paket TIDAK boleh punya jalur data sendiri.** Isinya wajib memakai adapter yang sama dengan unduhan tunggal; data Rekap RAB diekstrak ke `_build_rekap_rab_data()` agar perakitan halaman hanya hidup di satu tempat. Dikunci `test_package_reuses_single_download_data` | Commit `354c66e8` |
+| A-8 | **Penggabungan dilakukan di tingkat exporter, bukan menggabungkan berkas jadi.** PDF `collect_only=True` → satu `SimpleDocTemplate`; Word `_package_mode`; Excel `_package_wb`. Menggabungkan berkas jadi butuh pustaka merge (tidak terpasang) dan nomor halaman tiap dokumen akan mulai dari 1 lagi | Commit `354c66e8` |
 | A-6 | **Identitas pihak-pihak harus diteruskan `ExportManager._get_project_identity()` ke level ATAS `project_info`** (bukan hanya `extra`) — exporter membacanya di sana. Penyempitan dict pernah menjatuhkan seluruh field konsultan | `ExportManagerIdentityPassthroughTests`; commit `877edb55` |
 
 ---
