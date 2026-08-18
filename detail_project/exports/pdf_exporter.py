@@ -805,7 +805,12 @@ class PDFExporter(ConfigExporterBase):
         pages = data.get('pages')
         if pages:
             for idx, section in enumerate(pages):
-                is_pengesahan = section.get('include_signatures', False)
+                # 'include_signatures' semula berarti DUA hal sekaligus: tambahkan blok
+                # tanda tangan, DAN ganti tabel halaman dengan tabel pengesahan 3 kolom.
+                # Akibatnya halaman mana pun yang ingin diberi tanda tangan ikut kehilangan
+                # kolomnya sendiri (halaman parameter Volume kehilangan kolom Nilai).
+                # Kini tata letak pengesahan dipilih eksplisit lewat 'pengesahan_layout'.
+                is_pengesahan = section.get('pengesahan_layout', False)
                 build_page(section, is_pengesahan=is_pengesahan)
 
                 # Add signatures if this page has include_signatures=True
@@ -1018,37 +1023,13 @@ class PDFExporter(ConfigExporterBase):
                 
                 # For last pekerjaan, keep table together with approval section
                 if pek_idx == len(sections) - 1:
-                    # Build approval section
-                    approval_elements = []
-                    approval_elements.append(Spacer(1, 10*mm))
-                    approval_elements.append(Paragraph('<b>LEMBAR PENGESAHAN</b>', ParagraphStyle(
-                        'ApprovalTitle',
-                        parent=self.styles['normal'],
-                        fontSize=9,
-                        alignment=TA_CENTER,
-                        fontName='Helvetica-Bold',
-                        spaceAfter=8*mm
-                    )))
-                    
-                    # Approval table (2 columns)
-                    approval_data = [
-                        ['Pemilik Proyek', 'Konsultan Perencana'],
-                        ['', ''],
-                        ['', ''],
-                        ['', ''],
-                        ['(_________________________)', '(_________________________)'],
-                    ]
-                    approval_table = Table(approval_data, colWidths=[80*mm, 80*mm])
-                    approval_style = [
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, -1), 9),
-                        ('TOPPADDING', (0, 0), (-1, -1), 6),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                    ]
-                    approval_table.setStyle(TableStyle(approval_style))
-                    approval_elements.append(approval_table)
+                    # Lembar pengesahan memakai blok bersama _build_signatures().
+                    # Sebelumnya di sini ada tabel hardcode berisi label tetap dan
+                    # "(______)" -- mengabaikan data proyek sepenuhnya, sehingga
+                    # lembar pengesahan Rincian AHSP selalu terbit kosong meski
+                    # nama pemilik dan konsultan terisi di Dashboard.
+                    approval_elements = [Spacer(1, 10*mm)]
+                    approval_elements.extend(self._build_signatures())
                     
                     # Keep last table + approval together
                     story.append(KeepTogether([detail_table] + approval_elements))

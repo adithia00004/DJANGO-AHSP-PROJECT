@@ -232,3 +232,64 @@ class SignatureSheetRenderTests(TestCase):
         self.assertTrue(name_cells, "nama tidak tercetak")
         self.assertIn("<u>", str(getattr(name_cells[0], "text", "")),
                       "nama tidak digarisbawahi")
+
+
+class SignatureCoverageTests(TestCase):
+    """Semua dokumen tahap perencanaan harus menerbitkan lembar pengesahan.
+
+    Sebelumnya cakupannya bocor tanpa disadari: hanya Rekap RAB dan Rekap
+    Kebutuhan yang memakai blok bersama. Rincian AHSP punya tabel hardcode
+    sendiri (label tetap + "(______)"), sementara Volume dan Harga Items tidak
+    menerbitkan lembar pengesahan sama sekali di PDF/Word -- hanya di Excel,
+    dengan nama berupa titik-titik.
+
+    Tes ini memanggil setiap export sungguhan dan memastikan blok bersama
+    benar-benar terpakai, sehingga penambahan dokumen baru tidak diam-diam
+    kembali memakai tabel hardcode.
+    """
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user("ttd-coverage", password="x")
+        self.project = Project.objects.create(
+            owner=self.owner,
+            nama="Proyek Cakupan",
+            sumber_dana="APBD",
+            lokasi_project="Mataram",
+            nama_client="Dinas Peternakan",
+            nama_konsultan_perencana="Rozan Fahriady",
+            anggaran_owner=Decimal("1000000"),
+        )
+
+    def test_every_perencanaan_document_emits_the_shared_block(self):
+        from detail_project.exports.export_manager import ExportManager
+        from detail_project.exports.pdf_exporter import PDFExporter
+
+        original = PDFExporter._build_signatures
+        called = set()
+
+        def spy(exporter_self):
+            called.add(spy.current)
+            return original(exporter_self)
+
+        exports = {
+            "rekap_rab": lambda m: m.export_rekap_rab("pdf"),
+            "rincian_ahsp": lambda m: m.export_rincian_ahsp("pdf"),
+            "volume_pekerjaan": lambda m: m.export_volume_pekerjaan("pdf"),
+            "harga_items": lambda m: m.export_harga_items("pdf"),
+            "rekap_kebutuhan": lambda m: m.export_rekap_kebutuhan("pdf"),
+        }
+
+        PDFExporter._build_signatures = spy
+        try:
+            for name, call in exports.items():
+                spy.current = name
+                call(ExportManager(self.project))
+        finally:
+            PDFExporter._build_signatures = original
+
+        missing = sorted(set(exports) - called)
+        self.assertEqual(
+            missing,
+            [],
+            f"dokumen ini tidak menerbitkan lembar pengesahan bersama: {missing}",
+        )

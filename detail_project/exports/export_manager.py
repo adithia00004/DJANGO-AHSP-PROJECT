@@ -180,6 +180,7 @@ class ExportManager:
             'footer_value_format': data_raw.get('footer_value_format'),  # WP Export numeric footer
             'col_widths': page2_col_widths,
             'include_signatures': True,  # Signatures on pengesahan page
+            'pengesahan_layout': True,  # Halaman ini memang tabel pengesahan 3 kolom
             'keep_together': True,  # Keep table + footer + signatures together
         }
 

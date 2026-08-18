@@ -88,8 +88,15 @@ class VolumePekerjaanAdapter:
                 'right_position': 'Konsultan Perencana',
             }
 
+        # Lembar pengesahan di halaman TERAKHIR, mengikuti konvensi Rekap RAB.
+        # Penanda ini yang dibaca PDF/Word; kunci 'include_signatures' di level
+        # atas hanya dipakai Excel, sehingga PDF/Word sebelumnya tidak pernah
+        # menerbitkan lembar pengesahan sama sekali.
+        pages = [volume_page, param_page]
+        pages[-1]['include_signatures'] = True
+
         return {
-            'pages': [volume_page, param_page],  # Volume first, then Parameters as appendix
+            'pages': pages,  # Volume first, then Parameters as appendix
             'include_signatures': self.include_signatures,
             'signature_data': signature_data,
             'parameter_cells': self._parameter_cells,  # For Excel formula references

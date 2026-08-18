@@ -214,6 +214,10 @@ class HargaItemsAdapter:
                 'footer_rows': [['Total Items dengan Konversi', str(len(items_with_conversion))]],
             })
 
+        # Lembar pengesahan di halaman TERAKHIR (halaman konversi bila ada,
+        # kalau tidak halaman harga satuan dasar), mengikuti konvensi Rekap RAB.
+        pages[-1]['include_signatures'] = True
+
         return {
             'pages': pages,
             # Legacy single-table format (for backward compatibility)

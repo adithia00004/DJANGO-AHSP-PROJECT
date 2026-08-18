@@ -251,7 +251,9 @@ class WordExporter:
             headers = table_data.get('headers', [])
             rows = table_data.get('rows', [])
             row_types = page.get('row_types', [])
-            is_pengesahan_page = page.get('include_signatures', False)
+            # Lihat catatan di pdf_exporter: tata letak pengesahan dipilih
+            # eksplisit, terpisah dari keputusan menambahkan tanda tangan.
+            is_pengesahan_page = page.get('pengesahan_layout', False)
 
             # Fase 3.5: perataan per-tipe kolom dari column_formats (helper 1.4)
             col_aligns = None
@@ -629,48 +631,12 @@ class WordExporter:
                 self.doc.add_paragraph()  # 2 lines total
         
         # ========== SECTION 3: LEMBAR PENGESAHAN ==========
-        # Add some spacing (not a new page, at bottom of last rincian)
+        # Memakai blok bersama _build_signature_section(). Sebelumnya di sini ada
+        # tabel hardcode berisi label tetap dan "(______)", kembaran dari yang ada
+        # di pdf_exporter -- keduanya mengabaikan data proyek, sehingga lembar
+        # pengesahan Rincian AHSP terbit kosong di kedua format.
         self.doc.add_paragraph()
-        self.doc.add_paragraph()
-        
-        # Approval section title
-        approval_title = self.doc.add_paragraph()
-        approval_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        approval_run = approval_title.add_run('LEMBAR PENGESAHAN')
-        approval_run.bold = True
-        approval_run.font.size = Pt(12)
-        
-        self.doc.add_paragraph()
-        
-        # Approval table (2 columns for Pemilik Proyek and Konsultan Perencana)
-        approval_table = self.doc.add_table(rows=5, cols=2)
-        approval_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        
-        # Row 0: Headers
-        approval_table.rows[0].cells[0].text = "Pemilik Proyek"
-        approval_table.rows[0].cells[1].text = "Konsultan Perencana"
-        for cell in approval_table.rows[0].cells:
-            for para in cell.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                for run in para.runs:
-                    run.bold = True
-        
-        # Row 1-3: Empty space for signature
-        for i in range(1, 4):
-            for cell in approval_table.rows[i].cells:
-                cell.text = ""
-        
-        # Row 4: Name lines
-        approval_table.rows[4].cells[0].text = "(_________________________)"
-        approval_table.rows[4].cells[1].text = "(_________________________)"
-        for cell in approval_table.rows[4].cells:
-            for para in cell.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Set column widths
-        for row in approval_table.rows:
-            row.cells[0].width = Mm(80)
-            row.cells[1].width = Mm(80)
+        self._build_signature_section()
         
         return self._create_response('rincian_ahsp')
     
