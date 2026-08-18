@@ -560,8 +560,8 @@ muncul pada export Word tunggal. Dicatat sebagai sisa pekerjaan paritas Word.
 | # | Temuan | Status |
 |---|---|---|
 | W-1 | Tabel identitas project tidak konsisten antar dokumen (63/63/63 mm alih-alih 40/5/120) | ✅ **SELESAI** `ec52cd50` — sebabnya bendera `style_registry` tidak ikut ke paket. Keenam tabel identitas kini 40/5/120 mm |
-| W-2 | Blok **Grand Total / PPN / pembulatan** tidak menonjol. PDF memberinya desain tersendiri (highlight); Word menampilkannya sebagai baris tabel biasa sehingga terasa tidak penting | ⬜ **Terbuka** |
-| W-3 | Tabel **Rincian AHSP** salah merge — nilai dipaksakan ke satu sel tanpa mempertimbangkan konteks kolom. PDF sudah benar | ⬜ **Terbuka** |
+| W-2 | Blok **Grand Total / PPN / pembulatan** tidak menonjol | ✅ **SELESAI** `54a1aef8` — Word merendernya sebagai paragraf biasa; kini tabel 2 kolom rata kanan dengan garis 1pt di atas baris pertama dan 2pt di atas baris terakhir, paritas `pdf_exporter._build_footer_table`. Ditambah `_set_cell_top_border()` karena python-docx tak punya API border sel |
+| W-3 | Tabel **Rincian AHSP** salah merge | ✅ **SELESAI** `c313f235` — judul grup, subtotal, dan baris E/F/G kini merge kolom 0-5 lewat `cell.merge()`, meniru `SPAN (0..5)` di PDF. Kolom 6 tetap terpisah untuk nilai |
 | W-4 | Polishing umum lain (spasi, perataan, konsistensi ukuran huruf) | ⬜ **Terbuka** |
 
 **Catatan penting tentang Fase 3.** Dokumen ini menyatakan Fase 3 (paritas Word
