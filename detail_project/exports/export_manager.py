@@ -59,6 +59,27 @@ class ExportManager:
             'location': ident['location'],
             'year': ident['year'],
             'owner': ident['owner'],
+            # Identitas pihak-pihak dibaca exporter di level ATAS project_info
+            # (excel_exporter, pdf_exporter, word_exporter) -- bukan di 'extra'.
+            # Sebelumnya keempat field konsultan/kontraktor tidak diteruskan sama
+            # sekali, sehingga blok "Konsultan Pengawas" dan sejenisnya pada
+            # laporan selalu kosong meski datanya ada di Dashboard.
+            #
+            # Dua penamaan sengaja dipertahankan: exporter memakai `nama_*`
+            # (nama field model) dan `*` (nama kanonik identity.py) bergantian.
+            'client': ident['client'],
+            'nama_client': ident['client'],
+            'jabatan_client': ident['jabatan_client'],
+            'instansi_client': ident['instansi_client'],
+            'kontraktor': ident['kontraktor'],
+            'nama_kontraktor': ident['kontraktor'],
+            'instansi_kontraktor': ident['instansi_kontraktor'],
+            'konsultan_perencana': ident['konsultan_perencana'],
+            'nama_konsultan_perencana': ident['konsultan_perencana'],
+            'instansi_konsultan_perencana': ident['instansi_konsultan_perencana'],
+            'konsultan_pengawas': ident['konsultan_pengawas'],
+            'nama_konsultan_pengawas': ident['konsultan_pengawas'],
+            'instansi_konsultan_pengawas': ident['instansi_konsultan_pengawas'],
             'extra': {
                 'ket_project1': ident['ket_project1'],
                 'ket_project2': ident['ket_project2'],

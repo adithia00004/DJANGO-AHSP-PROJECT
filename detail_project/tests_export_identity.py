@@ -86,3 +86,71 @@ class IdentityDelegationGuardTests(TestCase):
         src = self._src(os.path.join("exports", "jadwal_pekerjaan_adapter.py"))
         self.assertIn("get_project_identity", src)
         self.assertNotIn('getattr(self.project, "lokasi",', src)
+
+
+class ExportManagerIdentityPassthroughTests(TestCase):
+    """Nilai identitas harus SAMPAI ke exporter, bukan sekadar didelegasikan.
+
+    Guard di atas hanya memindai teks sumber, jadi ia lolos ketika
+    ``_get_project_identity()`` memanggil provider kanonik dengan benar lalu
+    menjatuhkan sebagian hasilnya saat menyempitkan dict. Itu persis yang
+    terjadi: keempat field konsultan/kontraktor tidak pernah diteruskan,
+    sehingga blok "Konsultan Pengawas" di laporan selalu kosong meski datanya
+    terisi di Dashboard.
+
+    Exporter membaca kunci-kunci ini di level ATAS project_info
+    (``excel_exporter`` 3868, ``pdf_exporter`` 3858/3876, ``word_exporter``
+    1734), dan memakai dua penamaan bergantian -- keduanya diuji di sini.
+    """
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(
+            username="identity-passthrough-owner", password="x"
+        )
+        self.project = Project.objects.create(
+            owner=self.owner,
+            nama="Proyek Identitas",
+            sumber_dana="APBD",
+            lokasi_project="Mataram",
+            nama_client="Dinas Peternakan",
+            jabatan_client="PPK",
+            instansi_client="Pemkab Lombok Barat",
+            nama_kontraktor="CV Pelaksana",
+            instansi_kontraktor="CV Pelaksana Jaya",
+            nama_konsultan_perencana="Perencana A",
+            instansi_konsultan_perencana="CV Perencana",
+            nama_konsultan_pengawas="Pengawas B",
+            instansi_konsultan_pengawas="CV Pengawas",
+            anggaran_owner=Decimal("1000000"),
+            tanggal_mulai=date(2027, 3, 1),
+            tanggal_selesai=date(2027, 8, 1),
+        )
+
+    def test_every_party_field_reaches_exporters(self):
+        from detail_project.exports.export_manager import ExportManager
+
+        info = ExportManager(self.project)._get_project_identity()
+
+        expected = {
+            "client": "Dinas Peternakan",
+            "nama_client": "Dinas Peternakan",
+            "jabatan_client": "PPK",
+            "instansi_client": "Pemkab Lombok Barat",
+            "kontraktor": "CV Pelaksana",
+            "nama_kontraktor": "CV Pelaksana",
+            "instansi_kontraktor": "CV Pelaksana Jaya",
+            "konsultan_perencana": "Perencana A",
+            "nama_konsultan_perencana": "Perencana A",
+            "instansi_konsultan_perencana": "CV Perencana",
+            "konsultan_pengawas": "Pengawas B",
+            "nama_konsultan_pengawas": "Pengawas B",
+            "instansi_konsultan_pengawas": "CV Pengawas",
+        }
+        for key, value in expected.items():
+            with self.subTest(key=key):
+                self.assertEqual(
+                    info.get(key),
+                    value,
+                    f"'{key}' tidak sampai ke project_info; laporan akan "
+                    "menampilkannya kosong meski datanya ada di Dashboard.",
+                )
