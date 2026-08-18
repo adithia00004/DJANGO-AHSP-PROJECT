@@ -48,6 +48,16 @@ mencatat keputusan tersebut agar tidak menabraknya lagi.
 | R-16 | **NULL/kosong ≠ 0,00 pada Harga Items export** — harga belum diisi tampil kosong/`-`, BUKAN `0,00`; nol finansial sungguhan tetap `0,00` | Commit `4ce0870f` (WP Export slice Harga Items) | 2026-07-08 |
 | R-17 | **Kebijakan nilai kosong 3 kelas** (doc 32 item 2.4): (a) `None`/tidak diisi → `-`; (b) 0% grid progress → suppressed (R-10); (c) nol finansial → tampil `0,00` (R-16) | Doc 32 v1.1 §5 Fase 2 | 2026-07-08 |
 | R-18 | **Footer Rekap Kebutuhan: TANPA baris "Total Quantity" per kategori** (agregat kuantitas lintas satuan tidak relevan), dan **blok ringkasan footer hanya tampil SEKALI di lembar terakhir** (bersama tanda tangan), tidak diulang per lembar | Keputusan owner 2026-07-13 (temuan manual 1.1 & 1.2); `rekap_kebutuhan_adapter.py`, `pdf_exporter.py` build_page `skip_footer` | 2026-07-13 |
+| R-19 | **Pembulatan grand total RAB SELALU ke bawah** (floor), bukan ke terdekat — nilai yang ditagihkan tidak boleh melebihi hasil hitungan. Berlaku di **6 lokasi** yang harus diubah bersama: footer `rekap_rab.js`, pembuat export teks di file sama, `ExcelExporter.js`, `RekapRABPrint.js`, `services.compute_rab_grand_total`, `exports/rekap_rab_adapter.py` | Keputusan owner 2026-08-18; commit `a5f3e5f5`, `1b92ba34` | 2026-08-18 |
+| R-20 | **Lembar pengesahan: susunan baku** — kata penghubung (Mengetahui/Dibuat oleh/Diperiksa oleh), sebutan peran, ruang tanda tangan basah, NAMA (digarisbawahi), lalu baris keterangan tanpa slot kosong. Jumlah baris keterangan berbeda antar peran; tabel dipadatkan ke jumlah terbanyak agar kolom sejajar | Keputusan owner 2026-08-18; `pdf_exporter._build_signatures`, `word_exporter._build_signature_section`; commit `d2570b08` | 2026-08-18 |
+| R-21 | **Nama penanda tangan digarisbawahi; TIDAK ada baris garis terpisah di atasnya.** PDF memakai `Paragraph` markup `<u>` (bukan `LINEBELOW`) supaya garis selebar teks, bukan selebar kolom | Keputusan owner 2026-08-18; commit `2126bd62` | 2026-08-18 |
+| R-22 | **Tempat & tanggal DIHAPUS dari lembar pengesahan** — sempat ditambahkan pagi 2026-08-18 lalu dicabut owner sore harinya. Helper `format_place_and_date` beserta tabel nama bulan dihapus sampai ke sumbernya | Keputusan owner 2026-08-18; commit `9932d0a4` | 2026-08-18 |
+| R-23 | **Spasi lembar pengesahan serapat mungkin** — semua padding sel dinolkan; ruang tanda tangan basah satu baris setinggi `SIGNATURE_SPACE_MM = 15`, konstanta bersama PDF & Word | Keputusan owner 2026-08-18; `signature_config.py`; commit `9932d0a4` | 2026-08-18 |
+| R-24 | **Identitas pemilik pada pengesahan dapat disetel per-project**: `sebutan_client` menimpa label "Pemilik Proyek" (mis. "Pejabat Pembuat Komitmen Dinas X"); `jabatan_client` = Keterangan 1; `ket_client2` = Keterangan 2 (NIP/ID). `jabatan_client` DIPAKAI ULANG, bukan diganti field baru — 103 dari 178 project sudah mengisinya | Keputusan owner 2026-08-18; migrasi `dashboard/0016`; commit `d2570b08` | 2026-08-18 |
+| R-25 | **Hierarki tabel dibedakan tipografi, bukan hanya warna** (warna sulit dibedakan saat cetak hitam-putih): Klasifikasi `Helvetica-Bold` 9pt, Sub-Klasifikasi `Helvetica-BoldOblique` 8,5pt, Pekerjaan `Helvetica` 7,5pt | Keputusan owner 2026-08-18; konstanta `HIER_FONT_*` di `pdf_exporter.py`; commit `9932d0a4` | 2026-08-18 |
+| R-26 | **Indentasi hierarki DIGANTI jarak bawah** (`HIER_SPACE_AFTER_*` 4/3/1pt) — indentasi `LEFTPADDING 12pt` memakan lebar kolom uraian yang sudah sempit. Indentasi berbasis spasi di `_render_uraian_text` TIDAK ikut diubah: itu milik tabel Kurva-S | Keputusan owner 2026-08-18; commit `9932d0a4` | 2026-08-18 |
+| R-27 | **Lebar tabel tanda tangan diturunkan dari lebar cetak sebenarnya**, bukan angka mati. Nilai lama 250mm melebihi area cetak A4 portrait 190mm sehingga kolom kanan terpotong. Dikunci tes | Commit `d2570b08`; `tests_export_signature.SignatureSheetRenderTests` | 2026-08-18 |
+| R-28 | **Lembar pengesahan wajib di 5 dokumen perencanaan** (Rekap RAB, Rincian AHSP, Volume, Harga Items, Rekap Kebutuhan) memakai SATU blok bersama. Dikunci `SignatureCoverageTests` | Keputusan owner 2026-08-18; commit `982a96b1` | 2026-08-18 |
 
 ## Keputusan arsitektur terkait (bukan visual, jangan dilanggar)
 
@@ -56,8 +66,30 @@ mencatat keputusan tersebut agar tidak menabraknya lagi.
 | A-1 | Nilai resmi sheet Excel = nilai backend (bukan formula recompute); formula recompute → sheet "Kontrol Kalkulasi"; mirror 1:1 `='Data Master'!cell` diperbolehkan | Doc 30 §7-8 |
 | A-2 | Error export tidak pernah membocorkan `str(e)` ke user — pakai correlation ID (`export_error_response`, `log_export_error`) | WP-B5; `exports/errors.py` |
 | A-3 | Penamaan file export via `build_export_filename` (naming.py); identitas proyek via `get_project_identity` (identity.py) | `exports/naming.py:24`, `exports/identity.py` |
+| A-4 | **Lembar pengesahan HANYA lewat `_build_signatures()` (PDF) / `_build_signature_section()` (Word).** Dilarang membuat tabel tanda tangan inline baru | `SignatureCoverageTests`; commit `982a96b1` |
+| A-5 | **`include_signatures` ≠ tata letak pengesahan.** `include_signatures` hanya memutuskan ADA/TIDAK blok tanda tangan; penggantian tabel halaman jadi tabel pengesahan 3 kolom dipilih terpisah lewat `pengesahan_layout`. Menggabungkan keduanya pernah menghilangkan kolom Nilai di halaman parameter Volume | Ditangkap `tests_wp_export_parity`; commit `982a96b1` |
+| A-6 | **Identitas pihak-pihak harus diteruskan `ExportManager._get_project_identity()` ke level ATAS `project_info`** (bukan hanya `extra`) — exporter membacanya di sana. Penyempitan dict pernah menjatuhkan seluruh field konsultan | `ExportManagerIdentityPassthroughTests`; commit `877edb55` |
 
 ---
+
+## Catatan sejarah — enam implementasi tanda tangan (2026-08-18)
+
+Ditemukan saat menelusuri laporan "lembar pengesahan kosong". Dicatat agar tidak
+diulang, dan agar auditor berikutnya tahu ke mana harus melihat.
+
+| # | Mekanisme | Dipakai | Nasib |
+|---|---|---|---|
+| 1 | `_build_signatures()` + `signature_config` | Rekap RAB, Rekap Kebutuhan | **Dijadikan SSOT** (A-4) |
+| 2 | `_build_progress_signature_section()` | Laporan progress/pengawasan | Masih terpisah — format 3 kolom berbeda, belum disatukan |
+| 3 | `_build_monthly_signature_page()` | — | **Kode mati**, tanpa pemanggil. Konsisten dengan R-4 (tanda tangan sengaja dihapus dari laporan bulanan). Layak dihapus |
+| 4 | dict `signature_data` | Volume, Harga Items | **Hanya dibaca Excel**, nama masih hardcode titik-titik. Belum diperbaiki (cakupan owner: PDF & Word saja) |
+| 5 | Tabel inline `pdf_exporter` | Rincian AHSP | **Dihapus**, diganti no. 1 |
+| 6 | Tabel inline `word_exporter` | Rincian AHSP | **Dihapus**, diganti no. 1 |
+
+Pelajaran yang berlaku umum: **tes yang hanya memeriksa penyedia data akan lolos
+meski perendernya membuang data itu.** `IdentityDelegationGuardTests` memindai teks
+sumber dan lolos sepenuhnya; `build_signatures` menghasilkan nama yang benar
+sementara PDF mencetak 20 garis bawah. Uji pada lapisan yang benar-benar dirender.
 
 ## Referensi silang
 
