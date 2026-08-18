@@ -69,8 +69,8 @@ Bisa dikerjakan paralel dengan Fase 0 sebagian. Ini yang kerusakannya paling sul
 |---|---|---|---|
 | 1.1 | Backup otomatis terjadwal | Backup terakhir sebelum 2026-08-11 berasal dari **Januari dan Februari**. `celery_beat` kini hidup dan menganggur — bisa langsung dipakai | Dump harian berjalan 3 hari berturut-turut |
 | 1.2 | **Uji restore**, bukan sekadar dump | Backup yang tak pernah dipulihkan bukan backup | Restore ke database kosong, hitung baris cocok |
-| 1.3 | Hidupkan Sentry | `init_sentry()` tak pernah dipanggil → buta total saat produksi | Lempar error sengaja, muncul di dashboard Sentry |
-| 1.4 | Perbaiki `STATICFILES_STORAGE` → `STORAGES` | Tanpa hash, tak ada cache jangka panjang; aset 1,7 MB diunduh ulang terus | `collectstatic` menghasilkan nama ber-hash + `.gz`/`.br` |
+| 1.3 | Hidupkan Sentry | `init_sentry()` tak pernah dipanggil → buta total saat produksi | ✅ **KODE SELESAI** `b2ebb7fc` — dipanggil di `config/__init__.py` (gunicorn+celery+beat+command). Terverifikasi: tanpa DSN client mati, dengan DSN aktif. ⬜ **Sisa: pasang SENTRY_DSN nyata lalu lempar error uji** |
+| 1.4 | Perbaiki `STATICFILES_STORAGE` → `STORAGES` | Tanpa hash, tak ada cache jangka panjang; aset 1,7 MB diunduh ulang terus | ✅ **SELESAI** `b2ebb7fc` — dijalankan dengan settings produksi sungguhan: kelas aktif `CompressedManifestStaticFilesStorage`, manifest + pra-kompresi menyala |
 | 1.5 | Memory limit container (RT-04) | Di SaaS, satu request boros bisa meng-OOM host dan menjatuhkan **seluruh tenant** | `docker stats` menunjukkan limit terpasang |
 | 1.6 | Uptime check eksternal | Anda tidak boleh jadi orang terakhir yang tahu situs mati | Matikan paksa web, alert masuk |
 
@@ -84,6 +84,7 @@ Kontrol akses sudah diaudit di R2–R6. Fase ini soal higienis produksi, bukan m
 
 | # | Item | Kenapa penting | Bukti yang harus ada |
 |---|---|---|---|
+| 2.7 | **Sentry PII dijadikan opt-in** | `send_default_pii=True` mengirim username/email/IP pengguna ke pihak ketiga. Di SaaS multi-tenant itu harus keputusan sadar | ✅ **SELESAI** `b2ebb7fc` — default False, dinyalakan lewat `SENTRY_SEND_PII=True` |
 | 2.1 | Rotasi **semua** secret | `DJANGO_SECRET_KEY`, password DB, password Redis. Nilai dev sudah pernah terpapar di log terminal | Secret produksi berbeda total dari dev, tidak ada di git |
 | 2.2 | CSP report-only → enforce | Saat ini hanya melapor. Sudah lama disiapkan (WP-A2) | Header `Content-Security-Policy` aktif, tak ada pelanggaran di konsol |
 | 2.3 | Mode rate limiter produksi | Default `v2` (enforcing) sudah benar. Kalibrasi ambang setelah melihat trafik nyata | Metrik `blocked`/`would_block` dipantau seminggu |
