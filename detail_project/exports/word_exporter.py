@@ -41,7 +41,7 @@ from ..export_config import (
     build_identity_rows,
 )
 from .table_styles import UnifiedTableStyles as UTS, ExportDefaults as ED
-from .signature_config import SignatureLayoutRules as SLR
+from .signature_config import SignatureLayoutRules as SLR, SIGNATURE_SPACE_MM
 
 
 logger = logging.getLogger(__name__)
@@ -923,18 +923,6 @@ class WordExporter:
                 {'label': 'Konsultan Perencana', 'name': '', 'position': ''},
             ]
         
-        # Tempat & tanggal, rata kanan -- memakai SSOT yang sama dengan PDF.
-        from .signature_config import format_place_and_date
-
-        place_date = format_place_and_date(
-            getattr(self.config, 'location', ''),
-            getattr(self.config, 'export_date', None),
-        )
-        if place_date:
-            pd_para = self.doc.add_paragraph()
-            pd_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            pd_para.add_run(place_date)
-
         # Susunan disamakan persis dengan PDFExporter._build_signatures:
         # penghubung, sebutan peran, ruang tanda tangan basah, garis, nama,
         # lalu baris keterangan. Jumlah baris keterangan berbeda antar peran,
@@ -946,12 +934,18 @@ class WordExporter:
 
         ROW_CONNECTIVE, ROW_LABEL, ROW_SPACE, ROW_NAME = 0, 1, 2, 3
         table = self.doc.add_table(rows=4 + max_details, cols=num_cols)
+        # Tinggi ruang tanda tangan disamakan dengan PDF lewat konstanta bersama.
+        table.rows[ROW_SPACE].height = Mm(SIGNATURE_SPACE_MM)
 
         def _put(row_idx, col_idx, text, bold=False, underline=False):
             cell = table.rows[row_idx].cells[col_idx]
             cell.text = text or ''
             for para in cell.paragraphs:
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                # Spasi dirapatkan (permintaan owner): tanpa ini Word memakai
+                # jarak antar-paragraf bawaan dan blok terasa renggang.
+                para.paragraph_format.space_before = Pt(0)
+                para.paragraph_format.space_after = Pt(0)
                 for run in para.runs:
                     run.bold = bold
                     run.underline = underline
@@ -963,7 +957,9 @@ class WordExporter:
             # Ruang tanda tangan basah
             space_cell = table.rows[ROW_SPACE].cells[col_idx]
             space_cell.text = ''
-            space_cell.paragraphs[0].add_run('\n\n\n')
+            space_para = space_cell.paragraphs[0]
+            space_para.paragraph_format.space_before = Pt(0)
+            space_para.paragraph_format.space_after = Pt(0)
 
             # Nama digarisbawahi sebagai penanda tanda tangan (keputusan owner
             # 2026-08-18), menggantikan baris garis bawah terpisah di atasnya.

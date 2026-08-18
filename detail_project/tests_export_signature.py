@@ -211,17 +211,6 @@ class SignatureSheetRenderTests(TestCase):
                 f"{printable_mm:.0f}mm -- kolom kanan akan terpotong.",
             )
 
-    def test_place_and_date_line_is_shared_between_pdf_and_word(self):
-        from datetime import date
-
-        from detail_project.exports.signature_config import format_place_and_date
-
-        line = format_place_and_date("Desa Penimbung, Kecamatan Gunung Sari", date(2026, 8, 18))
-
-        self.assertEqual(line, "Desa Penimbung, 18 Agustus 2026")
-        # Tanpa lokasi: hanya tanggal, bukan koma menggantung.
-        self.assertEqual(format_place_and_date("", date(2026, 8, 18)), "18 Agustus 2026")
-
     def test_name_is_underlined_and_no_separate_line_row(self):
         """Keputusan owner: garis di ATAS nama dihapus, namanya yang digarisbawahi.
 

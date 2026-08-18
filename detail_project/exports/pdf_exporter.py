@@ -33,7 +33,7 @@ from .table_styles import (
     SectionHeaderFormatter as SHF,
     ExportDefaults as ED
 )
-from .signature_config import SignatureLayoutRules as SLR
+from .signature_config import SignatureLayoutRules as SLR, SIGNATURE_SPACE_MM
 from .pdf_table_builder import PDFTableBuilder, TableType
 from django.http import HttpResponse
 import logging
@@ -58,6 +58,19 @@ PAGE_SIZE_MAP = {
 
 _BASE_STYLESHEET = None
 _CELL_STYLE_CACHE: Dict[tuple, ParagraphStyle] = {}
+
+
+# Ukuran huruf per tingkat hierarki tabel (pt). Klasifikasi paling besar,
+# pekerjaan paling kecil, supaya tingkatannya terbaca tanpa mengandalkan warna.
+HIER_FONT_CATEGORY = 9
+HIER_FONT_SUBCATEGORY = 8.5
+HIER_FONT_ITEM = 7.5
+
+# Jarak bawah per tingkat (pt). Menggantikan indentasi sebagai pembeda hierarki
+# atas permintaan owner -- indentasi memakan lebar kolom uraian yang sudah sempit.
+HIER_SPACE_AFTER_CATEGORY = 4
+HIER_SPACE_AFTER_SUBCATEGORY = 3
+HIER_SPACE_AFTER_ITEM = 1
 
 _ALIGN_MAP = {'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}
 
@@ -2086,6 +2099,30 @@ class PDFExporter(ConfigExporterBase):
             parent=wrap_style,
             fontName='Helvetica-Bold'
         )
+        # Pembeda hierarki (permintaan owner): Klasifikasi tebal, Sub-Klasifikasi
+        # tebal-miring, dan baris pekerjaan berukuran lebih kecil. Ukuran huruf
+        # ikut membedakan, bukan hanya warna latar -- warna saja sulit dibedakan
+        # saat dicetak hitam-putih.
+        wrap_style_category = ParagraphStyle(
+            'SimpleWrapCategory',
+            parent=wrap_style,
+            fontName='Helvetica-Bold',
+            fontSize=HIER_FONT_CATEGORY,
+            leading=HIER_FONT_CATEGORY + 2,
+        )
+        wrap_style_subcategory = ParagraphStyle(
+            'SimpleWrapSubcategory',
+            parent=wrap_style,
+            fontName='Helvetica-BoldOblique',
+            fontSize=HIER_FONT_SUBCATEGORY,
+            leading=HIER_FONT_SUBCATEGORY + 2,
+        )
+        wrap_style_item = ParagraphStyle(
+            'SimpleWrapItem',
+            parent=wrap_style,
+            fontSize=HIER_FONT_ITEM,
+            leading=HIER_FONT_ITEM + 2,
+        )
         
         # Build table data with Paragraphs for wrapping.
         # Registry (temuan owner #1): header dibungkus Paragraph agar teks
@@ -2108,14 +2145,14 @@ class PDFExporter(ConfigExporterBase):
             
             if row_type == 'category':
                 # Category row - first cell and last cell, merge middle columns
-                wrapped_row = [Paragraph(str(row[0]) if row else '', wrap_style_bold)]
+                wrapped_row = [Paragraph(str(row[0]) if row else '', wrap_style_category)]
                 # Fill middle cells with empty strings (will be merged)
                 wrapped_row.extend(['' for _ in range(len(headers) - 2)])
                 # Keep last cell for total value
                 wrapped_row.append(row[-1] if len(row) > 1 else '')
             elif row_type == 'subcategory':
                 # Subcategory row - similar to category but with different style
-                wrapped_row = [Paragraph(str(row[0]) if row else '', wrap_style_bold)]
+                wrapped_row = [Paragraph(str(row[0]) if row else '', wrap_style_subcategory)]
                 wrapped_row.extend(['' for _ in range(len(headers) - 2)])
                 wrapped_row.append(row[-1] if len(row) > 1 else '')
             else:
@@ -2126,9 +2163,9 @@ class PDFExporter(ConfigExporterBase):
                     # Convert newlines to HTML <br/> for ReportLab
                     if '\n' in cell_text:
                         cell_text = cell_text.replace('\n', '<br/>')
-                        wrapped_row.append(Paragraph(cell_text, wrap_style))
+                        wrapped_row.append(Paragraph(cell_text, wrap_style_item))
                     elif col_idx in wrap_columns:  # Detected wrap columns by header
-                        wrapped_row.append(Paragraph(cell_text, wrap_style))
+                        wrapped_row.append(Paragraph(cell_text, wrap_style_item))
                     else:
                         wrapped_row.append(cell_text)
             table_rows.append(wrapped_row)
@@ -2175,14 +2212,20 @@ class PDFExporter(ConfigExporterBase):
                 style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
                 style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), category_bg))
                 style_cmds.append(('ALIGN', (0, table_row), (-2, table_row), 'LEFT'))
+                style_cmds.append(('BOTTOMPADDING', (0, table_row), (-1, table_row), HIER_SPACE_AFTER_CATEGORY))
             elif row_type == 'subcategory':
                 # Merge middle cells for subcategory too
                 if len(headers) > 2:
                     style_cmds.append(('SPAN', (0, table_row), (-2, table_row)))
-                style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
+                style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-BoldOblique'))
                 style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), subcategory_bg))
                 style_cmds.append(('ALIGN', (0, table_row), (-2, table_row), 'LEFT'))
-                style_cmds.append(('LEFTPADDING', (0, table_row), (0, table_row), 12))  # Indent sub
+                # Indentasi dihapus (permintaan owner); pembeda hierarki memakai
+                # jarak bawah, yang tidak memakan lebar kolom uraian.
+                style_cmds.append(('BOTTOMPADDING', (0, table_row), (-1, table_row), HIER_SPACE_AFTER_SUBCATEGORY))
+            else:
+                # Baris pekerjaan: paling rapat, sekaligus paling kecil hurufnya.
+                style_cmds.append(('BOTTOMPADDING', (0, table_row), (-1, table_row), HIER_SPACE_AFTER_ITEM))
 
         if not col_aligns:
             # Jalur legacy: perataan berbasis posisi kolom
@@ -2702,15 +2745,6 @@ class PDFExporter(ConfigExporterBase):
             no_detail_para = Paragraph("<i>Tidak ada detail item untuk pekerjaan ini</i>", self.styles['normal'])
             story.append(no_detail_para)
 
-    def _format_place_and_date(self) -> str:
-        """Delegasi ke SSOT bersama agar PDF dan Word menghasilkan baris sama."""
-        from .signature_config import format_place_and_date
-
-        return format_place_and_date(
-            getattr(self.config, 'location', ''),
-            getattr(self.config, 'export_date', None),
-        )
-
     def _build_signatures(self) -> List:
         """Build signature section"""
         elements = []
@@ -2722,16 +2756,6 @@ class PDFExporter(ConfigExporterBase):
         )
         elements.append(sig_title)
         elements.append(Spacer(1, 3*mm))
-
-        # Tempat & tanggal, rata kanan di atas blok tanda tangan -- bagian baku
-        # dokumen resmi yang selama ini tidak pernah dicetak. Tempat memakai
-        # lokasi project; tanggal memakai tanggal dokumen dibuat.
-        place_date = self._format_place_and_date()
-        if place_date:
-            elements.append(Paragraph(place_date, ParagraphStyle(
-                'SignaturePlaceDate', alignment=TA_RIGHT, fontSize=9, leading=12,
-            )))
-            elements.append(Spacer(1, 2*mm))
 
         # Get signatures from config
         sigs = self.config.signature_config.signatures
@@ -2765,7 +2789,7 @@ class PDFExporter(ConfigExporterBase):
 
         connective_row = [sig.get('connective', '') for sig in sigs]
         label_row = [sig.get('label', '') for sig in sigs]
-        blank_rows = [[''] * n for _ in range(3)]  # ruang tanda tangan basah
+        blank_rows = [[''] * n]  # satu baris; tingginya diatur eksplisit di bawah
         name_row = [
             Paragraph(f"<u>{escape(sig.get('name') or '')}</u>", name_style)
             if (sig.get('name') or '') else ''
@@ -2788,16 +2812,28 @@ class PDFExporter(ConfigExporterBase):
         )
         col_width = (usable_w_mm * mm) / n
 
-        sig_table = Table(sig_data, colWidths=[col_width] * n)
+        # Spasi dirapatkan (permintaan owner): padding bawaan ReportLab 6pt
+        # atas-bawah per sel membuat blok ini terasa renggang. Semua padding
+        # dinolkan; satu-satunya ruang yang disisakan adalah tinggi baris
+        # kosong untuk tanda tangan basah.
+        blank_start = 2
+        blank_end = blank_start + len(blank_rows) - 1
+        row_heights = [None] * len(sig_data)
+        for i in range(blank_start, blank_end + 1):
+            row_heights[i] = (SIGNATURE_SPACE_MM / len(blank_rows)) * mm
+
+        sig_table = Table(sig_data, colWidths=[col_width] * n, rowHeights=row_heights)
         sig_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('LEADING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
             # Sebutan peran ditebalkan; kata penghubung dibiarkan biasa.
             # Baris nama membawa gayanya sendiri lewat Paragraph.
             ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 1), (-1, 1), 10),
-            ('TOPPADDING', (0, 2), (-1, 2 + len(blank_rows) - 1), 9*mm),
         ]))
 
         elements.append(sig_table)

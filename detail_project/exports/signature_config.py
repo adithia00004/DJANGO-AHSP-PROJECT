@@ -23,38 +23,11 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 
-# Nama bulan Indonesia. Tidak memakai strftime('%B') karena locale container
-# tidak dijamin id_ID -- dokumen resmi tidak boleh terbit berbahasa Inggris
-# hanya karena sistem operasinya berbeda.
-_BULAN_ID = (
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-)
+# Tinggi ruang tanda tangan basah (mm). Sengaja rapat atas permintaan owner:
+# cukup untuk membubuhkan tanda tangan, tanpa membuat blok terasa renggang.
+# Dipakai bersama PDF dan Word supaya keduanya tetap seragam.
+SIGNATURE_SPACE_MM = 15
 
-
-def format_place_and_date(location: str = '', tanggal=None) -> str:
-    """Baris "Kota, 18 Agustus 2026" untuk kepala blok tanda tangan.
-
-    Dipakai bersama oleh exporter PDF dan Word supaya keduanya tidak menyimpang;
-    sebelumnya tidak satu pun mencetak tempat dan tanggal.
-
-    Lokasi project bisa panjang ("Desa X, Kecamatan Y - Kab. Z"), jadi hanya
-    ruas pertama yang dipakai agar barisnya tidak membungkus. Bila lokasi
-    kosong, hanya tanggal yang dicetak -- lebih baik daripada koma menggantung.
-    """
-    tanggal = tanggal or datetime.now()
-    try:
-        tanggal_str = f"{tanggal.day} {_BULAN_ID[tanggal.month - 1]} {tanggal.year}"
-    except (AttributeError, IndexError, TypeError):
-        return ''
-
-    tempat = (location or '').split(',')[0].strip()
-    return f"{tempat}, {tanggal_str}" if tempat else tanggal_str
-
-
-# =============================================================================
-# SIGNATURE PRESETS
-# =============================================================================
 
 class SignaturePresets:
     """
