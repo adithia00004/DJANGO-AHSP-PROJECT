@@ -88,8 +88,8 @@ Kontrol akses sudah diaudit di R2–R6. Fase ini soal higienis produksi, bukan m
 | 2.2 | CSP report-only → enforce | Saat ini hanya melapor. Sudah lama disiapkan (WP-A2) | Header `Content-Security-Policy` aktif, tak ada pelanggaran di konsol |
 | 2.3 | Mode rate limiter produksi | Default `v2` (enforcing) sudah benar. Kalibrasi ambang setelah melihat trafik nyata | Metrik `blocked`/`would_block` dipantau seminggu |
 | 2.4 | Client-IP trust repo-wide (N-6) | Sudah di backlog cross-cutting Anda. Jangan tambal satu titik — pelajaran UF-013/AT-01 | Helper tunggal dipakai semua pemanggil |
-| 2.6 | **Endpoint export menjawab 500 untuk akses non-pemilik, bukan 404** | `except Exception` menelan `Http404`, sehingga penolakan akses normal jadi Internal Server Error — status salah, dan log produksi terbanjiri error palsu yang menyamarkan error sungguhan | Terverifikasi 2026-08-18 pada `rekap-rab/pdf`. Endpoint paket sudah benar (`354c66e8`); ~10 endpoint export lain belum. Perbaikan: pindahkan `_owner_or_404` ke LUAR `try` |
 | 2.5 | Uji isolasi antar-tenant di server nyata | Sudah diaudit, tapi belum pernah diuji di lingkungan produksi | User B mencoba akses data user A lewat URL langsung → 404 |
+| 2.6 | **Endpoint export menjawab 500 untuk akses non-pemilik, bukan 404** | `except Exception` menelan `Http404`, sehingga penolakan akses normal jadi Internal Server Error — status salah, dan log produksi terbanjiri error palsu yang menyamarkan error sungguhan | Terverifikasi 2026-08-18 pada `rekap-rab/pdf`. Endpoint paket sudah benar (`354c66e8`); ~10 endpoint export lain belum. Perbaikan: pindahkan `_owner_or_404` ke LUAR `try` |
 
 **Gate Fase 2:** satu putaran percobaan sebagai penyerang ringan — user B menebak ID project user A di setiap halaman dan endpoint API.
 
