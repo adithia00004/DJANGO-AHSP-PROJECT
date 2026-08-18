@@ -352,13 +352,7 @@ class WordExporter:
             footer_rows = page.get('footer_rows', [])
             if footer_rows:
                 self.doc.add_paragraph()  # Spacing
-                for footer in footer_rows:
-                    para = self.doc.add_paragraph()
-                    if isinstance(footer, (list, tuple)) and len(footer) >= 2:
-                        para.add_run(f"{footer[0]}: ").bold = True
-                        para.add_run(str(footer[1]))
-                    else:
-                        para.add_run(str(footer))
+                self._build_footer_table(footer_rows)
             
             # Add signatures if this page has include_signatures=True
             if page.get('include_signatures') and self.config.signature_config.enabled:
@@ -1287,6 +1281,63 @@ class WordExporter:
         
         self.doc.add_paragraph()  # Spacing after table
     
+    def _set_cell_top_border(self, cell, size_eighths: int, color_hex: str):
+        """Garis atas satu sel. python-docx tidak menyediakan API border sel,
+        jadi elemennya disusun langsung di XML."""
+        tc_pr = cell._tc.get_or_add_tcPr()
+        borders = tc_pr.find(qn('w:tcBorders'))
+        if borders is None:
+            borders = OxmlElement('w:tcBorders')
+            tc_pr.append(borders)
+        top = borders.find(qn('w:top'))
+        if top is None:
+            top = OxmlElement('w:top')
+            borders.append(top)
+        top.set(qn('w:val'), 'single')
+        top.set(qn('w:sz'), str(size_eighths))  # satuan 1/8 pt
+        top.set(qn('w:color'), color_hex.lstrip('#'))
+
+    def _build_footer_table(self, footer_rows):
+        """Blok total sebagai tabel rata kanan, paritas PDF `_build_footer_table`.
+
+        W-2 (temuan owner 2026-08-18): sebelumnya baris total terbit sebagai
+        paragraf biasa ("Total Biaya: 123"), sehingga Grand Total dan pembulatan
+        terbaca sekadar teks dan tidak terasa sebagai kesimpulan dokumen. PDF
+        memakai tabel dua kolom rata kanan dengan garis tipis di atas baris
+        pertama dan garis TEBAL di atas baris terakhir; itu yang ditiru di sini.
+        """
+        rows = [r for r in footer_rows if r]
+        if not rows:
+            return None
+
+        line_color = '1F3864'
+        table = self.doc.add_table(rows=len(rows), cols=2)
+        table.autofit = False
+        table.alignment = WD_TABLE_ALIGNMENT.RIGHT
+
+        for r_idx, footer in enumerate(rows):
+            if isinstance(footer, (list, tuple)) and len(footer) >= 2:
+                label, value = str(footer[0]), str(footer[1])
+            else:
+                label, value = str(footer), ''
+
+            for c_idx, text in ((0, label), (1, value)):
+                cell = table.rows[r_idx].cells[c_idx]
+                cell.width = Mm(120) if c_idx == 0 else Mm(60)
+                cell.text = text
+                for para in cell.paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.paragraph_format.space_before = Pt(1)
+                    para.paragraph_format.space_after = Pt(1)
+                    for run in para.runs:
+                        run.bold = True
+
+        for cell in table.rows[0].cells:
+            self._set_cell_top_border(cell, 8, line_color)   # 1 pt
+        for cell in table.rows[-1].cells:
+            self._set_cell_top_border(cell, 16, line_color)  # 2 pt, penegas total
+        return table
+
     def _shade_cells(self, cells, fill_hex: str):
         """Beri warna latar (w:shd) pada kumpulan sel — util registry Fase 3."""
         for cell in cells:
