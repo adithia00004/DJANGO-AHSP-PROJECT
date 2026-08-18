@@ -74,7 +74,10 @@ def init_sentry():
         # sample_rate=1.0,  # 100% of errors
 
         # Send default PII (Personally Identifiable Information)
-        send_default_pii=True,
+        # PII (username, email, IP) TIDAK dikirim secara default. Ini SaaS
+        # multi-tenant: mengirim data pengguna ke pihak ketiga harus keputusan
+        # sadar pemilik, bukan bawaan. Nyalakan dengan SENTRY_SEND_PII=True.
+        send_default_pii=os.environ.get('SENTRY_SEND_PII', 'False').lower() == 'true',
 
         # Before send hook (for filtering/modifying events)
         before_send=before_send_hook,

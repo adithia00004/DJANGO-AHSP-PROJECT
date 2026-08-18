@@ -95,7 +95,24 @@ SECURE_REFERRER_POLICY = "same-origin"
 MIDDLEWARE = MIDDLEWARE[:2] + ["referensi.middleware.performance.PerformanceLoggingMiddleware"] + MIDDLEWARE[2:]
 
 WHITENOISE_USE_FINDERS = False
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# STATICFILES_STORAGE DIHAPUS di Django 5.1 dan proyek ini di 5.2 -- baris lama
+# `STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"`
+# tidak pernah dibaca siapa pun, sehingga produksi diam-diam memakai
+# StaticFilesStorage bawaan: tanpa berkas .gz/.br pra-kompresi DAN tanpa nama
+# ber-hash, sehingga WhiteNoise tak bisa memasang cache immutable dan pengunjung
+# berulang mengunduh ulang seluruh aset (~1,7 MB) setiap kali.
+#
+# Django membacanya dari STORAGES["staticfiles"]; nilai "default" harus ikut
+# disebut karena mendefinisikan STORAGES menimpa seluruh dict bawaan.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Cached template loader for faster rendering
 # Must disable APP_DIRS when using custom loaders
