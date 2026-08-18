@@ -535,6 +535,12 @@ class WordExporter:
                 
                 # Group title
                 if row_idx < len(table.rows):
+                    # W-3 (temuan owner 2026-08-18): judul grup harus melebar
+                    # menutupi kolom 0-5, sama seperti SPAN di PDF. Tanpa merge,
+                    # judul terjepit di kolom "No" yang sempit dan terbaca
+                    # seperti nilai yang dipaksakan ke satu sel.
+                    _gcells = table.rows[row_idx].cells
+                    _gcells[0].merge(_gcells[5])
                     table.rows[row_idx].cells[0].text = group_title
                     for para in table.rows[row_idx].cells[0].paragraphs:
                         for run in para.runs:
@@ -565,6 +571,10 @@ class WordExporter:
                 
                 # Subtotal row
                 if row_idx < len(table.rows):
+                    # Label subtotal melebar 0-5; kolom 6 tetap terpisah untuk
+                    # nilainya, persis seperti PDF.
+                    _scells = table.rows[row_idx].cells
+                    _scells[0].merge(_scells[5])
                     table.rows[row_idx].cells[0].text = f"Subtotal {group.get('short_title', '')}"
                     for para in table.rows[row_idx].cells[0].paragraphs:
                         para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -580,6 +590,9 @@ class WordExporter:
             
             # Total E
             if row_idx < len(table.rows):
+                # Paritas PDF (row_type total_e): label melebar 0-5.
+                _ecells = table.rows[row_idx].cells
+                _ecells[0].merge(_ecells[5])
                 table.rows[row_idx].cells[0].text = "Jumlah (E)"
                 for para in table.rows[row_idx].cells[0].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -598,6 +611,9 @@ class WordExporter:
             # Total F (Profit/Margin)
             if row_idx < len(table.rows):
                 markup = totals.get('markup_eff', '10.00')
+                # Paritas PDF (row_type total_f).
+                _fcells = table.rows[row_idx].cells
+                _fcells[0].merge(_fcells[5])
                 table.rows[row_idx].cells[0].text = f"Profit/Margin {markup}% (F)"
                 for para in table.rows[row_idx].cells[0].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -615,6 +631,9 @@ class WordExporter:
             
             # Total G (Harga Satuan Pekerjaan)
             if row_idx < len(table.rows):
+                # Paritas PDF (row_type total_g).
+                _gcells2 = table.rows[row_idx].cells
+                _gcells2[0].merge(_gcells2[5])
                 table.rows[row_idx].cells[0].text = "Harga Satuan Pekerjaan (G = E + F)"
                 for para in table.rows[row_idx].cells[0].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
