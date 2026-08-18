@@ -225,12 +225,26 @@ class ExportManager:
 
         titles = [t for t, _ in self.PAKET_PERENCANAAN]
         volume_adapter = VolumePekerjaanAdapter(self.project, include_signatures=True)
+
+        def _registry(data):
+            """Nyalakan style registry, seperti yang dilakukan export tunggal.
+
+            Tiap metode export menyalakannya SETELAH adapter dipanggil, jadi
+            mengambil data langsung dari adapter melewatkannya. Tanpa bendera
+            ini exporter jatuh ke jalur lama: tabel identitas kehilangan lebar
+            kolomnya, blok grand total kehilangan penonjolannya, dan tabel
+            Rincian AHSP kehilangan aturan merge-nya -- persis gejala "Word
+            berantakan" yang dilaporkan owner.
+            """
+            data['style_registry'] = True
+            return data
+
         return [
-            {'title': titles[0], 'data': self._build_rekap_rab_data()},
-            {'title': titles[1], 'data': RincianAHSPAdapter(self.project).get_export_data()},
+            {'title': titles[0], 'data': _registry(self._build_rekap_rab_data())},
+            {'title': titles[1], 'data': _registry(RincianAHSPAdapter(self.project).get_export_data())},
             {
                 'title': titles[2],
-                'data': volume_adapter.get_export_data(),
+                'data': _registry(volume_adapter.get_export_data()),
                 # Volume punya jalur XLSX khusus (kolom Formula ditulis sebagai
                 # TEKS audit, bukan formula Excel). Tanpa petunjuk ini paket
                 # memakai export() generik, dan openpyxl menganggap string
@@ -238,7 +252,7 @@ class ExportManager:
                 # isinya ("Removed Records: Formula").
                 'xlsx': ('export_volume_pekerjaan', volume_adapter),
             },
-            {'title': titles[3], 'data': HargaItemsAdapter(self.project).get_export_data()},
+            {'title': titles[3], 'data': _registry(HargaItemsAdapter(self.project).get_export_data())},
         ]
 
     def export_paket_perencanaan(self, format_type: str) -> HttpResponse:
