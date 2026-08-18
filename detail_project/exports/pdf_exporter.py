@@ -2718,12 +2718,21 @@ class PDFExporter(ConfigExporterBase):
             sigs = self.config.signature_config.custom_signatures
         
         # Build signature cells
+        #
+        # Urutan baku lembar pengesahan: label peran, ruang kosong untuk tanda
+        # tangan basah, garis tanda tangan, NAMA, lalu instansi.
+        #
+        # Sebelumnya baris nama diisi 20 garis bawah literal, sehingga nama yang
+        # sudah benar dari build_signatures() tidak pernah terbit -- lembar
+        # pengesahan tampak kosong meski datanya ada di Dashboard. Garis bawah
+        # tetap dipertahankan sebagai garis tanda tangan di baris terpisah.
         sig_headers = [sig['label'] for sig in sigs]
         empty_rows = [[''] * len(sigs) for _ in range(3)]  # Space for signature
-        name_rows = [['_' * 20] * len(sigs)]
+        line_rows = [['_' * 20] * len(sigs)]
+        name_rows = [[(sig.get('name') or '') for sig in sigs]]
         position_rows = [[sig.get('position', '') for sig in sigs]]
-        
-        sig_data = [sig_headers] + empty_rows + name_rows + position_rows
+
+        sig_data = [sig_headers] + empty_rows + line_rows + name_rows + position_rows
         
         # Calculate column width
         col_width = 250 * mm / len(sigs)

@@ -45,18 +45,22 @@ class SignaturePresets:
         'owner': {
             'label': 'Pemilik Proyek',
             'field': 'nama_client',  # Project.nama_client ✓
+            'instansi_field': 'instansi_client',  # Project.instansi_client ✓
         },
         'perencana': {
             'label': 'Konsultan Perencana',
             'field': 'nama_konsultan_perencana',  # Project.nama_konsultan_perencana ✓
+            'instansi_field': 'instansi_konsultan_perencana',
         },
         'kontraktor': {
             'label': 'Kontraktor Pelaksana',
             'field': 'nama_kontraktor',  # Project.nama_kontraktor ✓
+            'instansi_field': 'instansi_kontraktor',
         },
         'pengawas': {
             'label': 'Konsultan Pengawas',
             'field': 'nama_konsultan_pengawas',  # Project.nama_konsultan_pengawas ✓
+            'instansi_field': 'instansi_konsultan_pengawas',
         },
     }
     
@@ -143,11 +147,20 @@ class SignaturePresets:
             name = ''
             if field and project:
                 name = getattr(project, field, '') or ''
-            
+
+            # Instansi tampil di bawah nama pada lembar pengesahan. Slot
+            # 'position' sudah lama ada tapi selalu kosong, sehingga baris itu
+            # terbit tanpa isi; kini diisi dari field instansi milik peran yang
+            # bersangkutan (bukan instansi klien untuk semua peran).
+            instansi_field = role.get('instansi_field', '')
+            position = ''
+            if instansi_field and project:
+                position = getattr(project, instansi_field, '') or ''
+
             signatures.append({
                 'label': label,
                 'name': name,
-                'position': '',  # Can be filled by user/adapter
+                'position': position,
             })
         
         return signatures
