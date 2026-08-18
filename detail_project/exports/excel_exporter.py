@@ -247,6 +247,10 @@ class ExcelExporter(ConfigExporterBase):
                     current_row += 1
 
             self._apply_column_widths(ws, section.get('col_widths'))
+            # X-2 (temuan owner 2026-08-18): tanpa ini sheet yang tidak membawa
+            # col_widths terbit dengan lebar bawaan Excel, sehingga uraian
+            # panjang terpotong dan tabelnya sulit dibaca.
+            self._improve_readability(ws, has_explicit_widths=bool(section.get('col_widths')))
 
         pages = data.get('pages')
         if pages:
@@ -515,6 +519,11 @@ class ExcelExporter(ConfigExporterBase):
         
         # Save workbook
         output = BytesIO()
+        # X-2: samakan keterbacaan dengan jalur generik. Lebar eksplisit dari
+        # penulis khusus dipertahankan; yang ditambah wrap + freeze header.
+        for _ws in wb.worksheets:
+            self._improve_readability(_ws, has_explicit_widths=True)
+
         if self._package_wb is not None:
             return None
 
@@ -796,6 +805,11 @@ class ExcelExporter(ConfigExporterBase):
             self.config.project_name, "Rincian AHSP", "xlsx",
             self.config.export_date,
         )
+        # X-2: samakan keterbacaan dengan jalur generik. Lebar eksplisit dari
+        # penulis khusus dipertahankan; yang ditambah wrap + freeze header.
+        for _ws in wb.worksheets:
+            self._improve_readability(_ws, has_explicit_widths=True)
+
         if self._package_wb is not None:
             return None
         return self._create_response(
@@ -1206,6 +1220,61 @@ class ExcelExporter(ConfigExporterBase):
     def _parse_number(self, val):
         """Wrapper for global parse_number function - for consistency across all Excel exports."""
         return parse_number(val, default=0)
+
+    # Kolom yang isinya kalimat, bukan angka atau kode. Dipakai untuk memutuskan
+    # kolom mana yang di-wrap dan boleh lebih lebar.
+    _TEXT_COLUMN_HINTS = ('uraian', 'keterangan', 'nama', 'formula', 'expression',
+                          'deskripsi', 'klasifikasi', 'parameter', 'satuan kerja')
+
+    def _improve_readability(self, ws, has_explicit_widths: bool = False,
+                             max_scan_rows: int = 400):
+        """Lebar kolom mengikuti isi, wrap untuk kolom teks, header dibekukan.
+
+        Excel tidak punya autofit sungguhan lewat openpyxl, jadi lebar dihitung
+        dari panjang isi terpanjang (dipindai terbatas supaya sheet besar tidak
+        lambat). Kolom yang sudah punya lebar eksplisit dari adapter TIDAK
+        ditimpa -- itu keputusan tata letak yang disengaja.
+        """
+        from openpyxl.utils import get_column_letter
+
+        header_row = None
+        widths = {}
+        text_cols = set()
+
+        for r_idx, row in enumerate(ws.iter_rows(max_row=max_scan_rows), 1):
+            for cell in row:
+                value = cell.value
+                if value is None:
+                    continue
+                text = str(value)
+                col = cell.column
+                widths[col] = max(widths.get(col, 0), min(len(text), 60))
+                # Baris header dikenali dari kata kunci kolom teks.
+                if header_row is None and any(h in text.lower() for h in self._TEXT_COLUMN_HINTS):
+                    header_row = r_idx
+                if header_row == r_idx and any(h in text.lower() for h in self._TEXT_COLUMN_HINTS):
+                    text_cols.add(col)
+
+        for col, width in widths.items():
+            letter = get_column_letter(col)
+            if has_explicit_widths and ws.column_dimensions[letter].width:
+                continue
+            # +2 untuk padding; kolom teks dibatasi agar tidak melebar liar --
+            # sisanya ditangani wrap.
+            limit = 45 if col in text_cols else 22
+            ws.column_dimensions[letter].width = max(9, min(width + 2, limit))
+
+        wrap_alignment = Alignment(wrap_text=True, vertical='top')
+        plain_alignment = Alignment(vertical='top')
+        for row in ws.iter_rows(max_row=max_scan_rows):
+            for cell in row:
+                if cell.value is None:
+                    continue
+                cell.alignment = wrap_alignment if cell.column in text_cols else plain_alignment
+
+        # Bekukan baris header supaya judul kolom tetap terlihat saat menggulir.
+        if header_row:
+            ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
 
     def _apply_column_widths(self, ws, widths: List[float] | None):
         if not widths:

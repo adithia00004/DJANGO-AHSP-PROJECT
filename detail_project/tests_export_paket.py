@@ -113,3 +113,40 @@ class PaketPerencanaanTests(TestCase):
             [],
             f"formula tak sah akan dibuang Excel saat dibuka: {invalid[:3]}",
         )
+
+    def test_excel_sheets_are_readable(self):
+        """X-2: setiap sheet bertabel harus punya wrap text dan header dibekukan.
+
+        Tanpa ini uraian panjang terpotong dan judul kolom hilang saat menggulir
+        -- keluhan keterbacaan yang dilaporkan owner 2026-08-18.
+        """
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self.client.force_login(self.owner)
+        workbook = load_workbook(BytesIO(self.client.get(self._url("xlsx")).content))
+
+        for name in workbook.sheetnames:
+            sheet = workbook[name]
+            # "Bertabel" = punya beberapa baris berisi minimal 3 kolom. Lembar
+            # pengesahan tidak termasuk: ia blok tanda tangan, bukan tabel data,
+            # jadi wrap dan freeze memang tidak relevan di sana.
+            dense_rows = sum(
+                1
+                for row in sheet.iter_rows(max_row=40)
+                if sum(1 for cell in row if cell.value not in (None, "")) >= 3
+            )
+            if dense_rows < 5:
+                continue
+            with self.subTest(sheet=name):
+                wrapped = sum(
+                    1
+                    for row in sheet.iter_rows(max_row=80)
+                    for cell in row
+                    if cell.alignment and cell.alignment.wrap_text
+                )
+                self.assertGreater(wrapped, 0, f"sheet '{name}' tanpa wrap text")
+                self.assertIsNotNone(
+                    sheet.freeze_panes, f"sheet '{name}' tanpa header dibekukan"
+                )
