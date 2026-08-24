@@ -66,13 +66,14 @@ class DetailAhspRateLimitTA07Tests(TestCase):
     def test_write_endpoints_carry_rate_and_body_limit(self):
         with open("detail_project/views_api.py", encoding="utf-8") as fh:
             src = fh.read()
-        for fn in (
-            "api_save_detail_ahsp_for_pekerjaan",
-            "api_reset_detail_ahsp_to_ref",
-            "api_sync_reference",
-            "api_rebuild_missing_expansion",
-        ):
+        expected = {
+            "api_save_detail_ahsp_for_pekerjaan": "@rate_limit(category='write_interactive'",
+            "api_reset_detail_ahsp_to_ref": "@rate_limit(category='write')",
+            "api_sync_reference": "@rate_limit(category='write')",
+            "api_rebuild_missing_expansion": "@rate_limit(category='write')",
+        }
+        for fn, rate_snippet in expected.items():
             idx = src.index(f"def {fn}(")
-            head = src[max(0, idx - 400):idx]
-            self.assertIn("@rate_limit(category='write')", head, f"{fn} missing rate_limit")
+            head = src[max(0, idx - 500):idx]
+            self.assertIn(rate_snippet, head, f"{fn} missing rate_limit")
             self.assertIn("@limit_request_body()", head, f"{fn} missing limit_request_body")

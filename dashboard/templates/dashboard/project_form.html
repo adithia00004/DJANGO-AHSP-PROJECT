@@ -20,6 +20,10 @@
       <form method="post">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next_url }}">
+        {# Kunci optimistik jadwal (G-5): dipertahankan apa adanya saat dialog
+           dampak dirender ulang, sehingga perubahan dari tab lain tetap
+           terdeteksi meski user berlama-lama memilih resolusi. #}
+        <input type="hidden" name="timeline_revision" value="{{ timeline_revision|default_if_none:'' }}">
 
         {% if form.non_field_errors or form.errors %}
         <div class="alert alert-danger">
@@ -34,6 +38,112 @@
               {% endfor %}
             {% endfor %}
           </ul>
+        </div>
+        {% endif %}
+
+        {% if timeline_impact %}
+        <div class="alert {% if timeline_impact.blocking_reason %}alert-danger{% else %}alert-warning{% endif %}" role="alert">
+          <strong>Perubahan tanggal memengaruhi jadwal.</strong>
+          <div class="mt-2">
+            Jadwal: <strong>{{ timeline_impact.old_start }} – {{ timeline_impact.old_end }}</strong>
+            &rarr; <strong>{{ timeline_impact.new_start }} – {{ timeline_impact.new_end }}</strong>
+          </div>
+          <div>
+            Rencana progress terdampak: <strong>{{ timeline_impact.planned_records }}</strong> record;
+            realisasi terdampak: <strong>{{ timeline_impact.actual_records }}</strong> record.
+          </div>
+          {% if timeline_impact.blocking_reason %}
+          <div class="mt-2">
+            Perubahan ini tidak dapat dilanjutkan. Bereskan dulu realisasi pada minggu
+            yang disebutkan, atau kembalikan tanggalnya.
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-2"
+            onclick="window.location.href=window.location.pathname">Batalkan Perubahan</button>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if timeline_previews %}
+        <div class="card border-warning mb-3">
+          <div class="card-header bg-warning-subtle">
+            <strong>Pilih cara penataan minggu</strong>
+            <div class="small text-muted mt-1">
+              Jumlah minggu: <strong>{{ timeline_previews.0.old_week_count }}</strong>
+              &rarr; <strong>{{ timeline_previews.0.new_week_count }}</strong>.
+              Tidak ada yang tersimpan sampai Anda memilih salah satu di bawah.
+            </div>
+          </div>
+          <div class="card-body">
+            {% for preview in timeline_previews %}
+            <div class="border rounded p-3 {% if not forloop.last %}mb-3{% endif %}">
+              <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                  <div class="fw-semibold">
+                    {{ preview.label }}
+                    {% if preview.resolution == timeline_impact.recommended_resolution %}
+                    <span class="badge bg-success ms-1">Disarankan</span>
+                    {% endif %}
+                  </div>
+                  <div class="small text-muted">{{ preview.help }}</div>
+                </div>
+                <button type="submit" class="btn btn-sm {% if preview.resolution == timeline_impact.recommended_resolution %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                  name="timeline_resolution" value="{{ preview.resolution }}"
+                  {% if preview.planned_lost > 0 %}
+                  onclick="return window.confirm('Opsi ini menghapus {{ preview.planned_lost }}% rencana progress yang tidak muat di jadwal baru. Lanjutkan?')"
+                  {% endif %}>
+                  Gunakan opsi ini
+                </button>
+              </div>
+
+              <div class="mt-2 small">
+                Total rencana:
+                <strong>{{ preview.total_planned_before }}%</strong> &rarr;
+                <strong>{{ preview.total_planned_after }}%</strong>
+                {% if preview.planned_lost > 0 %}
+                <span class="text-danger fw-semibold">
+                  (hilang {{ preview.planned_lost }}%)
+                </span>
+                {% else %}
+                <span class="text-success">(tidak ada yang hilang)</span>
+                {% endif %}
+              </div>
+
+              <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0 small">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="width:6rem;">Minggu</th>
+                      <th>Tanggal lama</th>
+                      <th>Tanggal baru</th>
+                      <th class="text-end" style="width:7rem;">Rencana lama</th>
+                      <th class="text-end" style="width:7rem;">Rencana baru</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for week in preview.weeks %}
+                    <tr class="{% if not week.exists_after %}table-danger{% elif week.changed %}table-warning{% endif %}">
+                      <td>Minggu {{ week.week_number }}</td>
+                      <td>
+                        {% if week.old_start %}{{ week.old_start|date:"d/m/Y" }} – {{ week.old_end|date:"d/m/Y" }}
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                      </td>
+                      <td>
+                        {% if week.new_start %}{{ week.new_start|date:"d/m/Y" }} – {{ week.new_end|date:"d/m/Y" }}
+                        {% else %}<span class="text-danger">tidak ada lagi</span>{% endif %}
+                      </td>
+                      <td class="text-end">{{ week.planned_before }}%</td>
+                      <td class="text-end">{{ week.planned_after }}%</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endfor %}
+
+            <button type="button" class="btn btn-outline-secondary btn-sm mt-3"
+              onclick="window.location.href=window.location.pathname">Batalkan Perubahan</button>
+          </div>
         </div>
         {% endif %}
 
@@ -72,9 +182,9 @@
                 <small class="form-text text-muted">Tahun project akan otomatis diambil dari tanggal ini</small>
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.tanggal_selesai.label_tag }}
+                {{ form.tanggal_selesai.label_tag }} <span class="text-danger">*</span>
                 {{ form.tanggal_selesai }}
-                <small class="form-text text-muted">Kosongkan untuk auto-set ke 31 Des tahun project</small>
+                <small class="form-text text-muted">Wajib diisi sebagai batas akhir project</small>
               </div>
               <div class="col-md-6 mb-3">
                 {{ form.durasi_hari.label_tag }}

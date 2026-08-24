@@ -68,6 +68,8 @@ class ExportButtonVisibilityTests(TestCase):
         self.assertNotIn('id="btn-export-word"', content)
         self.assertIn("/pricing/?reason=export_locked", content)
         self.assertIn("bi-lock-fill", content)
+        self.assertNotIn("Item menu export", content)
+        self.assertNotIn("Params:", content)
 
     def test_staff_user_sees_functional_export_buttons(self):
         staff_user = self._make_user("staff_m7", is_staff=True)
@@ -77,6 +79,8 @@ class ExportButtonVisibilityTests(TestCase):
         self.assertIn('id="btn-export-xlsx"', content)
         self.assertIn('id="btn-export-word"', content)
         self.assertNotIn("/pricing/?reason=export_locked", content)
+        self.assertNotIn("Item menu export", content)
+        self.assertNotIn("Params:", content)
 
     def test_pro_user_sees_functional_export_buttons(self):
         user_model = get_user_model()

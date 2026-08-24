@@ -61,6 +61,7 @@ export class EventBinder {
     const dom = this.app.state?.domRefs || {};
     const saveButton = dom.saveButton;
     const refreshButton = dom.refreshButton;
+    const regenerateButton = dom.regenerateButton;
     const resetButton = dom.resetButton;
     const helpButton = document.getElementById('help-button');
 
@@ -70,6 +71,20 @@ export class EventBinder {
 
     if (refreshButton) {
       refreshButton.addEventListener('click', () => this.app.refresh());
+    }
+
+    // Langkah 3.1: tombol #btn-regenerate-timeline sudah TIDAK ada di template.
+    // Jalur regenerate buta (tanpa analisis dampak) tidak lagi terpasang di UI;
+    // perbaikan terpandu ditangani `shared/timeline_repair.js` lewat
+    // preview/commit. Binding ini dipertahankan agar `regenerateTimeline` tetap
+    // dapat dipakai sebagai primitive internal — antara lain sesudah perubahan
+    // batas minggu — tanpa memaksa perubahan struktur modul.
+    if (regenerateButton) {
+      regenerateButton.addEventListener('click', () => this.app._regenerateTimeline({
+        mode: this.app.state.timeScale || 'weekly',
+        weekStartDay: this.app._getWeekStartDay(),
+        weekEndDay: this.app._getWeekEndDay(),
+      }));
     }
 
     if (resetButton) {

@@ -793,7 +793,7 @@
   })();
 
   let _pricingRetryPayload = null;
-  function setPricingStatus(state) {
+  function setPricingStatus(state, detail = null) {
     if (!pricingStatusEl) return;
     pricingStatusEl.innerHTML = '';
     if (state === 'saving') {
@@ -805,7 +805,7 @@
       setTimeout(() => { if (pricingStatusEl.textContent === 'Tersimpan') pricingStatusEl.textContent = ''; }, 1500);
     } else if (state === 'error') {
       pricingStatusEl.className = 'small ms-2 text-danger';
-      pricingStatusEl.textContent = 'Gagal menyimpan. ';
+      pricingStatusEl.textContent = `${detail?.message || 'Gagal menyimpan.'} `;
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'btn btn-link btn-sm p-0 align-baseline';
@@ -825,14 +825,25 @@
         body: JSON.stringify(payload),
         keepalive: true,
       });
-      let ok = res.ok;
-      try { const j = await res.json(); ok = ok && (j.ok ?? true); } catch { /* non-JSON */ }
-      if (!ok) throw new Error('pricing save rejected');
+      // JANGAN beri nama `payload`: blok try ini punya scope sendiri, sehingga
+      // deklarasi itu akan membayangi parameter `payload` dan menaruhnya dalam
+      // temporal dead zone -- `JSON.stringify(payload)` di atas lalu melempar
+      // "Cannot access 'payload' before initialization" sebelum fetch terkirim.
+      let result = null;
+      try { result = await res.json(); } catch { /* non-JSON */ }
+      const ok = res.ok && (result?.ok ?? result?.success ?? true);
+      if (!ok) {
+        const retryAfter = Number(result?.retry_after || 0);
+        const message = result?.user_message || result?.message || 'Gagal menyimpan pricing.';
+        const error = new Error(retryAfter > 0 ? `${message} Coba lagi dalam ${retryAfter} detik.` : message);
+        error.retryAfter = retryAfter;
+        throw error;
+      }
       _pricingRetryPayload = null;
       setPricingStatus('saved');
     } catch (e) {
       console.error('[RAB] Pricing error:', e);
-      setPricingStatus('error');  // value tetap di input+localStorage (draft) → tak hilang
+      setPricingStatus('error', e);
     }
   }
 

@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from dashboard.models import Project
+from detail_project.timeline_utils import apply_project_timeline_change
 
 
 User = get_user_model()
@@ -124,24 +125,34 @@ class MassEditProjectTests(TestCase):
         self.project_a.refresh_from_db()
         self.assertEqual(self.project_a.anggaran_owner, Decimal("1000000"))
 
-    @patch("dashboard.views_mass_edit.reset_project_progress")
-    def test_mass_edit_resets_progress_when_start_date_changes(self, reset_mock):
-        response = self._post(
-            [
-                {
-                    "id": self.project_a.pk,
-                    "tanggal_mulai": "2026-02-01",
-                }
-            ]
-        )
+    def test_mass_edit_start_change_goes_through_timeline_service(self):
+        """Langkah 1.3 — dulu memanggil `reset_project_progress` (T-01).
+
+        Project tanpa progress adalah kasus aman: tanggal tersimpan dan jadwal
+        dibangun ulang lewat `apply_project_timeline_change`, tanpa penghapusan.
+        Kasus yang tidak aman diuji di
+        `detail_project/tests_timeline_mass_edit_safety.py`.
+        """
+        with patch(
+            "dashboard.views_mass_edit.apply_project_timeline_change",
+            wraps=apply_project_timeline_change,
+        ) as apply_mock:
+            response = self._post(
+                [
+                    {
+                        "id": self.project_a.pk,
+                        "tanggal_mulai": "2026-02-01",
+                    }
+                ]
+            )
 
         self.assertEqual(response.status_code, 200, response.content)
         self.project_a.refresh_from_db()
         self.assertEqual(self.project_a.tanggal_mulai, date(2026, 2, 1))
-        reset_mock.assert_called_once()
-        reset_project = reset_mock.call_args.args[0]
-        self.assertEqual(reset_project.pk, self.project_a.pk)
-        self.assertEqual(reset_mock.call_args.kwargs, {"regenerate_weekly": True})
+        apply_mock.assert_called_once()
+        self.assertEqual(apply_mock.call_args.args[0].pk, self.project_a.pk)
+        self.assertEqual(apply_mock.call_args.kwargs["resolution"], "none")
+        self.assertEqual(response.json()["needs_decision"], [])
 
 
 class MassEditFrontendGuardTests(TestCase):
@@ -156,6 +167,22 @@ class MassEditFrontendGuardTests(TestCase):
         self.assertIn("if (!projectId || !selectedProjectIds.has(projectId)) return;", script)
         self.assertIn("const DEFAULT_FIELD_NAMES = [", script)
         self.assertIn("draftValues.has(key)", script)
+
+    def test_frontend_reports_projects_that_need_a_timeline_decision(self):
+        """Langkah 2.2 — ringkasan agregat, bukan muat ulang yang menelan laporan."""
+        source = "dashboard/static/dashboard/js/mass-edit-toggle.js"
+        with open(source, encoding="utf-8") as handle:
+            script = handle.read()
+
+        self.assertIn("function renderTimelineDecisions(", script)
+        self.assertIn("Array.isArray(data.needs_decision)", script)
+        # Ada project yang perlu keputusan -> JANGAN muat ulang otomatis.
+        self.assertIn("if (pending.length) {", script)
+        # Tautan ke form edit tunggal tempat dialog resolusi tersedia.
+        self.assertIn("/edit/`", script)
+        # Nama project berasal dari input user: tidak boleh lewat innerHTML.
+        self.assertIn("link.textContent = item.nama", script)
+        self.assertNotIn("innerHTML = item.nama", script)
 
     def test_frontend_preserves_empty_optional_values_in_payload(self):
         source = (

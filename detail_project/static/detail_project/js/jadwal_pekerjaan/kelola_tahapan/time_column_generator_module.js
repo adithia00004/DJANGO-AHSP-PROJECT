@@ -62,7 +62,7 @@
 
     const end = projectData.tanggal_selesai
       ? new Date(projectData.tanggal_selesai)
-      : (state.projectEnd ? new Date(state.projectEnd) : new Date(start.getFullYear(), 11, 31));
+      : (state.projectEnd ? new Date(state.projectEnd) : null);
 
     return { start, end };
   }

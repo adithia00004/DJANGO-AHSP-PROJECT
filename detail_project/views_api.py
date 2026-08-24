@@ -1469,7 +1469,15 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
                         ])
 
-                    source_change_state["reload_jobs"].add(pobj.id)
+                    # SYN-01: tandai "detail perlu dimuat ulang" HANYA untuk baris yang
+                    # benar-benar berganti sumber. Cabang "Update biasa" (reorder /
+                    # rename / pindah sub) tidak mengubah komposisi AHSP, sedangkan
+                    # payload List Pekerjaan selalu berisi POHON PENUH - menandainya
+                    # membuat Template AHSP meminta reload seluruh pekerjaan setiap
+                    # kali disimpan (dan ikut mengunci form Harga Items).
+                    # `replace` = _is_reset_change(), SSOT yang sama dengan preview N2.
+                    if replace:
+                        source_change_state["reload_jobs"].add(pobj.id)
                     if change_was_applied:
                         _log_source_change_audit(
                             pobj,
@@ -1891,7 +1899,7 @@ def api_list_pekerjaan_destructive_impact(request: HttpRequest, project_id: int)
 
 # ---------- View 2: Volume ----------
 @login_required
-@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe, stops runaway floods
+@rate_limit(category='sync_frequent')  # WP-P3b (VP-07): autosave-safe sync guard
 @limit_request_body()  # WP-P3b (VP-07): cap body size (DoS guard)
 @require_POST
 @transaction.atomic
@@ -2318,7 +2326,7 @@ def _auto_cleanup_orphans(project):
 
 @login_required
 @require_POST
-@rate_limit(category='write')  # TA-07: throttle write floods
+@rate_limit(category='write_interactive', methods=('POST',))  # TA-07: frequent save per pekerjaan
 @limit_request_body()  # TA-07: cap body size (DoS guard)
 @transaction.atomic
 def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pekerjaan_id: int):
@@ -3827,7 +3835,8 @@ def api_project_rab_total(request: HttpRequest, project_id: int):
 
 # ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
-@rate_limit(max_requests=240, window=60)  # HI-10 sweep: pricing panel is read/write and polled by UI
+@rate_limit(category='read_interactive', methods=('GET',))  # HI-10: interactive pricing reads
+@rate_limit(category='sync_frequent', methods=('POST',))  # HI-10: pricing writes/sync
 @limit_request_body()  # HI-10 sweep: reject oversized pricing payloads before parsing
 @require_http_methods(["GET","POST"])
 def api_project_pricing(request: HttpRequest, project_id: int):
@@ -3977,7 +3986,8 @@ def build_project_parameters_payload(project):
 
 
 @login_required
-@rate_limit(max_requests=240, window=60)  # HI-10 sweep: parameter editor read/write endpoint
+@rate_limit(category='read_interactive', methods=('GET',))  # Parameter reads/polling
+@rate_limit(category='sync_frequent', methods=('POST',))  # Parameter writes/sync
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
@@ -4311,7 +4321,7 @@ def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id
 
 
 @login_required
-@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe
+@rate_limit(category='sync_frequent')  # WP-P3b (VP-07): autosave-safe sync guard
 @limit_request_body()  # WP-P3b (VP-07)
 @require_POST
 @transaction.atomic
@@ -4488,7 +4498,8 @@ def build_project_computed_parameters_payload(project):
 
 
 @login_required
-@rate_limit(max_requests=240, window=60)  # HI-10 sweep: computed-parameter editor read/write endpoint
+@rate_limit(category='read_interactive', methods=('GET',))  # Computed parameter reads
+@rate_limit(category='sync_frequent', methods=('POST',))  # Computed parameter writes/sync
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
@@ -4580,7 +4591,7 @@ def api_project_computed_parameters(request: HttpRequest, project_id: int):
 
 
 @login_required
-@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe
+@rate_limit(category='sync_frequent')  # WP-P3b (VP-07): autosave-safe sync guard
 @limit_request_body()  # WP-P3b (VP-07)
 @require_POST
 @transaction.atomic
@@ -5597,7 +5608,8 @@ def export_rekap_kebutuhan_xlsx(request: HttpRequest, project_id: int):
 
 @login_required
 @require_http_methods(["GET", "POST"])
-@rate_limit(category='write')  # WP-P5g (RA-16)
+@rate_limit(category='read_interactive', methods=('GET',))  # RA-16: pricing reads
+@rate_limit(category='write_interactive', methods=('POST',))  # RA-16: pricing writes
 @limit_request_body()  # WP-P5g (RA-16)
 @transaction.atomic
 def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: int):
@@ -5888,7 +5900,8 @@ def build_volume_formula_state_payload(project):
 
 # ---------- View 7 Volume Formula State (GET/POST di endpoint yang sama) ----------
 @login_required
-@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe
+@rate_limit(category='read_interactive', methods=('GET',))  # Formula state reads
+@rate_limit(category='sync_frequent', methods=('POST',))  # Formula state writes/sync
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
@@ -9283,6 +9296,12 @@ def import_project_from_json(request: HttpRequest):
         
         # ========== Create Project ==========
         proj_data = data.get('project', {})
+        if not proj_data.get('tanggal_mulai') or not proj_data.get('tanggal_selesai'):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Backup project wajib memuat tanggal_mulai dan tanggal_selesai.',
+                'code': 'incomplete_timeline',
+            }, status=400)
         
         new_project = Project(
             owner=request.user,

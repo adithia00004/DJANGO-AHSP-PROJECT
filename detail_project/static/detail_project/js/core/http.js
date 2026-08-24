@@ -40,7 +40,13 @@
     else if (body && typeof body === 'object') errors = [{ message: body.message || 'Request failed' }];
     else errors = [{ message: 'Request failed' }];
 
-    return { ok: false, status, data: null, errors };
+    return {
+      ok: false,
+      status,
+      data: body,
+      errors,
+      retryAfter: Number(body?.retry_after || 0) || 0,
+    };
   }
 
   /**

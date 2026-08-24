@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
@@ -28,6 +29,8 @@ class Phase0DataSafetyTests(TestCase):
             lokasi_project="Jakarta",
             nama_client="Client",
             anggaran_owner=1000,
+            tanggal_mulai=date(2026, 1, 1),
+            tanggal_selesai=date(2026, 12, 31),
         )
         self.factory = RequestFactory()
 

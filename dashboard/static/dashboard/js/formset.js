@@ -176,26 +176,36 @@
       e.preventDefault();
 
       const nameAttr = target.getAttribute('name') || '';
-      const match = nameAttr.match(new RegExp(`^${prefix}-(\\d+)-`));
+      const match = nameAttr.match(new RegExp(`^${prefix}-(\\d+)-(.+)$`));
       const startIndex = match ? parseInt(match[1], 10) : getTotal();
 
       const needRows = startIndex + table.length;
       const toAdd = needRows - getTotal();
       if (toAdd > 0) bulkAddRows(toAdd);
 
+      // Harus sama persis dengan urutan kolom pada tabel/modal.
+      // tahun_project tidak ditampilkan pada form ini, sedangkan field tanggal
+      // wajib disertakan agar paste Excel tidak bergeser.
       const COLUMN_FIELDS = [
-        'nama','tahun_project','sumber_dana','lokasi_project','nama_client','anggaran_owner',
-        'ket_project1','ket_project2','jabatan_client','instansi_client',
-        'nama_kontraktor','instansi_kontraktor',
-        'nama_konsultan_perencana','instansi_konsultan_perencana',
-        'nama_konsultan_pengawas','instansi_konsultan_pengawas',
+        'nama', 'sumber_dana', 'lokasi_project', 'nama_client', 'anggaran_owner',
+        'tanggal_mulai', 'tanggal_selesai', 'durasi_hari',
+        'ket_project1', 'ket_project2', 'jabatan_client', 'instansi_client',
+        'nama_kontraktor', 'instansi_kontraktor',
+        'nama_konsultan_perencana', 'instansi_konsultan_perencana',
+        'nama_konsultan_pengawas', 'instansi_konsultan_pengawas',
       ];
+
+      // Paste satu sel atau beberapa sel harus dimulai dari kolom tempat
+      // cursor berada, bukan selalu dari kolom pertama.
+      const targetField = match ? match[2] : '';
+      const targetColumn = COLUMN_FIELDS.indexOf(targetField);
+      const startColumn = targetColumn >= 0 ? targetColumn : 0;
 
       for (let r = 0; r < table.length; r++) {
         const rowIndex = startIndex + r;
         const cols = table[r];
-        for (let c = 0; c < COLUMN_FIELDS.length; c++) {
-          const field = COLUMN_FIELDS[c];
+        for (let c = 0; c < cols.length && (startColumn + c) < COLUMN_FIELDS.length; c++) {
+          const field = COLUMN_FIELDS[startColumn + c];
           const rawVal = cols[c] != null ? String(cols[c]).trim() : '';
           const input = body.querySelector(`[name="${prefix}-${rowIndex}-${field}"]`);
           if (!input) continue;

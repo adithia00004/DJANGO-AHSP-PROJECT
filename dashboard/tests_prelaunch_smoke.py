@@ -96,6 +96,7 @@ class PrelaunchFunctionalSmokeTests(TestCase):
                 "form-MAX_NUM_FORMS": "1000",
                 "form-0-nama": "Project Smoke",
                 "form-0-tanggal_mulai": "2026-01-01",
+                "form-0-tanggal_selesai": "2026-12-31",
                 "form-0-sumber_dana": "APBD",
                 "form-0-lokasi_project": "Jakarta",
                 "form-0-nama_client": "Client Smoke",
@@ -110,6 +111,7 @@ class PrelaunchFunctionalSmokeTests(TestCase):
             {
                 "nama": "Project Smoke Updated",
                 "tanggal_mulai": "2026-01-01",
+                "tanggal_selesai": "2026-12-31",
                 "sumber_dana": "APBD",
                 "lokasi_project": "Bandung",
                 "nama_client": "Client Smoke Updated",
@@ -661,6 +663,7 @@ class PrelaunchFunctionalSmokeTests(TestCase):
             headers=[
                 "nama",
                 "tanggal_mulai",
+                "tanggal_selesai",
                 "sumber_dana",
                 "lokasi_project",
                 "nama_client",
@@ -668,8 +671,8 @@ class PrelaunchFunctionalSmokeTests(TestCase):
                 "kategori",
             ],
             rows=[
-                ["Project Upload A", "2026-02-01", "APBD", "Bandung", "Client A", "1000000", "Infrastruktur"],
-                ["Project Upload B", "2026-02-02", "APBN", "Jakarta", "Client B", "2000000", "Gedung"],
+                ["Project Upload A", "2026-02-01", "2026-12-31", "APBD", "Bandung", "Client A", "1000000", "Infrastruktur"],
+                ["Project Upload B", "2026-02-02", "2026-12-31", "APBN", "Jakarta", "Client B", "2000000", "Gedung"],
             ],
         )
 
@@ -742,10 +745,10 @@ class PrelaunchFunctionalSmokeTests(TestCase):
     def test_project_upload_duplicate_name_in_file_is_skipped(self):
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))
         upload_file = self._build_upload_file(
-            headers=["nama", "tanggal_mulai", "sumber_dana", "lokasi_project", "nama_client", "anggaran_owner"],
+            headers=["nama", "tanggal_mulai", "tanggal_selesai", "sumber_dana", "lokasi_project", "nama_client", "anggaran_owner"],
             rows=[
-                ["Project Duplicate Upload", "2026-02-01", "APBD", "Bandung", "Client A", "1000000"],
-                ["Project Duplicate Upload", "2026-02-05", "APBN", "Jakarta", "Client B", "2000000"],
+                ["Project Duplicate Upload", "2026-02-01", "2026-12-31", "APBD", "Bandung", "Client A", "1000000"],
+                ["Project Duplicate Upload", "2026-02-05", "2026-12-31", "APBN", "Jakarta", "Client B", "2000000"],
             ],
         )
         response = self.client.post(

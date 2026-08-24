@@ -18,9 +18,14 @@ import logging
 from .forms import ProjectForm, ProjectFilterForm, UploadProjectForm
 from .models import Project
 from detail_project.exceptions import DeepCopyBusinessError, DeepCopyValidationError
-from detail_project.progress_utils import reset_project_progress
 from detail_project.services import DeepCopyService
 from detail_project.models import PekerjaanProgressWeekly, Pekerjaan
+from detail_project.timeline_utils import (
+    TimelineChangeError,
+    analyze_project_timeline_change,
+    apply_project_timeline_change,
+    build_resolution_preview,
+)
 
 import openpyxl
 
@@ -34,9 +39,9 @@ UPLOAD_REQUIRED_HEADERS = [
     "lokasi_project",
     "nama_client",
     "anggaran_owner",
+    "tanggal_selesai",
 ]
 UPLOAD_OPTIONAL_HEADERS = [
-    "tanggal_selesai",
     "durasi_hari",
     "ket_project1",
     "ket_project2",
@@ -78,6 +83,42 @@ _JSON_SCRIPT_ESCAPES = {
 
 def _safe_inline_json(value):
     return mark_safe(json.dumps(value, cls=DecimalEncoder).translate(_JSON_SCRIPT_ESCAPES))
+
+
+def _parse_expected_revision(request):
+    """Baca kunci optimistik jadwal dari form (G-5).
+
+    Dikirim sebagai hidden input dan dipertahankan apa adanya saat dialog dampak
+    dirender ulang, sehingga perubahan dari tab lain tetap terdeteksi meski user
+    berlama-lama memilih resolusi.
+    """
+    raw = request.POST.get('timeline_revision')
+    if raw in (None, ''):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _timeline_blocking_message(impact):
+    """Alasan penolakan dalam bahasa user, menyebut minggu yang bermasalah."""
+    weeks = impact.get('blocking_week_numbers') or []
+    week_text = (
+        ' Minggu bermasalah: ' + ', '.join(str(number) for number in weeks) + '.'
+        if weeks else ''
+    )
+    if impact.get('blocking_reason') == 'actual_present_start_shift':
+        return (
+            'Tanggal mulai tidak dapat digeser karena project sudah memiliki '
+            'realisasi. Menggeser tanggal mulai akan memindahkan seluruh batas '
+            'minggu, sedangkan realisasi adalah catatan yang sudah terjadi dan '
+            'tidak dipindahkan otomatis.' + week_text
+        )
+    return (
+        'Tanggal baru melewati minggu yang sudah memiliki realisasi atau biaya '
+        'aktual. Perubahan dibatalkan.' + week_text
+    )
 
 
 def _get_safe_next(request, default_name='dashboard:dashboard'):
@@ -601,21 +642,94 @@ def project_detail(request, pk):
 def project_edit(request, pk):
     project = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
     original_start = project.tanggal_mulai
+    original_end = project.tanggal_selesai
     next_url = _get_safe_next(request)
+    timeline_impact = None
+    timeline_previews = None
+    # G-5: kunci optimistik yang sama dengan jalur API. Tanpa ini dua tab
+    # dashboard dapat saling menimpa, dan dialog dampak justru memperlebar
+    # jendela waktu antara analisis dan commit.
+    expected_revision = _parse_expected_revision(request)
     if request.method == 'POST':
         form = ProjectForm(request.POST, instance=project)
         if form.is_valid():
             new_start = form.cleaned_data.get('tanggal_mulai')
-            start_changed = (original_start or None) != (new_start or None)
+            new_end = form.cleaned_data.get('tanggal_selesai')
+            timeline_changed = (
+                (original_start or None) != (new_start or None)
+                or (original_end or None) != (new_end or None)
+            )
+            resolution = request.POST.get('timeline_resolution') or 'none'
 
-            with transaction.atomic():
-                updated_project = form.save()
-                if start_changed:
-                    reset_project_progress(updated_project, regenerate_weekly=True)
-                    messages.warning(
-                        request,
-                        'Tanggal mulai berubah. Semua progress direset dan periode weekly dihitung ulang.'
-                    )
+            if timeline_changed:
+                try:
+                    timeline_impact = analyze_project_timeline_change(project, new_start, new_end)
+                    allowed = timeline_impact.get('allowed_resolutions') or []
+                    blocking = timeline_impact.get('blocking_reason')
+
+                    if blocking:
+                        form.add_error(None, _timeline_blocking_message(timeline_impact))
+                    elif resolution and resolution in allowed:
+                        apply_project_timeline_change(
+                            project,
+                            new_start,
+                            new_end,
+                            resolution=resolution,
+                            user=request.user,
+                            expected_revision=expected_revision,
+                        )
+                    elif allowed == ['none']:
+                        # Tidak ada rencana terdampak: bangun ulang tanpa dialog.
+                        apply_project_timeline_change(
+                            project,
+                            new_start,
+                            new_end,
+                            resolution='none',
+                            user=request.user,
+                            expected_revision=expected_revision,
+                        )
+                    else:
+                        # Perlu keputusan user: siapkan proyeksi tiap opsi yang sah
+                        # dari planner yang sama dengan yang nanti melakukan commit.
+                        timeline_previews = [
+                            build_resolution_preview(project, new_start, new_end, option)
+                            for option in allowed
+                        ]
+                        form.add_error(
+                            None,
+                            'Perubahan tanggal ini memengaruhi rencana progress. '
+                            'Pilih cara penataan minggunya pada ringkasan dampak di bawah.',
+                        )
+                except TimelineChangeError as exc:
+                    timeline_impact = exc.impact or timeline_impact
+                    form.add_error(None, str(exc))
+
+            if form.errors:
+                return render(request, 'dashboard/project_form.html', {
+                    'form': form,
+                    'title': 'Edit Project',
+                    'project': project,
+                    'next_url': next_url,
+                    'timeline_impact': timeline_impact,
+                    'timeline_previews': timeline_previews,
+                    # Pertahankan kunci yang dikirim user; bila halaman lama tidak
+                    # mengirimnya, mulai mengunci dari titik ini daripada tidak
+                    # mengunci sama sekali.
+                    'timeline_revision': (
+                        expected_revision
+                        if expected_revision is not None
+                        else project.schedule_revision
+                    ),
+                })
+
+            # Timeline service has already saved and rebuilt the schedule when
+            # dates changed. Save the remaining project fields afterward.
+            if timeline_changed:
+                # The timeline service locks and updates a fresh Project row.
+                # Refresh only the internal revision. A full refresh would
+                # discard ModelForm's cleaned metadata before form.save().
+                project.refresh_from_db(fields=['schedule_revision'])
+            form.save()
 
             messages.success(request, 'Project berhasil diperbarui.')
             return redirect(_get_safe_next(request))
@@ -626,6 +740,9 @@ def project_edit(request, pk):
         'title': 'Edit Project',
         'project': project,
         'next_url': next_url,
+        'timeline_impact': timeline_impact,
+        'timeline_previews': timeline_previews,
+        'timeline_revision': project.schedule_revision,
     })
 
 

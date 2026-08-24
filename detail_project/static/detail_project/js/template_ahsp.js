@@ -2003,9 +2003,12 @@
       console.log('[SAVE] Response:', js);
 
       // IMPROVED: Use user_message from server for better UX
-      if (!js.ok) {
+      const saveOk = js.ok ?? js.success;
+      if (!saveOk) {
         // Server returned error with user-friendly message
-        const userMsg = js.user_message || 'Gagal menyimpan data. Silakan coba lagi.';
+        const retryAfter = Number(js.retry_after || 0);
+        const retryHint = retryAfter > 0 ? ` Coba lagi dalam ${retryAfter} detik.` : '';
+        const userMsg = js.user_message || js.message || `Gagal menyimpan data.${retryHint}`;
         toast(userMsg, 'error');
         console.error('[SAVE] Server errors:', js.errors || []);
         // FIX (#1): REJECT pada gagal penuh agar pemanggil (auto-save sebelum pindah
@@ -2016,7 +2019,7 @@
         return Promise.reject(error);
       }
 
-      let userMsg = js.user_message || 'Data berhasil disimpan.';
+      let userMsg = js.user_message || js.message || 'Data berhasil disimpan.';
 
         // ENHANCED: Show bundle expansion feedback
         const rawRows = js.saved_raw_rows || 0;

@@ -107,9 +107,6 @@ class JadwalKegiatanApp {
         end = parsedEnd;
       }
     }
-    if (start && (!end || Number.isNaN(end.getTime()))) {
-      end = new Date(start.getFullYear(), 11, 31);
-    }
     return { start, end };
   }
 
@@ -456,6 +453,10 @@ class JadwalKegiatanApp {
     this.state.projectName = dataset.projectName || this.state.projectName;
     this.state.projectStart = dataset.projectStart || this.state.projectStart;
     this.state.projectEnd = dataset.projectEnd || this.state.projectEnd;
+    const scheduleRevision = Number.parseInt(dataset.scheduleRevision || '', 10);
+    if (Number.isFinite(scheduleRevision) && scheduleRevision > 0) {
+      this.state.scheduleRevision = scheduleRevision;
+    }
 
     // Additional project info for exports
     this.state.projectLocation = dataset.projectLocation || this.state.projectLocation || '-';
@@ -1668,7 +1669,10 @@ class JadwalKegiatanApp {
           'Content-Type': 'application/json',
           'X-CSRFToken': this._getCsrfToken(),
         },
-        body: JSON.stringify({ mode: progressMode }),  // Phase 2E.1: Send mode parameter
+        body: JSON.stringify({
+          mode: progressMode,
+          schedule_revision: this.state.scheduleRevision,
+        }),  // Phase 2E.1: Send mode parameter
       });
 
       if (!response.ok) {
@@ -1677,6 +1681,9 @@ class JadwalKegiatanApp {
       }
 
       const result = await response.json().catch(() => ({}));
+      if (Number.isFinite(Number(result?.schedule_revision))) {
+        this.state.scheduleRevision = Number(result.schedule_revision);
+      }
       this._resetEditedCellsState();
       if (this.state.assignmentMap instanceof Map) {
         this.state.assignmentMap.clear();
@@ -1831,6 +1838,7 @@ class JadwalKegiatanApp {
       const body = JSON.stringify({
         week_start_day: payload.weekStartDay,
         week_end_day: payload.weekEndDay,
+        schedule_revision: this.state.scheduleRevision,
       });
 
       fetch(endpoint, {
@@ -1855,6 +1863,9 @@ class JadwalKegiatanApp {
             typeof data?.week_end_day !== 'undefined' ? data.week_end_day : payload.weekEndDay;
           this.state.weekStartDay = resolvedStart;
           this.state.weekEndDay = resolvedEnd;
+          if (Number.isFinite(Number(data?.schedule_revision))) {
+            this.state.scheduleRevision = Number(data.schedule_revision);
+          }
           this._regenerateTimeline({
             mode: 'weekly',
             weekStartDay: resolvedStart,
@@ -1922,8 +1933,9 @@ class JadwalKegiatanApp {
                 typeof weekStartDay === 'number' ? weekStartDay : this._getWeekStartDay(),
               week_end_day:
                 typeof weekEndDay === 'number' ? weekEndDay : this._getWeekEndDay(),
+              schedule_revision: this.state.scheduleRevision,
             }
-            : {}),
+            : { schedule_revision: this.state.scheduleRevision }),
         }),
       });
 
@@ -1933,6 +1945,7 @@ class JadwalKegiatanApp {
 
       this._invalidateCachedDataset();
       await this._loadInitialData({ forceReload: true });
+      this.state.timelineNeedsRegen = false;
       const successMessage =
         mode === 'monthly' ? 'Struktur monthly diperbarui (read-only)' : 'Periode minggu diperbarui';
       this.showToast(successMessage, 'success', 2200);

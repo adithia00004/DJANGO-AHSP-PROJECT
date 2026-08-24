@@ -689,7 +689,8 @@
     const payload = {
       assignments: weeklyAssignments,
       mode: state.progressMode || 'planned',
-      week_end_day: state.weekEndDay || 6
+      week_end_day: state.weekEndDay || 6,
+      schedule_revision: state.scheduleRevision
     };
     bootstrap.log.info(`SaveHandler: - POST ${url}`, payload);
 
@@ -741,7 +742,7 @@
       // Call API to reset progress
       const response = await apiCall(`/detail_project/api/v2/project/${state.projectId}/reset-progress/`, {
         method: 'POST',
-        body: JSON.stringify({})
+        body: JSON.stringify({ mode: state.progressMode || 'planned' })
       });
 
       if (response.ok) {
@@ -758,19 +759,19 @@
         showSuccessModal(
           'Progress Berhasil Direset!',
           'Semua progress pekerjaan telah direset ke 0.',
-          `${response.deleted_count || 0} record progress telah dihapus dari database.`
+          `${response.updated_count || 0} record progress telah diperbarui di database.`
         );
 
         // Also show toast
         showToast(
-          `✓ Progress berhasil direset (${response.deleted_count || 0} record dihapus)`,
+          `✓ Progress berhasil direset (${response.updated_count || 0} record diperbarui)`,
           'success'
         );
         updateStatusBar();
 
         return {
           success: true,
-          deletedCount: response.deleted_count || 0,
+          updatedCount: response.updated_count || 0,
         };
       } else {
         throw new Error(response.error || 'Failed to reset progress');

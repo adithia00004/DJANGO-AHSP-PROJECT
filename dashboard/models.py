@@ -80,6 +80,10 @@ class Project(models.Model):
         null=True,
         help_text='Angka hari akhir minggu (0=Senin, 1=Selasa ... 6=Minggu) untuk siklus progress mingguan'
     )
+    schedule_revision = models.PositiveIntegerField(
+        default=1,
+        help_text='Versi struktur jadwal untuk mencegah penyimpanan dari halaman yang sudah kedaluwarsa'
+    )
 
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -97,9 +101,16 @@ class Project(models.Model):
         return f"{self.index_project or 'PRJ-NEW'} — {self.nama}"
 
     def save(self, *args, **kwargs):
-        from datetime import date, timedelta
+        from datetime import date
 
         creating = self._state.adding and not self.index_project
+
+        previous = None
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                'tanggal_mulai', 'tanggal_selesai', 'week_start_day',
+                'week_end_day', 'schedule_revision'
+            ).first()
 
         # Provide safe defaults when callers omit mandatory business fields (e.g., in unit tests)
         if not getattr(self, "sumber_dana", None):
@@ -131,22 +142,27 @@ class Project(models.Model):
         if self.tanggal_mulai:
             self.tahun_project = self.tanggal_mulai.year
 
-            if not self.tanggal_selesai:
-                # Default: 31 Desember tahun project, or 1 year from start if that's in the past
-                year = self.tanggal_mulai.year
-                proposed_end = date(year, 12, 31)
-
-                # Ensure tanggal_selesai is after tanggal_mulai
-                if proposed_end <= self.tanggal_mulai:
-                    # If proposed end date is in the past, set to 1 year from start
-                    self.tanggal_selesai = self.tanggal_mulai + timedelta(days=365)
-                else:
-                    self.tanggal_selesai = proposed_end
-
             if not self.durasi_hari and self.tanggal_selesai:
                 # Calculate duration from dates (ensure it's positive)
                 delta = (self.tanggal_selesai - self.tanggal_mulai).days + 1
                 self.durasi_hari = max(1, delta)  # Ensure minimum 1 day
+
+        structure_changed = bool(previous and any(
+            previous.get(field) != getattr(self, field)
+            for field in ('tanggal_mulai', 'tanggal_selesai', 'week_start_day', 'week_end_day')
+        ))
+        if previous:
+            current_revision = previous.get('schedule_revision') or 1
+            if structure_changed:
+                self.schedule_revision = current_revision + 1
+            elif not self.schedule_revision:
+                self.schedule_revision = current_revision
+        elif not self.schedule_revision:
+            self.schedule_revision = 1
+
+        update_fields = kwargs.get('update_fields')
+        if structure_changed and update_fields is not None:
+            kwargs['update_fields'] = set(update_fields) | {'schedule_revision'}
 
         super().save(*args, **kwargs)
 

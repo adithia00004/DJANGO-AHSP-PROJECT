@@ -1,0 +1,796 @@
+"""Project timeline safety helpers for the Jadwal Pekerjaan workflow.
+
+The weekly table is canonical.  This module keeps timeline impact analysis and
+the mutation path in one place so the project form and API cannot implement
+different trimming rules.
+"""
+
+from collections import defaultdict
+from datetime import timedelta
+from decimal import ROUND_HALF_UP, Decimal
+from fractions import Fraction
+
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import F, Q
+
+from detail_project.models import (
+    DetailAHSPAudit,
+    Pekerjaan,
+    PekerjaanProgressWeekly,
+    TahapPelaksanaan,
+)
+from detail_project.progress_utils import (
+    _build_weekly_tahapan_instances,
+    build_week_buckets,
+    sync_weekly_to_tahapan,
+)
+
+
+# --- Resolusi ---------------------------------------------------------------
+#
+# Legacy: arti dipertahankan persis seperti sebelum mesin resolusi ada, supaya
+# `tests_timeline_crud_hardening.py` tetap hijau tanpa dimodifikasi (doc 37 §6).
+# `trim_planned` kini disupersede oleh `follow_date` dan tidak lagi ditawarkan
+# di UI setelah Fase 2 — ia hanya me-nol-kan nilai dan meninggalkan barisnya
+# (T-06), sedangkan resolusi mesin membereskan barisnya.
+RESOLUTION_NONE = 'none'
+RESOLUTION_TRIM_PLANNED = 'trim_planned'
+
+# Mesin resolusi (doc 38 §3).
+RESOLUTION_KEEP_ORDINAL = 'keep_ordinal'          # "Pertahankan urutan minggu"
+RESOLUTION_ACCUMULATE_EDGE = 'accumulate_edge'    # "Padatkan ke minggu batas"
+RESOLUTION_FOLLOW_DATE = 'follow_date'            # "Hapus yang di luar jadwal baru"
+
+LEGACY_RESOLUTIONS = frozenset({RESOLUTION_NONE, RESOLUTION_TRIM_PLANNED})
+ENGINE_RESOLUTIONS = frozenset({
+    RESOLUTION_KEEP_ORDINAL,
+    RESOLUTION_ACCUMULATE_EDGE,
+    RESOLUTION_FOLLOW_DATE,
+})
+ALL_RESOLUTIONS = LEGACY_RESOLUTIONS | ENGINE_RESOLUTIONS
+
+# Baris diparkir ke rentang week_number di luar jangkauan sebelum ditata ulang,
+# supaya UNIQUE (pekerjaan, week_number) tidak pernah bentrok di tengah operasi.
+_PARK_OFFSET = 100000
+
+_PERCENT_MAX = Decimal('100.00')
+_PERCENT_TOLERANCE = Decimal('0.01')
+
+
+class TimelineChangeError(ValidationError):
+    """Validation error carrying a serializable impact payload."""
+
+    def __init__(self, message, impact=None):
+        super().__init__(message)
+        self.impact = impact or {}
+
+
+def _actual_filter():
+    return Q(actual_proportion__gt=0) | Q(actual_cost__isnull=False)
+
+
+def _overlap_days(a_start, a_end, b_start, b_end):
+    """Jumlah hari tumpang tindih antara dua rentang tanggal inklusif."""
+    lo = max(a_start, b_start)
+    hi = min(a_end, b_end)
+    return (hi - lo).days + 1 if hi >= lo else 0
+
+
+def _distribute(value, weights):
+    """Bagi ``value`` menurut ``weights`` dengan jumlah 2 desimal terjaga persis.
+
+    Metode sisa terbesar (largest remainder): kuantisasi ke sen, alokasikan
+    proporsional dengan pembulatan ke bawah, lalu bagikan sisa sen ke bagian
+    pecahan terbesar. Pembulatan per bagian akan menggeser total; cara ini tidak.
+    """
+    count = len(weights)
+    if count == 0:
+        return []
+    if value is None:
+        return [None] * count
+
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        return [Decimal('0.00')] * count
+
+    cents = int((Decimal(value) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    if cents == 0:
+        return [Decimal('0.00')] * count
+
+    exact = [Fraction(cents * weight, total_weight) for weight in weights]
+    floors = [int(part) for part in exact]
+    leftover = cents - sum(floors)
+    if leftover:
+        order = sorted(
+            range(count),
+            key=lambda i: (exact[i] - floors[i], -i),
+            reverse=True,
+        )
+        for i in order[:leftover]:
+            floors[i] += 1
+
+    return [(Decimal(cent) / 100).quantize(Decimal('0.01')) for cent in floors]
+
+
+def expected_week_count(project_start, project_end, week_end_day=6):
+    """Return the number of canonical weekly buckets for a date range."""
+    if not project_start or not project_end or project_end < project_start:
+        return 0
+
+    week_end_day = int(week_end_day if week_end_day is not None else 6) % 7
+    first_week_end = project_start + timedelta(
+        days=(week_end_day - project_start.weekday()) % 7
+    )
+    if project_end <= first_week_end:
+        return 1
+    return 1 + ((project_end - first_week_end).days + 6) // 7
+
+
+def invalidate_schedule_caches(project_id, pekerjaan_ids=None):
+    """Invalidate all known Jadwal v2 read caches for a project."""
+    if pekerjaan_ids is None:
+        pekerjaan_ids = Pekerjaan.objects.filter(project_id=project_id).values_list(
+            'id', flat=True
+        )
+
+    for pekerjaan_id in pekerjaan_ids:
+        cache.delete(f"v2_weekly_progress:{project_id}:{pekerjaan_id}:v1")
+        for mode in ('daily', 'weekly', 'monthly', 'custom'):
+            cache.delete(
+                f"v2_pekerjaan_assignments:{project_id}:{pekerjaan_id}:{mode}:v1"
+            )
+
+    cache.delete(f"v2_assignments:{project_id}:v1")
+
+
+def _affected_filter(new_start, new_end):
+    return Q(week_end_date__gt=new_end) | Q(week_start_date__lt=new_start)
+
+
+def _persisted_timeline(project):
+    """Tanggal proyek versi DATABASE, bukan versi in-memory.
+
+    `ModelForm.is_valid()` menempelkan `cleaned_data` ke `form.instance` lewat
+    `_post_clean`, jadi pemanggil yang meneruskan instance form akan membawa
+    tanggal BARU di atributnya. Membandingkan tanggal baru dengan tanggal baru
+    membuat `start_changed` selalu False — dan gerbang realisasi ikut salah pilih
+    cabang. Karena itu tanggal lama selalu dibaca ulang di sini, bukan dipercaya
+    dari atribut instance.
+    """
+    if not getattr(project, 'pk', None):
+        return project.tanggal_mulai, project.tanggal_selesai
+    persisted = (
+        type(project).objects
+        .filter(pk=project.pk)
+        .values('tanggal_mulai', 'tanggal_selesai')
+        .first()
+    )
+    if not persisted:
+        return project.tanggal_mulai, project.tanggal_selesai
+    return persisted['tanggal_mulai'], persisted['tanggal_selesai']
+
+
+def analyze_project_timeline_change(project, new_start, new_end):
+    """Analyze a proposed timeline without mutating project or progress data."""
+    if not new_start or not new_end:
+        raise TimelineChangeError(
+            'Tanggal mulai dan tanggal selesai wajib diisi.',
+            {'safe': False, 'reason': 'incomplete_timeline'},
+        )
+    if new_end < new_start:
+        raise TimelineChangeError(
+            'Tanggal selesai harus >= tanggal mulai.',
+            {'safe': False, 'reason': 'invalid_order'},
+        )
+
+    old_start, old_end = _persisted_timeline(project)
+    start_changed = (old_start or None) != new_start
+    end_changed = (old_end or None) != new_end
+    records = PekerjaanProgressWeekly.objects.filter(project=project)
+    affected = records.filter(_affected_filter(new_start, new_end))
+    planned = affected.filter(planned_proportion__gt=0)
+    actual = affected.filter(
+        Q(actual_proportion__gt=0) | Q(actual_cost__isnull=False)
+    )
+
+    values = list(
+        affected.filter(Q(planned_proportion__gt=0) | Q(actual_proportion__gt=0) | Q(actual_cost__isnull=False))
+        .values('week_number', 'week_start_date', 'week_end_date')
+        .order_by('week_number')
+    )
+    week_numbers = sorted({int(row['week_number']) for row in values})
+    start_dates = [row['week_start_date'] for row in values if row['week_start_date']]
+    end_dates = [row['week_end_date'] for row in values if row['week_end_date']]
+
+    # A start-date change changes the meaning of every relative week number.
+    # Do not silently shift or reset existing values until a dedicated shift
+    # policy is agreed. Empty/zero rows are safe to rebuild.
+    nonzero_count = records.filter(
+        Q(planned_proportion__gt=0)
+        | Q(actual_proportion__gt=0)
+        | Q(actual_cost__isnull=False)
+    ).count()
+    start_requires_policy = start_changed and nonzero_count > 0
+
+    # --- K-1: gerbang realisasi (tracker doc 39 §0 K-1) ----------------------
+    # Tolak hanya bila operasi memang akan MEMINDAHKAN atau MENGHAPUS realisasi,
+    # bukan sekadar karena realisasi ada:
+    #   * tanggal mulai bergeser -> seluruh batas minggu dihitung ulang, jadi
+    #     realisasi di mana pun ikut berpindah tanggal;
+    #   * tanggal selesai saja   -> hanya baris di luar jendela baru terancam;
+    #   * ujung diperpanjang     -> tidak ada baris yang berubah, selalu aman.
+    if start_changed:
+        blocking_qs = records.filter(_actual_filter())
+        blocking_reason = 'actual_present_start_shift' if blocking_qs.exists() else None
+    else:
+        blocking_qs = actual
+        blocking_reason = 'actual_out_of_window' if blocking_qs.exists() else None
+
+    blocking_week_numbers = (
+        sorted({
+            int(number)
+            for number in blocking_qs.values_list('week_number', flat=True)
+        })
+        if blocking_reason else []
+    )
+
+    # Opsi yang sah untuk bentuk perubahan ini (doc 37 §4.6, dipersempit ke tiga
+    # resolusi rilis pertama). UI tidak boleh menghitung ini sendiri.
+    if blocking_reason:
+        allowed_resolutions = []
+        recommended_resolution = None
+    elif start_requires_policy:
+        allowed_resolutions = [
+            RESOLUTION_KEEP_ORDINAL,
+            RESOLUTION_ACCUMULATE_EDGE,
+            RESOLUTION_FOLLOW_DATE,
+        ]
+        recommended_resolution = RESOLUTION_KEEP_ORDINAL
+    elif planned.exists():
+        allowed_resolutions = [
+            RESOLUTION_ACCUMULATE_EDGE,
+            RESOLUTION_FOLLOW_DATE,
+        ]
+        recommended_resolution = RESOLUTION_ACCUMULATE_EDGE
+    else:
+        allowed_resolutions = [RESOLUTION_NONE]
+        recommended_resolution = RESOLUTION_NONE
+
+    return {
+        'safe': not start_requires_policy and actual.count() == 0 and planned.count() == 0,
+        'start_changed': start_changed,
+        'end_changed': end_changed,
+        'start_requires_policy': start_requires_policy,
+        'blocking_reason': blocking_reason,
+        'blocking_week_numbers': blocking_week_numbers,
+        'allowed_resolutions': allowed_resolutions,
+        'recommended_resolution': recommended_resolution,
+        'planned_records': planned.count(),
+        'actual_records': actual.count(),
+        'affected_records': len(values),
+        'affected_week_numbers': week_numbers,
+        'affected_week_start': min(start_dates).isoformat() if start_dates else None,
+        'affected_week_end': max(end_dates).isoformat() if end_dates else None,
+        'old_start': old_start.isoformat() if old_start else None,
+        'old_end': old_end.isoformat() if old_end else None,
+        'new_start': new_start.isoformat(),
+        'new_end': new_end.isoformat(),
+        'new_week_count': expected_week_count(
+            new_start, new_end, getattr(project, 'week_end_day', 6)
+        ),
+    }
+
+
+def _snapshot_rows(rows):
+    """Snapshot penuh untuk audit — cukup untuk memulihkan keadaan sebelumnya.
+
+    `trim_planned` hanya menyimpan nilai planned lama; resolusi mesin dapat
+    memindahkan, menggabung, atau menghapus baris, jadi audit harus memuat
+    seluruh field yang dapat berubah (doc 37 §4.8).
+    """
+    return [
+        {
+            'pekerjaan_id': row.pekerjaan_id,
+            'week_number': row.week_number,
+            'week_start_date': row.week_start_date.isoformat() if row.week_start_date else None,
+            'week_end_date': row.week_end_date.isoformat() if row.week_end_date else None,
+            'planned_proportion': str(row.planned_proportion),
+            'actual_proportion': str(row.actual_proportion),
+            'actual_cost': str(row.actual_cost) if row.actual_cost is not None else None,
+        }
+        for row in rows
+    ]
+
+
+def plan_timeline_resolution(rows, buckets, new_start, resolution):
+    """Hitung keadaan canonical tujuan. Murni — tidak menyentuh database.
+
+    Mengembalikan ``(target, counts)`` di mana ``target`` memetakan
+    ``(pekerjaan_id, week_number)`` ke nilai gabungan, dan ``counts`` merangkum
+    nasib setiap baris sumber.
+    """
+    bucket_dates = {number: (start, end) for number, start, end in buckets}
+    first_number = buckets[0][0]
+    last_number = buckets[-1][0]
+
+    target = {}
+    counts = defaultdict(int)
+
+    def _add(pekerjaan_id, week_number, planned, actual, actual_cost):
+        cell = target.setdefault((pekerjaan_id, week_number), {
+            'planned': Decimal('0.00'),
+            'actual': Decimal('0.00'),
+            'actual_cost': None,
+        })
+        cell['planned'] += planned
+        cell['actual'] += actual
+        if actual_cost is not None:
+            cell['actual_cost'] = (cell['actual_cost'] or Decimal('0.00')) + actual_cost
+
+    for row in rows:
+        planned = row.planned_proportion or Decimal('0.00')
+        actual = row.actual_proportion or Decimal('0.00')
+        actual_cost = row.actual_cost
+
+        if resolution == RESOLUTION_KEEP_ORDINAL:
+            # Minggu ke-N tetap minggu ke-N; hanya tanggalnya dihitung ulang.
+            # Luapan saat durasi memendek DIHAPUS (keputusan owner G0-2).
+            if row.week_number in bucket_dates:
+                _add(row.pekerjaan_id, row.week_number, planned, actual, actual_cost)
+                counts['kept'] += 1
+            else:
+                counts['dropped'] += 1
+            continue
+
+        # Keluarga BY_DATE: nilai menempel pada tanggal kalendernya.
+        overlaps = [
+            (number, days)
+            for number, bucket_start, bucket_end in buckets
+            if (days := _overlap_days(
+                row.week_start_date, row.week_end_date, bucket_start, bucket_end
+            ))
+        ]
+
+        if overlaps:
+            weights = [days for _, days in overlaps]
+            if resolution == RESOLUTION_FOLLOW_DATE:
+                # Porsi baris yang jatuh di luar jendela baru memang dibuang;
+                # slot tambahan ini menampungnya lalu tidak dipakai.
+                row_days = (row.week_end_date - row.week_start_date).days + 1
+                outside_days = row_days - sum(weights)
+                if outside_days > 0:
+                    weights = weights + [outside_days]
+
+            planned_parts = _distribute(planned, weights)
+            actual_parts = _distribute(actual, weights)
+            cost_parts = _distribute(actual_cost, weights)
+
+            for index, (number, _) in enumerate(overlaps):
+                _add(
+                    row.pekerjaan_id,
+                    number,
+                    planned_parts[index],
+                    actual_parts[index],
+                    cost_parts[index],
+                )
+            counts['split' if len(overlaps) > 1 else 'kept'] += 1
+        elif resolution == RESOLUTION_ACCUMULATE_EDGE:
+            # Seluruhnya di luar jendela: tumpuk ke minggu batas terdekat.
+            number = first_number if row.week_end_date < new_start else last_number
+            _add(row.pekerjaan_id, number, planned, actual, actual_cost)
+            counts['accumulated'] += 1
+        else:
+            counts['dropped'] += 1
+
+    return target, dict(counts)
+
+
+RESOLUTION_LABELS = {
+    RESOLUTION_KEEP_ORDINAL: 'Pertahankan urutan minggu',
+    RESOLUTION_ACCUMULATE_EDGE: 'Padatkan ke minggu batas',
+    RESOLUTION_FOLLOW_DATE: 'Hapus yang di luar jadwal baru',
+    RESOLUTION_NONE: 'Simpan langsung',
+}
+
+RESOLUTION_HELP = {
+    RESOLUTION_KEEP_ORDINAL:
+        'Minggu ke-1 tetap minggu ke-1; hanya tanggalnya yang berubah. '
+        'Bila jadwal baru lebih pendek, minggu yang tidak lagi muat dihapus.',
+    RESOLUTION_ACCUMULATE_EDGE:
+        'Progress yang jatuh di luar jadwal baru ditumpuk ke minggu pertama '
+        'atau minggu terakhir. Total tidak berubah, hanya sebarannya.',
+    RESOLUTION_FOLLOW_DATE:
+        'Progress mengikuti tanggal kalendernya. Yang jatuh di luar jadwal baru '
+        'dibuang; yang di dalam tidak tersentuh.',
+    RESOLUTION_NONE:
+        'Tidak ada rencana progress yang terdampak; jadwal cukup dibangun ulang.',
+}
+
+
+def build_resolution_preview(project, new_start, new_end, resolution):
+    """Proyeksikan hasil sebuah resolusi TANPA menyentuh database.
+
+    Dialog dampak memakai fungsi ini supaya angka yang dilihat user berasal dari
+    planner yang sama dengan yang nanti melakukan commit — bukan perkiraan kedua
+    yang bisa menyimpang.
+    """
+    week_end_day = project.week_end_day if project.week_end_day is not None else 6
+    old_start, old_end = _persisted_timeline(project)
+    new_buckets = build_week_buckets(new_start, new_end, week_end_day)
+    old_buckets = build_week_buckets(old_start, old_end, week_end_day)
+
+    rows = list(
+        PekerjaanProgressWeekly.objects
+        .filter(project=project)
+        .order_by('pekerjaan_id', 'week_number')
+    )
+
+    before_by_week = defaultdict(lambda: Decimal('0.00'))
+    for row in rows:
+        before_by_week[row.week_number] += row.planned_proportion or Decimal('0.00')
+
+    counts = {}
+    after_by_week = defaultdict(lambda: Decimal('0.00'))
+    if resolution in ENGINE_RESOLUTIONS and new_buckets:
+        target, counts = plan_timeline_resolution(
+            rows, new_buckets, new_start, resolution
+        )
+        for (_, week_number), cell in target.items():
+            after_by_week[week_number] += cell['planned']
+    elif resolution == RESOLUTION_NONE:
+        # Tidak ada penataan: nilai bertahan pada nomor minggunya.
+        for week_number, value in before_by_week.items():
+            after_by_week[week_number] = value
+
+    old_dates = {number: (start, end) for number, start, end in old_buckets}
+    new_dates = {number: (start, end) for number, start, end in new_buckets}
+
+    weeks = []
+    for number in range(1, max(len(old_buckets), len(new_buckets)) + 1):
+        old_range = old_dates.get(number)
+        new_range = new_dates.get(number)
+        weeks.append({
+            'week_number': number,
+            'old_start': old_range[0] if old_range else None,
+            'old_end': old_range[1] if old_range else None,
+            'new_start': new_range[0] if new_range else None,
+            'new_end': new_range[1] if new_range else None,
+            'exists_after': new_range is not None,
+            'planned_before': before_by_week[number],
+            'planned_after': after_by_week[number],
+            'changed': before_by_week[number] != after_by_week[number],
+        })
+
+    total_before = sum(before_by_week.values(), Decimal('0.00'))
+    total_after = sum(after_by_week.values(), Decimal('0.00'))
+
+    return {
+        'resolution': resolution,
+        'label': RESOLUTION_LABELS.get(resolution, resolution),
+        'help': RESOLUTION_HELP.get(resolution, ''),
+        'weeks': weeks,
+        'old_week_count': len(old_buckets),
+        'new_week_count': len(new_buckets),
+        'total_planned_before': total_before,
+        'total_planned_after': total_after,
+        # K-2: `keep_ordinal` tidak lagi selalu lossless, jadi kehilangan harus
+        # ditampilkan eksplisit alih-alih disimpulkan user dari dua angka total.
+        'planned_lost': total_before - total_after,
+        'counts': counts,
+    }
+
+
+def _guard_target(target, impact):
+    """Post-condition R-6: batas kuantitas diperiksa, bukan diasumsikan.
+
+    Batas "total planned per pekerjaan <= 100%" hanya ditegakkan di
+    `api_assign_pekerjaan_weekly`; ia bukan constraint database, dan
+    `MaxValueValidator` hanya berjalan lewat `full_clean()` yang tidak dipakai
+    oleh `update()`/`bulk_update()`/`bulk_create()`. Baris yang melanggar bisa
+    sudah ada sejak copy service atau migrasi canonical, jadi hasil resolusi
+    diverifikasi di sini alih-alih dipercaya.
+    """
+    totals = defaultdict(lambda: {'planned': Decimal('0.00'), 'actual': Decimal('0.00')})
+
+    for (pekerjaan_id, week_number), cell in target.items():
+        for field in ('planned', 'actual'):
+            if cell[field] > _PERCENT_MAX + _PERCENT_TOLERANCE:
+                raise TimelineChangeError(
+                    f'Hasil penataan melebihi 100% pada satu minggu '
+                    f'(pekerjaan {pekerjaan_id}, minggu {week_number}). '
+                    f'Perubahan dibatalkan.',
+                    {**impact, 'blocking_reason': 'quantity_limit_exceeded'},
+                )
+            totals[pekerjaan_id][field] += cell[field]
+
+    for pekerjaan_id, total in totals.items():
+        for field in ('planned', 'actual'):
+            if total[field] > _PERCENT_MAX + _PERCENT_TOLERANCE:
+                raise TimelineChangeError(
+                    f'Total progress pekerjaan {pekerjaan_id} menjadi '
+                    f'{total[field]}% setelah penataan (maksimum 100%). '
+                    f'Perubahan dibatalkan.',
+                    {**impact, 'blocking_reason': 'quantity_limit_exceeded'},
+                )
+
+
+def _write_target(project, rows, target, buckets):
+    """Tata ulang baris canonical ke keadaan tujuan.
+
+    Pola dua fase untuk `unique_together = (pekerjaan, week_number)`: seluruh
+    baris diparkir ke rentang di luar jangkauan lebih dulu dalam satu statement,
+    sehingga tidak ada pasangan yang bentrok saat nomor minggu ditata ulang.
+    Baris yang ada dipakai ulang agar `created_at` tidak hilang.
+    """
+    bucket_dates = {number: (start, end) for number, start, end in buckets}
+
+    PekerjaanProgressWeekly.objects.filter(project=project).update(
+        week_number=F('week_number') + _PARK_OFFSET
+    )
+
+    pool = defaultdict(list)
+    for row in rows:
+        pool[row.pekerjaan_id].append(row)
+    cursor = defaultdict(int)
+
+    to_update = []
+    to_create = []
+    reused_ids = set()
+
+    for (pekerjaan_id, week_number), cell in sorted(target.items()):
+        week_start, week_end = bucket_dates[week_number]
+        index = cursor[pekerjaan_id]
+        row = None
+        if index < len(pool[pekerjaan_id]):
+            row = pool[pekerjaan_id][index]
+            cursor[pekerjaan_id] = index + 1
+
+        if row is not None:
+            row.week_number = week_number
+            row.week_start_date = week_start
+            row.week_end_date = week_end
+            row.planned_proportion = cell['planned']
+            row.actual_proportion = cell['actual']
+            row.actual_cost = cell['actual_cost']
+            to_update.append(row)
+            reused_ids.add(row.id)
+        else:
+            to_create.append(PekerjaanProgressWeekly(
+                project=project,
+                pekerjaan_id=pekerjaan_id,
+                week_number=week_number,
+                week_start_date=week_start,
+                week_end_date=week_end,
+                planned_proportion=cell['planned'],
+                actual_proportion=cell['actual'],
+                actual_cost=cell['actual_cost'],
+            ))
+
+    leftover_ids = [row.id for row in rows if row.id not in reused_ids]
+    if leftover_ids:
+        PekerjaanProgressWeekly.objects.filter(id__in=leftover_ids).delete()
+
+    if to_update:
+        PekerjaanProgressWeekly.objects.bulk_update(
+            to_update,
+            [
+                'week_number',
+                'week_start_date',
+                'week_end_date',
+                'planned_proportion',
+                'actual_proportion',
+                'actual_cost',
+            ],
+            batch_size=500,
+        )
+    if to_create:
+        PekerjaanProgressWeekly.objects.bulk_create(to_create, batch_size=500)
+
+
+def _regenerate_weekly_structure(project):
+    """Rebuild auto-generated weekly stages and keep the projection aligned."""
+    TahapPelaksanaan.objects.filter(
+        project=project,
+        is_auto_generated=True,
+        generation_mode='weekly',
+    ).delete()
+    stages = _build_weekly_tahapan_instances(
+        project,
+        week_start_day=project.week_start_day or 0,
+        week_end_day=project.week_end_day if project.week_end_day is not None else 6,
+    )
+    if stages:
+        TahapPelaksanaan.objects.bulk_create(stages)
+    sync_weekly_to_tahapan(
+        project.id,
+        mode='weekly',
+        week_end_day=project.week_end_day if project.week_end_day is not None else 6,
+    )
+
+
+@transaction.atomic
+def apply_project_timeline_change(
+    project,
+    new_start,
+    new_end,
+    resolution='none',
+    user=None,
+    expected_revision=None,
+):
+    """Apply an approved timeline change as one transaction.
+
+    Dua keluarga resolusi:
+
+    * **Legacy** (``none``, ``trim_planned``) — arti dipertahankan persis seperti
+      sebelumnya demi kompatibilitas (doc 37 §6). ``trim_planned`` hanya me-nol-kan
+      nilai planned dan meninggalkan barisnya, sehingga jadwal tetap basi setelahnya
+      (T-06). Disupersede oleh ``follow_date``; tidak ditawarkan lagi di UI.
+    * **Mesin resolusi** (``keep_ordinal``, ``accumulate_edge``, ``follow_date``) —
+      menuntaskan nasib setiap baris sehingga tidak ada sisa di luar jendela baru.
+
+    Realisasi dilindungi lebih dulu oleh gerbang K-1 (lihat
+    `analyze_project_timeline_change`), apa pun resolusinya.
+    """
+    project = type(project).objects.select_for_update().get(pk=project.pk)
+    if expected_revision is not None and project.schedule_revision != expected_revision:
+        raise TimelineChangeError(
+            'Struktur jadwal sudah berubah. Muat ulang halaman sebelum menyimpan.',
+            {
+                'safe': False,
+                'reason': 'schedule_revision_conflict',
+                'schedule_revision': project.schedule_revision,
+            },
+        )
+
+    impact = analyze_project_timeline_change(project, new_start, new_end)
+
+    if resolution not in ALL_RESOLUTIONS:
+        raise TimelineChangeError('Resolusi timeline tidak valid.', impact)
+
+    # --- Gerbang K-1: realisasi dilindungi lebih dulu, apa pun resolusinya ---
+    if impact['blocking_reason'] == 'actual_present_start_shift':
+        raise TimelineChangeError(
+            'Perubahan tanggal mulai menggeser seluruh batas minggu, sedangkan '
+            'proyek ini sudah memiliki realisasi. Realisasi tidak pernah '
+            'dipindahkan otomatis, jadi perubahan dibatalkan.',
+            impact,
+        )
+    if impact['blocking_reason'] == 'actual_out_of_window':
+        raise TimelineChangeError(
+            'Tanggal baru melewati minggu yang memiliki actual progress atau biaya aktual. Perubahan dibatalkan.',
+            impact,
+        )
+
+    trimmed = []
+    resolution_counts = {}
+
+    if resolution in LEGACY_RESOLUTIONS:
+        if impact['start_requires_policy']:
+            raise TimelineChangeError(
+                'Perubahan tanggal mulai memengaruhi progress existing. Pilih '
+                'salah satu resolusi penataan minggu terlebih dahulu.',
+                impact,
+            )
+        if impact['planned_records'] and resolution != RESOLUTION_TRIM_PLANNED:
+            raise TimelineChangeError(
+                'Tanggal baru melewati planned progress. Pilih tindakan pada ringkasan dampak terlebih dahulu.',
+                impact,
+            )
+
+        if resolution == RESOLUTION_TRIM_PLANNED and impact['planned_records']:
+            rows = PekerjaanProgressWeekly.objects.filter(
+                project=project,
+            ).filter(_affected_filter(new_start, new_end)).filter(planned_proportion__gt=0)
+            for row in rows:
+                trimmed.append({
+                    'pekerjaan_id': row.pekerjaan_id,
+                    'week_number': row.week_number,
+                    'old_planned_proportion': str(row.planned_proportion),
+                })
+            rows.update(planned_proportion=0)
+
+        rows_before = []
+        if resolution == RESOLUTION_NONE:
+            # Baris di luar jendela baru yang tidak membawa data apa pun tidak
+            # memerlukan keputusan siapa pun: menghapusnya tidak menghilangkan
+            # nilai, sedangkan membiarkannya membuat jadwal langsung basi setelah
+            # perubahan yang sukses (T-06). Ini kasus doc 38 §6.1 #2 — "tanggal
+            # selesai diperpendek, minggu terbuang kosong" — dan juga yang
+            # membuat tombol perbaikan di halaman Jadwal dapat menuntaskan
+            # kolom sisa yang kosong tanpa bertanya apa pun.
+            #
+            # `trim_planned` sengaja TIDAK ikut: ia jalur legacy yang kontraknya
+            # justru meninggalkan baris ber-nilai 0 (lihat docstring fungsi).
+            empty_outside = (
+                PekerjaanProgressWeekly.objects
+                .filter(project=project)
+                .filter(_affected_filter(new_start, new_end))
+                .filter(
+                    planned_proportion=0,
+                    actual_proportion=0,
+                    actual_cost__isnull=True,
+                )
+            )
+            rows_before = _snapshot_rows(empty_outside)
+            empty_outside.delete()
+    else:
+        allowed = impact['allowed_resolutions']
+        if resolution not in allowed:
+            raise TimelineChangeError(
+                'Resolusi tersebut tidak berlaku untuk bentuk perubahan ini.',
+                impact,
+            )
+
+        week_end_day = project.week_end_day if project.week_end_day is not None else 6
+        buckets = build_week_buckets(new_start, new_end, week_end_day)
+        if not buckets:
+            raise TimelineChangeError(
+                'Rentang tanggal baru tidak menghasilkan satu pun minggu.',
+                impact,
+            )
+
+        rows = list(
+            PekerjaanProgressWeekly.objects
+            .filter(project=project)
+            .order_by('pekerjaan_id', 'week_number')
+        )
+        target, resolution_counts = plan_timeline_resolution(
+            rows, buckets, new_start, resolution
+        )
+        _guard_target(target, impact)
+        rows_before = _snapshot_rows(rows)
+        _write_target(project, rows, target, buckets)
+
+    old_timeline = {
+        'tanggal_mulai': project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
+        'tanggal_selesai': project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+    }
+    project.tanggal_mulai = new_start
+    project.tanggal_selesai = new_end
+    project.durasi_hari = (new_end - new_start).days + 1
+    project.save()
+    _regenerate_weekly_structure(project)
+    invalidate_schedule_caches(project.id)
+
+    try:
+        DetailAHSPAudit.objects.create(
+            project=project,
+            pekerjaan=None,
+            action=DetailAHSPAudit.ACTION_UPDATE,
+            old_data={
+                'timeline': old_timeline,
+                'trimmed_planned': trimmed,
+                # Snapshot penuh: resolusi mesin dapat memindahkan, menggabung,
+                # atau menghapus baris, sehingga pemulihan manual butuh seluruh
+                # field yang dapat berubah (doc 37 §4.8).
+                'rows_before': rows_before,
+            },
+            new_data={
+                'timeline': {
+                    'tanggal_mulai': new_start.isoformat(),
+                    'tanggal_selesai': new_end.isoformat(),
+                },
+                'resolution': resolution,
+                'trimmed_count': len(trimmed),
+                'resolution_counts': resolution_counts,
+            },
+            triggered_by='user',
+            user=user if getattr(user, 'id', None) else None,
+            change_summary=(
+                f'Perubahan timeline {old_timeline["tanggal_mulai"]}–{old_timeline["tanggal_selesai"]} '
+                f'→ {new_start.isoformat()}–{new_end.isoformat()} ({resolution})'
+            ),
+        )
+    except Exception:
+        # Audit must never undo a valid timeline transaction.
+        pass
+
+    return {
+        **impact,
+        'resolution': resolution,
+        'trimmed_count': len(trimmed),
+        'resolution_counts': resolution_counts,
+        'schedule_revision': project.schedule_revision,
+    }

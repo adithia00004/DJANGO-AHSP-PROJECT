@@ -39,6 +39,14 @@ class HI10WriteGovernanceTests(SimpleTestCase):
             "api_project_pricing",
             "api_project_parameters",
             "api_project_computed_parameters",
+        ]:
+            with self.subTest(func=func_name):
+                block = self._decorator_block(func_name)
+                self.assertIn("@rate_limit(category='read_interactive'", block)
+                self.assertIn("@rate_limit(category='sync_frequent'", block)
+                self.assertIn("limit_request_body", block)
+
+        for func_name in [
             "api_save_detail_ahsp_gabungan",
             "api_ack_source_change_flags",
             "api_delete_template",

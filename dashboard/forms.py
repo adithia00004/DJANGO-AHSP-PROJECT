@@ -9,6 +9,7 @@ class ProjectForm(forms.ModelForm):
     REQUIRED_FIELDS = [
         "nama",
         "tanggal_mulai",  # Changed: tanggal_mulai is now required instead of tahun_project
+        "tanggal_selesai",
         "sumber_dana",
         "lokasi_project",
         "nama_client",
@@ -26,7 +27,10 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = "__all__"
-        exclude = ["owner", "index_project", "is_active", "created_at", "updated_at", "tahun_project", "week_start_day", "week_end_day"]
+        exclude = [
+            "owner", "index_project", "is_active", "created_at", "updated_at",
+            "tahun_project", "week_start_day", "week_end_day", "schedule_revision",
+        ]
         widgets = {
             "nama": forms.TextInput(attrs={"class": "form-control", "placeholder": "Masukkan nama project"}),
             "sumber_dana": forms.TextInput(attrs={"class": "form-control"}),
@@ -176,15 +180,8 @@ class ProjectForm(forms.ModelForm):
             elif not durasi_hari:
                 cleaned['durasi_hari'] = delta
 
-        # If only durasi provided with tanggal_mulai, calculate tanggal_selesai
-        elif tanggal_mulai and durasi_hari and not tanggal_selesai:
-            from datetime import timedelta
-            cleaned['tanggal_selesai'] = tanggal_mulai + timedelta(days=durasi_hari - 1)
-
-        # If only durasi provided with tanggal_selesai, calculate tanggal_mulai
-        elif tanggal_selesai and durasi_hari and not tanggal_mulai:
-            from datetime import timedelta
-            cleaned['tanggal_mulai'] = tanggal_selesai - timedelta(days=durasi_hari - 1)
+        # Both dates are explicit user inputs. Do not infer either date from
+        # durasi_hari; this prevents a hidden 31 December/derived timeline.
 
         return cleaned
 

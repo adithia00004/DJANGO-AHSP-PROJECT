@@ -22,6 +22,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Sum, Q, Max
 from django.core.cache import cache
+from dashboard.models import Project as DashboardProject
 
 from detail_project.models import (
     TahapPelaksanaan,
@@ -35,6 +36,15 @@ from detail_project.progress_utils import (
     get_week_date_range,
     sync_weekly_to_tahapan,
 )
+from detail_project.timeline_utils import (
+    ALL_RESOLUTIONS,
+    TimelineChangeError,
+    analyze_project_timeline_change,
+    apply_project_timeline_change,
+    build_resolution_preview,
+    expected_week_count,
+    invalidate_schedule_caches,
+)
 
 # Import helper from original views
 from detail_project.views_api_tahapan import _owner_or_404
@@ -44,9 +54,43 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _require_schedule_revision(project, data, *, required=False):
+    """Reject writes originating from a stale Jadwal page."""
+    raw_revision = data.get('schedule_revision')
+    if raw_revision is None:
+        if not required:
+            # Compatibility for deprecated/non-browser callers. The active
+            # page always sends the revision, so stale browser writes remain
+            # protected while old integrations can migrate without outage.
+            return None
+        return JsonResponse({
+            'ok': False,
+            'error': 'schedule_revision wajib dikirim. Muat ulang halaman Jadwal.',
+            'code': 'schedule_revision_required',
+            'schedule_revision': project.schedule_revision,
+        }, status=409)
+    try:
+        client_revision = int(raw_revision)
+    except (TypeError, ValueError):
+        return JsonResponse({
+            'ok': False,
+            'error': 'schedule_revision tidak valid. Muat ulang halaman Jadwal.',
+            'code': 'schedule_revision_invalid',
+            'schedule_revision': project.schedule_revision,
+        }, status=409)
+    if client_revision != project.schedule_revision:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Struktur jadwal sudah berubah. Muat ulang halaman sebelum menyimpan.',
+            'code': 'schedule_revision_conflict',
+            'schedule_revision': project.schedule_revision,
+        }, status=409)
+    return None
+
+
 @login_required
 @require_POST
-@rate_limit(max_requests=240, window=60)  # Jadwal grid save can be frequent; still guard runaway writes.
+@rate_limit(category='sync_frequent')  # Jadwal grid save can be frequent; still guard runaway writes.
 @limit_request_body()
 @transaction.atomic
 def api_assign_pekerjaan_weekly(request, project_id):
@@ -93,21 +137,30 @@ def api_assign_pekerjaan_weekly(request, project_id):
         }
     """
     project = _owner_or_404(project_id, request.user)
+    project = DashboardProject.objects.select_for_update().get(pk=project.pk)
 
-    if not project.tanggal_mulai:
+    if not project.tanggal_mulai or not project.tanggal_selesai:
         return JsonResponse({
             'ok': False,
-            'error': 'Project must have tanggal_mulai set'
+            'error': 'Project harus memiliki tanggal_mulai dan tanggal_selesai sebelum progress disimpan.',
+            'code': 'incomplete_timeline',
         }, status=400)
 
     try:
         data = json.loads(request.body)
+        revision_error = _require_schedule_revision(project, data)
+        if revision_error:
+            return revision_error
         assignments = data.get('assignments', [])
 
         # Determine which field to update: planned_proportion or actual_proportion
         progress_mode = (data.get('mode') or 'planned').lower()
         if progress_mode not in {'planned', 'actual'}:
-            progress_mode = 'planned'  # Default to planned for backward compatibility
+            return JsonResponse({
+                'ok': False,
+                'error': 'mode harus planned atau actual',
+                'code': 'invalid_progress_mode',
+            }, status=400)
 
         week_end_day = data.get('week_end_day', 6)
         try:
@@ -118,6 +171,11 @@ def api_assign_pekerjaan_weekly(request, project_id):
         # JDW-02: batas minggu fallback HARUS mengikuti konfigurasi project (SSOT),
         # bukan hardcode Minggu(6). Pakai project.week_end_day; bila null pakai payload.
         effective_week_end_day = project.week_end_day if project.week_end_day is not None else week_end_day
+        max_week_number = expected_week_count(
+            project.tanggal_mulai,
+            project.tanggal_selesai,
+            effective_week_end_day,
+        )
 
         if not isinstance(assignments, list):
             return JsonResponse({
@@ -144,7 +202,9 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 # Backward compatibility with legacy payload
                 proportion = item.get('proportion')
 
+            has_actual_cost = 'actual_cost' in item
             actual_cost_value = item.get('actual_cost')
+            clear_actual_cost = has_actual_cost and actual_cost_value is None
             actual_cost_decimal = None
 
             # Validation
@@ -152,8 +212,16 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 errors.append({'error': 'pekerjaan_id required', 'item': item})
                 continue
 
-            if not week_number or week_number < 1:
-                errors.append({'error': 'week_number must be >= 1', 'item': item})
+            try:
+                week_number = int(week_number)
+            except (TypeError, ValueError):
+                week_number = 0
+            if week_number < 1 or week_number > max_week_number:
+                errors.append({
+                    'error': f'week_number harus berada pada rentang 1-{max_week_number}',
+                    'item': item,
+                    'code': 'week_out_of_range',
+                })
                 continue
 
             if proportion is None:
@@ -175,6 +243,12 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 })
                 continue
 
+            if clear_actual_cost and progress_mode != 'actual':
+                errors.append({
+                    'error': 'actual_cost hanya dapat dikosongkan pada mode actual',
+                    'pekerjaan_id': pekerjaan_id,
+                })
+                continue
             if actual_cost_value is not None:
                 try:
                     actual_cost_decimal = Decimal(str(actual_cost_value))
@@ -263,7 +337,9 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 # Phase 2E.1: Update the appropriate proportion field based on mode
                 if progress_mode == 'actual':
                     wp.actual_proportion = proportion_decimal
-                    if actual_cost_decimal is not None:
+                    if clear_actual_cost:
+                        wp.actual_cost = None
+                    elif actual_cost_decimal is not None:
                         wp.actual_cost = actual_cost_decimal
                 else:  # 'planned' or default
                     wp.planned_proportion = proportion_decimal
@@ -283,7 +359,7 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'week_end_date': week_end.isoformat(),
                 'proportion': float(proportion_decimal),  # Generic field for frontend compatibility
                 'notes': notes,
-                'actual_cost': float(wp.actual_cost or 0),
+                'actual_cost': float(wp.actual_cost) if wp.actual_cost is not None else None,
             }
             # Also include mode-specific field for clarity
             if progress_mode == 'actual':
@@ -406,16 +482,16 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 message='Gagal menyimpan jadwal. Tidak ada perubahan yang disimpan.',
             )
 
-        # Invalidate caches for affected pekerjaan
+        # Invalidate all schedule-related caches through one helper so future
+        # cache families cannot be forgotten by a write endpoint.
         affected_pekerjaan_ids = {item.get('pekerjaan_id') for item in assignments if item.get('pekerjaan_id')}
-        for pekerjaan_id in affected_pekerjaan_ids:
-            # Invalidate weekly progress cache
-            cache.delete(f"v2_weekly_progress:{project.id}:{pekerjaan_id}:v1")
-            # Invalidate all mode-specific assignment caches
-            for mode_key in ['daily', 'weekly', 'monthly', 'custom']:
-                cache.delete(f"v2_pekerjaan_assignments:{project.id}:{pekerjaan_id}:{mode_key}:v1")
-        # Invalidate project-wide assignments cache
-        cache.delete(f"v2_assignments:{project.id}:v1")
+        invalidate_schedule_caches(project.id, affected_pekerjaan_ids)
+
+        # Progress writes also invalidate an already-open browser. The next
+        # save must carry this new revision, preventing last-write-wins across
+        # tabs while keeping the canonical batch atomic.
+        project.schedule_revision = (project.schedule_revision or 1) + 1
+        project.save(update_fields=['schedule_revision', 'updated_at'])
 
         return JsonResponse({
             'ok': True,
@@ -426,7 +502,8 @@ def api_assign_pekerjaan_weekly(request, project_id):
             'saved_assignments': saved_assignments,
             'synced_assignments': synced_count,
             'synced_mode': 'weekly',  # Time scale mode used for sync
-            'progress_mode': progress_mode  # Progress mode (planned/actual) used for save
+            'progress_mode': progress_mode,  # Progress mode (planned/actual) used for save
+            'schedule_revision': project.schedule_revision,
         })
 
     except json.JSONDecodeError:
@@ -444,6 +521,7 @@ def api_assign_pekerjaan_weekly(request, project_id):
 @require_POST
 @rate_limit(category='write')
 @limit_request_body()
+@transaction.atomic
 def api_update_week_boundaries(request, project_id):
     """
     Persist user preference for week start/end day per project.
@@ -451,11 +529,16 @@ def api_update_week_boundaries(request, project_id):
     normalized untuk memastikan selisih 6 hari dari week start.
     """
     project = _owner_or_404(project_id, request.user)
+    project = DashboardProject.objects.select_for_update().get(pk=project.pk)
 
     try:
         data = json.loads(request.body or '{}')
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    revision_error = _require_schedule_revision(project, data)
+    if revision_error:
+        return revision_error
 
     def _normalize(value, fallback):
         try:
@@ -478,12 +561,137 @@ def api_update_week_boundaries(request, project_id):
     project.week_start_day = week_start_day
     project.week_end_day = week_end_day
     project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
+    invalidate_schedule_caches(project.id)
 
     return JsonResponse({
         'ok': True,
         'week_start_day': week_start_day,
         'week_end_day': week_end_day,
+        'schedule_revision': project.schedule_revision,
     })
+
+
+def _parse_timeline_date(value):
+    if value in (None, ''):
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _serialize_resolution_preview(preview):
+    """JSON-kan proyeksi resolusi: tanggal jadi ISO, Decimal jadi string.
+
+    String desimal kanonik, bukan float — konsisten dengan kebijakan presisi
+    export (doc 30) supaya angka yang dilihat user tidak bergeser di klien.
+    """
+    return {
+        'resolution': preview['resolution'],
+        'label': preview['label'],
+        'help': preview['help'],
+        'old_week_count': preview['old_week_count'],
+        'new_week_count': preview['new_week_count'],
+        'total_planned_before': str(preview['total_planned_before']),
+        'total_planned_after': str(preview['total_planned_after']),
+        'planned_lost': str(preview['planned_lost']),
+        'weeks': [
+            {
+                'week_number': week['week_number'],
+                'old_start': week['old_start'].isoformat() if week['old_start'] else None,
+                'old_end': week['old_end'].isoformat() if week['old_end'] else None,
+                'new_start': week['new_start'].isoformat() if week['new_start'] else None,
+                'new_end': week['new_end'].isoformat() if week['new_end'] else None,
+                'exists_after': week['exists_after'],
+                'planned_before': str(week['planned_before']),
+                'planned_after': str(week['planned_after']),
+                'changed': week['changed'],
+            }
+            for week in preview['weeks']
+        ],
+    }
+
+
+@login_required
+@require_POST
+@rate_limit(category='write')
+@limit_request_body()
+def api_preview_project_timeline(request, project_id):
+    """Return timeline impact without changing project or progress data."""
+    project = _owner_or_404(project_id, request.user)
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    revision_error = _require_schedule_revision(project, data, required=True)
+    if revision_error:
+        return revision_error
+    new_start = _parse_timeline_date(data.get('tanggal_mulai'))
+    new_end = _parse_timeline_date(data.get('tanggal_selesai'))
+    try:
+        impact = analyze_project_timeline_change(project, new_start, new_end)
+    except TimelineChangeError as exc:
+        return JsonResponse({
+            'ok': False,
+            'error': str(exc),
+            'impact': exc.impact,
+        }, status=400)
+    # Proyeksi tiap opsi yang sah, dari planner yang sama dengan yang nanti
+    # melakukan commit — sehingga dialog di halaman Jadwal menampilkan angka
+    # yang identik dengan dialog di form edit project.
+    previews = [
+        _serialize_resolution_preview(
+            build_resolution_preview(project, new_start, new_end, option)
+        )
+        for option in impact.get('allowed_resolutions', [])
+    ]
+
+    return JsonResponse({
+        'ok': True,
+        'impact': impact,
+        'previews': previews,
+        'schedule_revision': project.schedule_revision,
+    })
+
+
+@login_required
+@require_POST
+@rate_limit(category='write')
+@limit_request_body()
+def api_commit_project_timeline(request, project_id):
+    """Commit a timeline change after recomputing its impact server-side."""
+    project = _owner_or_404(project_id, request.user)
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    revision_error = _require_schedule_revision(project, data, required=True)
+    if revision_error:
+        return revision_error
+    new_start = _parse_timeline_date(data.get('tanggal_mulai'))
+    new_end = _parse_timeline_date(data.get('tanggal_selesai'))
+    resolution = data.get('resolution') or 'none'
+    if resolution not in ALL_RESOLUTIONS:
+        return JsonResponse({'ok': False, 'error': 'resolution tidak valid'}, status=400)
+
+    try:
+        result = apply_project_timeline_change(
+            project,
+            new_start,
+            new_end,
+            resolution=resolution,
+            user=request.user,
+            expected_revision=int(data.get('schedule_revision')),
+        )
+    except TimelineChangeError as exc:
+        return JsonResponse({
+            'ok': False,
+            'error': str(exc),
+            'impact': exc.impact,
+        }, status=400)
+    return JsonResponse({'ok': True, **result})
 
 
 @login_required
@@ -527,6 +735,7 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
     # Check cache with signature validation
     if cached:
         current_signature = (
+            project.schedule_revision,
             _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
                 .aggregate(last=Max('updated_at'))['last']),
             _fmt_ts(pekerjaan.updated_at)
@@ -550,6 +759,7 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
 
     response_data = {
         'ok': True,
+        'schedule_revision': project.schedule_revision,
         'pekerjaan_id': pekerjaan.id,
         'weekly_progress': [
             {
@@ -572,6 +782,7 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
     
     # Update cache with new signature
     new_signature = (
+        project.schedule_revision,
         _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
             .aggregate(last=Max('updated_at'))['last']),
         _fmt_ts(pekerjaan.updated_at)
@@ -634,6 +845,7 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
     if cached:
         current_signature = (
             mode,
+            project.schedule_revision,
             _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
                 .aggregate(last=Max('updated_at'))['last']),
             _fmt_ts(pekerjaan.updated_at),
@@ -717,6 +929,7 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
 
     response_data = {
         'ok': True,
+        'schedule_revision': project.schedule_revision,
         'pekerjaan_id': pekerjaan.id,
         'mode': mode,
         'assignments': assignments,
@@ -726,6 +939,7 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
     # Update cache with new signature
     new_signature = (
         mode,
+        project.schedule_revision,
         _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
             .aggregate(last=Max('updated_at'))['last']),
         _fmt_ts(pekerjaan.updated_at),
@@ -773,6 +987,7 @@ def api_get_project_assignments_v2(request, project_id):
     signature = None
     if cached:
         signature = (
+            project.schedule_revision,
             _fmt_ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
             _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
         )
@@ -820,6 +1035,7 @@ def api_get_project_assignments_v2(request, project_id):
 
     response_data = {
         'ok': True,
+        'schedule_revision': project.schedule_revision,
         'count': len(assignments),
         'assignments': assignments,
     }
@@ -827,6 +1043,7 @@ def api_get_project_assignments_v2(request, project_id):
     new_bucket = cached or {}
     if signature is None:
         signature = (
+            project.schedule_revision,
             _fmt_ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
             _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
         )
@@ -877,9 +1094,13 @@ def api_regenerate_tahapan_v2(request, project_id):
     )
 
     project = _owner_or_404(project_id, request.user)
+    project = DashboardProject.objects.select_for_update().get(pk=project.pk)
 
     try:
         data = json.loads(request.body)
+        revision_error = _require_schedule_revision(project, data)
+        if revision_error:
+            return revision_error
         mode = data.get('mode', 'custom')
 
         # Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
@@ -908,13 +1129,31 @@ def api_regenerate_tahapan_v2(request, project_id):
                 'error': 'Invalid mode. Must be: daily, weekly, monthly, or custom'
             }, status=400)
 
+        # Validate before mutating week boundary settings. Returning a 400 from
+        # inside transaction.atomic does not roll back ordinary model saves.
+        if not project.tanggal_mulai or not project.tanggal_selesai:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Project timeline belum lengkap. Isi tanggal_mulai dan tanggal_selesai terlebih dahulu.',
+                'code': 'incomplete_timeline',
+            }, status=400)
+
         # WP-P7b (audit-gap): catat perubahan konfigurasi batas minggu (memengaruhi
         # interpretasi seluruh minggu) — project-level, hanya bila benar berubah.
         _old_wsd, _old_wed = project.week_start_day, project.week_end_day
         project.week_start_day = week_start_day
         project.week_end_day = week_end_day
-        project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
-        if (_old_wsd, _old_wed) != (week_start_day, week_end_day):
+        boundary_changed = (_old_wsd, _old_wed) != (week_start_day, week_end_day)
+        if boundary_changed:
+            # Project.save() increments the revision exactly once for a
+            # structural field change.
+            project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
+        else:
+            # Regeneration itself is still a structural write even when the
+            # selected boundaries are unchanged.
+            project.schedule_revision = (project.schedule_revision or 1) + 1
+            project.save(update_fields=['schedule_revision', 'updated_at'])
+        if boundary_changed:
             try:
                 from detail_project.models import DetailAHSPAudit
                 DetailAHSPAudit.objects.create(
@@ -929,13 +1168,6 @@ def api_regenerate_tahapan_v2(request, project_id):
             except Exception:
                 logger.exception("[PROGRESS_AUDIT] gagal mencatat regenerate project %s", project.id)
 
-        # Validate project timeline
-        if not project.tanggal_mulai or not project.tanggal_selesai:
-            return JsonResponse({
-                'ok': False,
-                'error': 'Project timeline not set. Please set tanggal_mulai and tanggal_selesai first.'
-            }, status=400)
-
         # For custom mode, keep existing tahapan
         if mode == 'custom':
             existing_tahapan = TahapPelaksanaan.objects.filter(
@@ -944,13 +1176,15 @@ def api_regenerate_tahapan_v2(request, project_id):
 
             # Sync assignments from canonical storage
             synced_count = sync_weekly_to_tahapan(project.id, mode, week_end_day)
+            invalidate_schedule_caches(project.id)
 
             return JsonResponse({
                 'ok': True,
                 'mode': 'custom',
                 'message': 'Custom mode - using existing tahapan',
                 'tahapan_count': existing_tahapan.count(),
-                'assignments_synced': synced_count
+                'assignments_synced': synced_count,
+                'schedule_revision': project.schedule_revision,
             })
 
         # STEP 1: Delete old auto-generated tahapan ONLY
@@ -976,6 +1210,7 @@ def api_regenerate_tahapan_v2(request, project_id):
         # STEP 3: Sync assignments from weekly canonical storage
         # This reads PekerjaanProgressWeekly and creates PekerjaanTahapan assignments
         synced_count = sync_weekly_to_tahapan(project.id, mode, week_end_day)
+        invalidate_schedule_caches(project.id)
 
         return JsonResponse({
             'ok': True,
@@ -984,6 +1219,7 @@ def api_regenerate_tahapan_v2(request, project_id):
             'tahapan_deleted': deleted_count,
             'tahapan_created': len(created_tahapan),
             'assignments_synced': synced_count,
+            'schedule_revision': project.schedule_revision,
             'tahapan': [
                 {
                     'tahapan_id': t.id,
@@ -1041,16 +1277,21 @@ def api_reset_progress(request, project_id):
 
         # Ownership check (same policy as other V2 endpoints)
         project = _owner_or_404(project_id, request.user)
+        project = DashboardProject.objects.select_for_update().get(pk=project.pk)
 
         # Parse request body for mode
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
-            data = {}
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
 
-        progress_mode = (data.get('mode') or 'planned').lower()
+        progress_mode = (data.get('mode') or '').lower()
         if progress_mode not in {'planned', 'actual'}:
-            progress_mode = 'planned'
+            return JsonResponse({
+                'ok': False,
+                'error': 'mode wajib planned atau actual',
+                'code': 'invalid_progress_mode',
+            }, status=400)
 
         # Reset only the relevant field
         records = PekerjaanProgressWeekly.objects.filter(project=project)
@@ -1070,6 +1311,17 @@ def api_reset_progress(request, project_id):
                 record.save(update_fields=['planned_proportion', 'updated_at'])
 
             updated_count += 1
+
+        # PekerjaanTahapan is a derived projection. Keep it consistent with
+        # the canonical weekly rows before returning success.
+        synced_count = sync_weekly_to_tahapan(
+            project.id,
+            mode='weekly',
+            week_end_day=project.week_end_day if project.week_end_day is not None else 6,
+        )
+        invalidate_schedule_caches(project.id)
+        project.schedule_revision = (project.schedule_revision or 1) + 1
+        project.save(update_fields=['schedule_revision', 'updated_at'])
 
         mode_label = 'Planned' if progress_mode == 'planned' else 'Actual'
 
@@ -1095,6 +1347,7 @@ def api_reset_progress(request, project_id):
         return JsonResponse({
             'ok': True,
             'updated_count': updated_count,
+            'synced_count': synced_count,
             'mode': progress_mode,
             'message': f'{mode_label} progress reset to 0 for {updated_count} records'
         })

@@ -10,6 +10,14 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 
+# Rate limiter v2 relies on atomic shared counters across web workers. Do not
+# silently run production with LocMem/DB cache, which would make each worker
+# enforce a different quota.
+if CACHE_BACKEND != "redis":
+    raise RuntimeError(
+        "Production requires CACHE_BACKEND=redis for the v2 API rate limiter."
+    )
+
 if os.getenv("DJANGO_ENV", "").lower() not in {"prod", "production"}:
     raise RuntimeError("Production settings loaded without DJANGO_ENV=production/prod.")
 

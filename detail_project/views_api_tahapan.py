@@ -29,7 +29,8 @@ from .services import (
     get_unassigned_pekerjaan,
     get_project_period_options,
 )
-from .api_helpers import parse_kebutuhan_query_params
+from .api_helpers import parse_kebutuhan_query_params, limit_request_body, rate_limit
+from .timeline_utils import invalidate_schedule_caches
 from .decorators import api_deprecated
 
 # Helper untuk validasi ownership
@@ -43,12 +44,30 @@ def _owner_or_404(project_id, user):
     return project
 
 
+def _touch_schedule_revision(project):
+    """Invalidate stale Jadwal pages after legacy Tahapan CRUD."""
+    project.schedule_revision = (project.schedule_revision or 1) + 1
+    project.save(update_fields=['schedule_revision', 'updated_at'])
+    invalidate_schedule_caches(project.id)
+
+
+def _canonical_write_block():
+    return JsonResponse({
+        'ok': False,
+        'error': 'Assignment Jadwal harus disimpan melalui weekly canonical API.',
+        'code': 'canonical_weekly_only',
+        'migration_endpoint': 'api_v2_assign_weekly',
+    }, status=409)
+
+
 # ============================================================================
 # TAHAPAN CRUD
 # ============================================================================
 
 @login_required
 @require_http_methods(['GET', 'POST'])
+@rate_limit(category='write', methods=['POST'])
+@limit_request_body()
 def api_list_create_tahapan(request, project_id):
     """
     GET: List semua tahapan untuk project
@@ -72,7 +91,8 @@ def api_list_create_tahapan(request, project_id):
         return JsonResponse({
             'ok': True,
             'tahapan': summary,
-            'count': len(summary)
+            'count': len(summary),
+            'schedule_revision': project.schedule_revision,
         })
 
     # POST: Create new tahapan
@@ -121,6 +141,7 @@ def api_list_create_tahapan(request, project_id):
         )
 
         tahap.refresh_from_db()  
+        _touch_schedule_revision(project)
         
         return JsonResponse({
             'ok': True,
@@ -148,6 +169,8 @@ def api_list_create_tahapan(request, project_id):
 
 @login_required
 @require_http_methods(['GET', 'PUT', 'DELETE'])
+@rate_limit(category='write', methods=['PUT', 'DELETE'])
+@limit_request_body()
 def api_update_delete_tahapan(request, project_id, tahapan_id):
     """
     GET: Get detail tahapan
@@ -156,6 +179,13 @@ def api_update_delete_tahapan(request, project_id, tahapan_id):
     """
     project = _owner_or_404(project_id, request.user)
     tahap = get_object_or_404(TahapPelaksanaan, id=tahapan_id, project=project)
+
+    if request.method in {'PUT', 'DELETE'} and tahap.is_auto_generated:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Tahapan auto-generated tidak dapat diedit atau dihapus manual. Gunakan regenerate struktur waktu.',
+            'code': 'auto_generated_read_only',
+        }, status=409)
     
     if request.method == 'GET':
         # Get detail dengan pekerjaan list
@@ -217,6 +247,7 @@ def api_update_delete_tahapan(request, project_id, tahapan_id):
                 tahap.tanggal_selesai = data['tanggal_selesai'] or None
             
             tahap.save()
+            _touch_schedule_revision(project)
             
             return JsonResponse({
                 'ok': True,
@@ -249,6 +280,7 @@ def api_update_delete_tahapan(request, project_id, tahapan_id):
         
         tahap_nama = tahap.nama
         tahap.delete()
+        _touch_schedule_revision(project)
         
         return JsonResponse({
             'ok': True,
@@ -258,6 +290,8 @@ def api_update_delete_tahapan(request, project_id, tahapan_id):
 
 @login_required
 @require_POST
+@rate_limit(category='write')
+@limit_request_body()
 def api_reorder_tahapan(request, project_id):
     """
     Reorder tahapan (bulk update urutan)
@@ -275,14 +309,28 @@ def api_reorder_tahapan(request, project_id):
                 'ok': False,
                 'error': 'tahapan_order harus berupa array'
             }, status=400)
+
+        try:
+            normalized_order = [int(value) for value in tahapan_order]
+        except (TypeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'ID tahapan tidak valid'}, status=400)
+
+        project_ids = set(TahapPelaksanaan.objects.filter(project=project).values_list('id', flat=True))
+        if len(normalized_order) != len(set(normalized_order)) or set(normalized_order) != project_ids:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Urutan harus memuat setiap tahapan project tepat satu kali.',
+                'code': 'invalid_tahapan_order',
+            }, status=400)
         
         # Update urutan
         with transaction.atomic():
-            for idx, tahapan_id in enumerate(tahapan_order):
+            for idx, tahapan_id in enumerate(normalized_order):
                 TahapPelaksanaan.objects.filter(
                     id=tahapan_id,
                     project=project
                 ).update(urutan=idx)
+            _touch_schedule_revision(project)
         
         return JsonResponse({
             'ok': True,
@@ -330,6 +378,8 @@ def api_assign_pekerjaan_to_tahapan(request, project_id, tahapan_id):
     """
     project = _owner_or_404(project_id, request.user)
     tahap = get_object_or_404(TahapPelaksanaan, id=tahapan_id, project=project)
+
+    return _canonical_write_block()
     
     try:
         data = json.loads(request.body)
@@ -431,6 +481,8 @@ def api_unassign_pekerjaan_from_tahapan(request, project_id, tahapan_id):
     """
     project = _owner_or_404(project_id, request.user)
     tahap = get_object_or_404(TahapPelaksanaan, id=tahapan_id, project=project)
+
+    return _canonical_write_block()
     
     try:
         data = json.loads(request.body)

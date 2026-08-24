@@ -19,6 +19,14 @@
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!j || !j.ok) return;
+        // Sinyal readiness kanonik diteruskan apa adanya supaya halaman dapat
+        // bereaksi tanpa memanggil endpoint kedua atau menghitung ulang sendiri.
+        try {
+          host.dispatchEvent(new CustomEvent('readiness:loaded', {
+            bubbles: true,
+            detail: j.readiness,
+          }));
+        } catch (_) { /* dispatch best-effort */ }
         const html = (window.ReadinessBanner && window.ReadinessBanner.buildReadinessBannerHTML)
           ? window.ReadinessBanner.buildReadinessBannerHTML(j.readiness)
           : null;

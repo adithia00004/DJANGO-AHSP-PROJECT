@@ -24,10 +24,11 @@
 
           <div class="row">
             <div class="col-md-6">
-              <strong class="text-danger">Kolom Wajib (6):</strong>
+              <strong class="text-danger">Kolom Wajib (7):</strong>
               <ol class="small mb-2">
                 <li><code>nama</code> - Nama project</li>
                 <li><code>tanggal_mulai</code> - Format: YYYY-MM-DD atau DD/MM/YYYY</li>
+                <li><code>tanggal_selesai</code> - Format: YYYY-MM-DD atau DD/MM/YYYY</li>
                 <li><code>sumber_dana</code> - Sumber pendanaan</li>
                 <li><code>lokasi_project</code> - Lokasi pelaksanaan</li>
                 <li><code>nama_client</code> - Nama pemilik/client</li>
@@ -35,9 +36,8 @@
               </ol>
             </div>
             <div class="col-md-6">
-              <strong class="text-muted">Kolom Opsional (14):</strong>
+              <strong class="text-muted">Kolom Opsional (13):</strong>
               <ul class="small mb-2" style="column-count: 2;">
-                <li><code>tanggal_selesai</code></li>
                 <li><code>durasi_hari</code></li>
                 <li><code>ket_project1</code></li>
                 <li><code>ket_project2</code></li>
@@ -59,7 +59,7 @@
           <strong class="small">Catatan:</strong>
           <ul class="small mb-0">
             <li><code>tahun_project</code> akan otomatis diambil dari <code>tanggal_mulai</code></li>
-            <li>Jika <code>tanggal_selesai</code> kosong, akan diset ke 31 Desember tahun project</li>
+            <li><code>tanggal_selesai</code> wajib diisi; sistem tidak lagi membuat tanggal selesai otomatis</li>
             <li>Jika <code>durasi_hari</code> kosong, akan dihitung otomatis dari selisih tanggal</li>
             <li>Maksimal 2000 baris data per upload</li>
             <li>Formula Excel tidak diizinkan untuk mencegah import data berbahaya</li>

@@ -31,7 +31,7 @@ class JadwalApiHardeningTests(SimpleTestCase):
     def test_jadwal_v2_write_endpoints_are_rate_and_body_limited(self):
         self.assertGoverned(
             "api_assign_pekerjaan_weekly",
-            rate_snippet="rate_limit(max_requests=240, window=60)",
+            rate_snippet="rate_limit(category='sync_frequent')",
         )
         for func_name in [
             "api_update_week_boundaries",

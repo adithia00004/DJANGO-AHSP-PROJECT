@@ -4,6 +4,16 @@
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
 **Status keseluruhan (≈ 85% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) + WP-P8 (Rekap Kebutuhan) DONE/siap UAT runtime; WP-P9 Dashboard targeted fixes DONE/siap UAT runtime.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: Fase 3 cleanup / UAT runtime lintas-page. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint legacy removal setelah monitoring, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
 
+### Backlog terbuka — Over-notifikasi sinkronisasi lintas halaman (2026-08-24)
+
+Dokumen: `36_Cross_Page_Sync_Over_Notification_Audit_Plan_20260824.md`.
+Temuan **SYN-01..SYN-06**: upsert List Pekerjaan menandai SELURUH pekerjaan sebagai
+"perlu reload" (bukan hanya yang ganti sumber) sehingga Template AHSP meminta reload
+massal dan form Harga Items ikut terkunci. SYN-04 adalah sisa jalur reload massal yang
+terlewat saat TA-17/CL-08 ditutup. **Status: Fase 1 (SYN-01) + Fase 4b (command `clear_stale_reload_flags`)
+SELESAI & hijau 2026-08-24 (9 + 10 test baru, 47 + 119 regresi; diverifikasi di Docker/PostgreSQL,
+92 flag warisan dibersihkan di 2 project). Fase 2, 3, 4a, 4c belum dieksekusi.**
+
 ### Checkpoint WP Export Jadwal 2C + 2D - SELESAI (2026-06-21)
 
 **Status: SELESAI, menunggu checkpoint commit.** Builder shared Kurva S untuk

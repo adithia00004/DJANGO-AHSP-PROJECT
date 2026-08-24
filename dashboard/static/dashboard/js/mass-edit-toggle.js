@@ -851,20 +851,29 @@
     .then(data => {
 
       if (data.success) {
-
-        if (window.showToast) {
-          window.showToast(`${data.updated_count} project berhasil diupdate`, 'success');
-        }
+        const pending = Array.isArray(data.needs_decision) ? data.needs_decision : [];
 
         // Clear editedCells to prevent beforeunload alert
         editedCells.clear();
         isEditMode = false;
 
-
-        // Reload page after short delay
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        if (pending.length) {
+          // Sebagian project memerlukan keputusan penataan minggu dan TIDAK
+          // tersimpan. Jangan muat ulang otomatis — laporannya akan hilang
+          // sebelum sempat dibaca.
+          if (window.showToast) {
+            window.showToast(data.message, 'warning');
+          }
+          renderTimelineDecisions(data.updated_count, pending);
+        } else {
+          if (window.showToast) {
+            window.showToast(`${data.updated_count} project berhasil diupdate`, 'success');
+          }
+          // Reload page after short delay
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }
       } else {
         console.error('❌ Failed:', data.message);
         toast(data.message || 'Terjadi kesalahan saat menyimpan.', 'error', 5000);
@@ -884,6 +893,80 @@
         saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan';
       }
     });
+  }
+
+  /**
+   * Ringkasan agregat mass edit (langkah 2.2).
+   *
+   * Project yang perubahan tanggalnya memerlukan keputusan user tidak ikut
+   * tersimpan — sebelumnya progress-nya justru dihapus diam-diam. Di sini
+   * masing-masing dilaporkan per nama beserta alasannya, dengan tautan ke form
+   * edit tunggal tempat dialog pilihan penataan minggu tersedia.
+   *
+   * Seluruh teks disisipkan lewat textContent, bukan innerHTML — nama project
+   * berasal dari input user.
+   */
+  function renderTimelineDecisions(updatedCount, pending) {
+    document.getElementById('mass-edit-timeline-decisions')?.remove();
+
+    const table = document.querySelector('.dashboard-project-table');
+    const host = table?.parentElement || document.querySelector('main') || document.body;
+
+    const box = document.createElement('div');
+    box.id = 'mass-edit-timeline-decisions';
+    box.className = 'alert alert-warning alert-dismissible fade show mt-3';
+    box.setAttribute('role', 'alert');
+
+    const heading = document.createElement('div');
+    heading.className = 'fw-semibold';
+    heading.textContent =
+      `${updatedCount} project tersimpan. ${pending.length} project memerlukan ` +
+      'keputusan Anda dan belum tersimpan:';
+    box.appendChild(heading);
+
+    const list = document.createElement('ul');
+    list.className = 'mb-2 mt-2 ps-3';
+    pending.forEach(item => {
+      const li = document.createElement('li');
+
+      const link = document.createElement('a');
+      link.href = `/dashboard/project/${encodeURIComponent(item.id)}/edit/`;
+      link.className = 'fw-semibold';
+      link.textContent = item.nama || `Project #${item.id}`;
+      li.appendChild(link);
+
+      const reason = document.createElement('span');
+      reason.className = 'text-muted';
+      reason.textContent = ` — ${item.reason || 'Perlu keputusan penataan minggu.'}`;
+      li.appendChild(reason);
+
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+
+    const hint = document.createElement('div');
+    hint.className = 'small text-muted';
+    hint.textContent =
+      'Buka satu per satu untuk memilih cara penataan minggunya. Tidak ada ' +
+      'progress yang dihapus.';
+    box.appendChild(hint);
+
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.className = 'btn btn-outline-secondary btn-sm mt-2';
+    reload.textContent = 'Muat ulang daftar';
+    reload.addEventListener('click', () => window.location.reload());
+    box.appendChild(reload);
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn-close';
+    close.setAttribute('data-bs-dismiss', 'alert');
+    close.setAttribute('aria-label', 'Tutup');
+    box.appendChild(close);
+
+    host.insertAdjacentElement('beforebegin', box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function applyServerErrors(errors) {

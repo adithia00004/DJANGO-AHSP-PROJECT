@@ -10,9 +10,12 @@ Provides:
 
 import functools
 import logging
+import math
+import time
 from typing import Any, Dict, Optional, List
 from django.http import JsonResponse, QueryDict
 from django.core.cache import cache
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import transaction as _db_transaction
 
@@ -68,10 +71,25 @@ RATE_LIMIT_CATEGORIES = {
         'window': 60,  # 1 minute
         'description': 'Normal write operations (save, update)'
     },
+    'write_interactive': {
+        'max_requests': 60,
+        'window': 60,
+        'description': 'Frequent interactive writes (manual save per pekerjaan)'
+    },
+    'sync_frequent': {
+        'max_requests': 240,
+        'window': 60,
+        'description': 'Frequent autosave/sync operations'
+    },
     'read': {
         'max_requests': 100,
         'window': 60,  # 1 minute
         'description': 'Read operations (search, list, get)'
+    },
+    'read_interactive': {
+        'max_requests': 240,
+        'window': 60,
+        'description': 'Interactive reads and UI polling'
     },
     'export': {
         'max_requests': 10,
@@ -81,7 +99,78 @@ RATE_LIMIT_CATEGORIES = {
 }
 
 
-def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None, category: str = None):
+def _rate_limit_increment(cache_key: str, timeout: int) -> int:
+    """Atomically increment a fixed-window counter.
+
+    ``cache.get()`` followed by ``cache.set()`` loses increments when two web
+    workers handle requests concurrently.  ``add`` creates the first counter
+    and ``incr`` performs subsequent updates atomically on the supported Redis
+    backend (and under LocMem's cache lock in tests/development).
+
+    A key can expire between ``add`` and ``incr``.  Retrying the create path
+    once handles that narrow race without an unbounded loop.
+    """
+    if cache.add(cache_key, 1, timeout=timeout):
+        return 1
+    try:
+        return int(cache.incr(cache_key))
+    except ValueError:
+        if cache.add(cache_key, 1, timeout=timeout):
+            return 1
+        return int(cache.incr(cache_key))
+
+
+def _category_limits(category: str):
+    """Resolve a category with optional deployment-level overrides."""
+    limits = RATE_LIMIT_CATEGORIES.get(category)
+    if not limits:
+        return None
+    overrides = getattr(settings, 'DETAIL_PROJECT_RATE_LIMIT_OVERRIDES', {}) or {}
+    override = overrides.get(category, {}) if isinstance(overrides, dict) else {}
+    return {**limits, **override}
+
+
+def _record_rate_limit_metric(metric: str, endpoint: str = None, method: str = None, category: str = None):
+    """Record low-cardinality limiter telemetry without affecting requests."""
+    suffix = ''
+    if endpoint:
+        suffix = f":{endpoint}:{method or 'UNKNOWN'}:{category or 'default'}"
+    keys = [
+        f"metric:rate_limit_v2:{metric}:global",
+        f"metric:rate_limit_v2:{metric}{suffix}",
+    ]
+    for key in keys:
+        try:
+            if not cache.add(key, 1, timeout=3600):
+                cache.incr(key)
+        except ValueError:
+            try:
+                if not cache.add(key, 1, timeout=3600):
+                    cache.incr(key)
+            except Exception:
+                logger.debug("Failed to increment rate-limit metric %s", key, exc_info=True)
+        except Exception:
+            logger.debug("Failed to increment rate-limit metric %s", key, exc_info=True)
+
+
+def get_rate_limit_metrics():
+    """Return global v2 limiter telemetry for admin monitoring."""
+    metrics = {}
+    for name in ('allowed', 'blocked', 'would_block', 'near_limit', 'backend_error'):
+        try:
+            metrics[name] = int(cache.get(f'metric:rate_limit_v2:{name}:global', 0))
+        except Exception:
+            metrics[name] = 0
+    return metrics
+
+
+def rate_limit(
+    max_requests: int = 100,
+    window: int = 60,
+    key_prefix: str = None,
+    category: str = None,
+    methods=None,
+):
     """
     Rate limiting decorator for API endpoints with category support.
 
@@ -89,8 +178,11 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
         max_requests: Maximum number of requests allowed in the time window
         window: Time window in seconds (default: 60 seconds)
         key_prefix: Custom prefix for cache key (default: use view name)
-        category: Rate limit category ('bulk', 'write', 'read', 'export')
+        category: Rate limit category (for example 'bulk', 'write',
+                 'write_interactive', 'sync_frequent', 'read', or 'export')
                  If provided, overrides max_requests and window with category defaults
+        methods: Optional iterable of HTTP methods to count. Requests using a
+                 different method pass through without consuming this quota.
 
     Returns:
         Decorator function
@@ -107,11 +199,9 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
             # Automatically gets: 5 requests per 5 minutes
             ...
 
-    Categories:
-        - 'bulk': 5 requests per 5 minutes (expensive operations)
-        - 'write': 20 requests per minute (normal saves)
-        - 'read': 100 requests per minute (searches, lists)
-        - 'export': 10 requests per minute (PDF/Excel generation)
+    The counter uses an absolute fixed-time bucket. Successful requests do not
+    extend the bucket TTL. When ``methods`` is supplied, other HTTP methods do
+    not consume this category's quota.
 
     Example:
         # Deep copy - expensive operation
@@ -131,74 +221,155 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
     """
     # Apply category limits if specified
     if category and category in RATE_LIMIT_CATEGORIES:
-        limits = RATE_LIMIT_CATEGORIES[category]
+        limits = _category_limits(category)
         max_requests = limits['max_requests']
         window = limits['window']
         logger.debug(
             f"Applying category '{category}' limits: {max_requests} req/{window}s"
         )
 
+    method_set = None
+    if methods is not None:
+        if isinstance(methods, str):
+            method_set = {methods.upper()}
+        else:
+            method_set = {str(item).upper() for item in methods}
+
     def decorator(view_func):
         @functools.wraps(view_func)
         def wrapped_view(request, *args, **kwargs):
-            # Generate cache key based on user and endpoint
+            method = str(getattr(request, 'method', '') or '').upper()
+            if method_set is not None:
+                if method not in method_set:
+                    return view_func(request, *args, **kwargs)
+
+            mode = str(getattr(settings, 'DETAIL_PROJECT_RATE_LIMIT_MODE', 'v2')).lower()
+            if mode not in {'v2', 'observe', 'off'}:
+                logger.error("Unknown rate limiter mode %r; falling back to v2", mode)
+                mode = 'v2'
+            if mode == 'off':
+                return view_func(request, *args, **kwargs)
+
+            # Generate cache key based on user, endpoint, method, and an
+            # absolute bucket.  The bucket prevents each successful request
+            # from extending the window indefinitely.
             user_id = getattr(request.user, 'id', 'anonymous')
             view_name = view_func.__name__
             endpoint = key_prefix or view_name
+            now = time.time()
+            bucket_start = int(now // window) * window
+            reset_at = bucket_start + window
+            retry_after = max(1, int(math.ceil(reset_at - now)))
+            method_key = method or 'UNKNOWN'
+            category_key = category or 'default'
+            cache_key = (
+                f"rate_limit:v2:{user_id}:{endpoint}:{method_key}:"
+                f"{category_key}:{bucket_start}"
+            )
 
-            # Include category in cache key to separate limits
-            cache_suffix = f":{category}" if category else ""
-            cache_key = f"rate_limit:{user_id}:{endpoint}{cache_suffix}"
-            alias_key = None
-            if key_prefix and key_prefix != view_name:
-                alias_key = f"rate_limit:{user_id}:{view_name}{cache_suffix}"
-
-            # Get current request count
-            current_count = cache.get(cache_key, 0)
-
-            # Check if limit exceeded
-            if current_count >= max_requests:
-                logger.warning(
-                    f"Rate limit exceeded for user {user_id} on {endpoint}",
+            try:
+                current_count = _rate_limit_increment(cache_key, retry_after)
+            except Exception:
+                # Rate limiting must not turn a Redis outage into a save outage.
+                # The body-size, authentication, CSRF, and transaction guards
+                # remain active in this fail-open path.
+                logger.error(
+                    "Rate limiter backend unavailable; allowing request",
                     extra={
                         'user_id': user_id,
                         'endpoint': endpoint,
+                        'method': method,
+                        'category': category,
+                    },
+                    exc_info=True,
+                )
+                _record_rate_limit_metric('backend_error', endpoint, method, category_key)
+                return view_func(request, *args, **kwargs)
+
+            remaining = max(0, max_requests - current_count)
+            common_headers = {
+                'X-RateLimit-Limit': str(max_requests),
+                'X-RateLimit-Remaining': str(remaining),
+                'X-RateLimit-Reset': str(reset_at),
+            }
+
+            if current_count > max_requests and mode == 'observe':
+                _record_rate_limit_metric('would_block', endpoint, method, category_key)
+                logger.warning(
+                    "Rate limit would block request in observe mode",
+                    extra={
+                        'user_id': user_id,
+                        'endpoint': endpoint,
+                        'method': method,
                         'category': category,
                         'count': current_count,
                         'limit': max_requests,
-                        'window': window
+                        'window': window,
+                        'retry_after': retry_after,
+                        'rate_limit_mode': mode,
+                    },
+                )
+
+            if current_count > max_requests and mode == 'v2':
+                _record_rate_limit_metric('blocked', endpoint, method, category_key)
+                logger.warning(
+                    f"Rate limit exceeded for user {user_id} on {endpoint} ({method})",
+                    extra={
+                        'user_id': user_id,
+                        'endpoint': endpoint,
+                        'method': method,
+                        'category': category,
+                        'count': current_count,
+                        'limit': max_requests,
+                        'window': window,
+                        'retry_after': retry_after,
                     }
                 )
 
                 # User-friendly message based on window
-                if window >= 300:
-                    time_msg = f"{window // 60} menit"
+                if retry_after >= 60:
+                    time_msg = f"{math.ceil(retry_after / 60)} menit"
                 else:
-                    time_msg = f"{window} detik"
+                    time_msg = f"{retry_after} detik"
 
-                return APIResponse.error(
+                response = APIResponse.error(
                     message=f"Terlalu banyak permintaan. Silakan coba lagi dalam {time_msg}.",
                     code='RATE_LIMIT_EXCEEDED',
                     status=429,
                     details={
+                        'limit': max_requests,
                         'max_requests': max_requests,
                         'window_seconds': window,
                         'current_count': current_count,
-                        'category': category or 'default'
+                        'remaining': 0,
+                        'reset_at': reset_at,
+                        'category': category_key,
                     },
                     extra={
-                        'retry_after': window
+                        'retry_after': retry_after,
                     }
                 )
+                response['Retry-After'] = str(retry_after)
+                for header, value in common_headers.items():
+                    response[header] = value
+                return response
 
-            # Increment counter
-            new_count = current_count + 1
-            cache.set(cache_key, new_count, window)
-            if alias_key:
-                cache.set(alias_key, new_count, window)
+            if current_count <= max_requests:
+                _record_rate_limit_metric('allowed', endpoint, method, category_key)
+            near_limit_threshold = max(1, int(math.ceil(max_requests * 0.8)))
+            if current_count == near_limit_threshold:
+                _record_rate_limit_metric('near_limit', endpoint, method, category_key)
 
             # Call the actual view
-            return view_func(request, *args, **kwargs)
+            response = view_func(request, *args, **kwargs)
+            try:
+                for header, value in common_headers.items():
+                    response[header] = value
+            except Exception:
+                # Non-HTTP test doubles or unusual response types should not
+                # change the endpoint result.
+                pass
+            return response
 
         return wrapped_view
     return decorator

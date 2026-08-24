@@ -76,6 +76,7 @@ export class AppInitializer {
         projectName: '',
         projectStart: null,
         projectEnd: null,
+        scheduleRevision: 1,
         useUPlotKurva: true, // uPlot Kurva-S aktif secara default
         timeScale: 'weekly',
         inputMode: 'percentage',
@@ -164,6 +165,7 @@ export class AppInitializer {
    * @property {HTMLElement} root - Main app container (#tahapan-grid-app)
    * @property {HTMLButtonElement} saveButton - Save button (#save-button)
    * @property {HTMLButtonElement} refreshButton - Refresh button (#refresh-button)
+   * @property {HTMLButtonElement} regenerateButton - Regenerate timeline button (#btn-regenerate-timeline)
    * @property {HTMLButtonElement} resetButton - Reset progress button (#btn-reset-progress)
    * @property {HTMLElement} tanstackGridContainer - TanStack grid container
    * @property {HTMLElement} tanstackGridBody - TanStack grid body
@@ -183,6 +185,7 @@ export class AppInitializer {
         root: document.getElementById('tahapan-grid-app'),
         saveButton: document.getElementById('save-button') || document.getElementById('btn-save-all'),
         refreshButton: document.getElementById('refresh-button'),
+        regenerateButton: document.getElementById('btn-regenerate-timeline'),
         resetButton: document.getElementById('btn-reset-progress'),
         tanstackGridContainer: document.getElementById('tanstack-grid-container'),
         tanstackGridBody: document.getElementById('tanstack-grid-body'),

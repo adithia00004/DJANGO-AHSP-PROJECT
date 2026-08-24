@@ -369,6 +369,20 @@ else:
 
 PERFORMANCE_LOG_THRESHOLD = float(os.getenv("DJANGO_PERF_THRESHOLD", "1.0"))
 
+# Rate-limit category overrides are intentionally empty by default. Production
+# can tune a category during the calibration window without changing endpoint
+# decorators or application code, e.g.:
+# DETAIL_PROJECT_RATE_LIMIT_OVERRIDES = {
+#     "write_interactive": {"max_requests": 60, "window": 60},
+# }
+DETAIL_PROJECT_RATE_LIMIT_OVERRIDES = {}
+
+# Rollout switch for limiter v2:
+# - v2      : enforce fixed-window limits;
+# - observe : record would-block events but allow requests (staging/canary);
+# - off     : bypass limiter (emergency rollback only; other guards remain).
+DETAIL_PROJECT_RATE_LIMIT_MODE = os.getenv("DETAIL_PROJECT_RATE_LIMIT_MODE", "v2").lower()
+
 # Opaque ID rollout flag:
 # - True  : strict opaque mode (bp_N / cp_N)
 # - False : legacy descriptive mode allowed for runtime parameter CRUD/sync

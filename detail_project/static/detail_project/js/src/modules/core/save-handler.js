@@ -260,6 +260,7 @@ export class SaveHandler {
       mode: progressMode,  // Phase 2E.1: 'planned' or 'actual' (determines field to update)
       project_id: this.state.projectId,
       week_end_day: this.state.weekEndDay ?? 6,
+      schedule_revision: this.state.scheduleRevision,
     };
 
     console.log(`[SaveHandler] Payload:`, JSON.stringify(payload, null, 2));
@@ -350,6 +351,9 @@ export class SaveHandler {
    * @private
    */
   _handleSaveSuccess(result) {
+    if (Number.isFinite(Number(result?.schedule_revision))) {
+      this.state.scheduleRevision = Number(result.schedule_revision);
+    }
     console.log('[SaveHandler] ✅ Save successful');
 
     const progressMode = (this.state?.progressMode || 'planned').toLowerCase();

@@ -608,6 +608,8 @@ class TemplateAhspKoefFormulaApiTests(TestCase):
                 "lokasi_project": "Jakarta",
                 "nama_client": "Client Import",
                 "anggaran_owner": "1000",
+                "tanggal_mulai": "2026-01-01",
+                "tanggal_selesai": "2026-12-31",
             },
             "klasifikasi": [
                 {"_export_id": 1, "name": "K1", "ordering_index": 1},

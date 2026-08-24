@@ -20,6 +20,7 @@ from .utils.performance import (
     analyze_slow_queries,
     get_query_breakdown
 )
+from .api_helpers import get_rate_limit_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +166,7 @@ def api_performance_metrics(request):
     return JsonResponse({
         'ok': True,
         'summary': summary,
+        'rate_limits': get_rate_limit_metrics(),
         'database': database,
         'slow_queries': slow_queries[:10],  # Top 10 slowest
         'query_breakdown': query_breakdown

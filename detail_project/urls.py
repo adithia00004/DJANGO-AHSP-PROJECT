@@ -358,6 +358,15 @@ urlpatterns = [
          views_api_tahapan_v2.api_update_week_boundaries,
          name='api_update_week_boundaries'),
 
+    # Timeline preview/commit. Preview is read-only; commit recomputes impact
+    # and applies the agreed cancel/trim-planned policy atomically.
+    path('api/v2/project/<int:project_id>/timeline/preview/',
+         views_api_tahapan_v2.api_preview_project_timeline,
+         name='api_preview_project_timeline'),
+    path('api/v2/project/<int:project_id>/timeline/commit/',
+         views_api_tahapan_v2.api_commit_project_timeline,
+         name='api_commit_project_timeline'),
+
     # Reset all progress
     path('api/v2/project/<int:project_id>/reset-progress/',
          views_api_tahapan_v2.api_reset_progress,

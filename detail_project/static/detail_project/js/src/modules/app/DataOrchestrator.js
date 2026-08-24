@@ -218,17 +218,25 @@ export class DataOrchestrator {
                   typeof weekStartDay === 'number' ? weekStartDay : app._getWeekStartDay(),
                 week_end_day:
                   typeof weekEndDay === 'number' ? weekEndDay : app._getWeekEndDay(),
+                schedule_revision: app.state.scheduleRevision,
               }
-            : {}),
+            : { schedule_revision: app.state.scheduleRevision }),
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const errorPayload = await response.json().catch(() => ({}));
+        throw new Error(errorPayload.error || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (Number.isFinite(Number(result?.schedule_revision))) {
+        app.state.scheduleRevision = Number(result.schedule_revision);
       }
 
       app._invalidateCachedDataset();
       await this.loadInitialData({ forceReload: true });
+      app.state.timelineNeedsRegen = false;
       const successMessage =
         mode === 'monthly' ? 'Struktur monthly diperbarui (read-only)' : 'Periode minggu diperbarui';
       app.showToast(successMessage, 'success', 2200);

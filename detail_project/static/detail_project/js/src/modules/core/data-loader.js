@@ -363,6 +363,10 @@ export class DataLoader {
       const url = this.state.apiBase || `/detail_project/api/project/${this.projectId}/tahapan/`;
       const data = await apiCall(url);
 
+      if (Number.isFinite(Number(data?.schedule_revision))) {
+        this.state.scheduleRevision = Number(data.schedule_revision);
+      }
+
       this.state.tahapanList = (data.tahapan || data || []).sort((a, b) => a.urutan - b.urutan);
 
       // Auto-detect time scale mode from tahapan
@@ -607,6 +611,10 @@ export class DataLoader {
   async _loadAssignmentsViaV2() {
     const url = `/detail_project/api/v2/project/${this.projectId}/assignments/`;
     const data = await apiCall(url);
+
+    if (Number.isFinite(Number(data?.schedule_revision))) {
+      this.state.scheduleRevision = Number(data.schedule_revision);
+    }
 
     if (!data || !Array.isArray(data.assignments)) {
       console.info('[DataLoader] API v2 returned no assignments array (treating as empty dataset)');
