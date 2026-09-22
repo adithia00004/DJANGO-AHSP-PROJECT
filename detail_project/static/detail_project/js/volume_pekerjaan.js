@@ -5327,7 +5327,6 @@
         scopeLabels: labels,
         scopeValues: getFormulaScopeValues(),
       });
-      const exprChipPreview = buildFormulaChipHtml(String(expression || '').replace(/^=/, '').trim(), labels, { compact: true });
       const usageSummary = summarizeFormulaUsage(code, usageMap);
 
       const tr = document.createElement('tr');
@@ -5338,7 +5337,6 @@
         </td>
         <td class="cparam-formula-cell">
           <div class="cparam-expression-label">${escapeHtml(exprLabelPreview || expression)}</div>
-          <div class="cparam-expression-chip">${exprChipPreview}</div>
         </td>
         <td class="text-end cparam-actions-cell">
           <div class="cparam-value-display small ${err ? 'text-danger' : 'text-success'}">

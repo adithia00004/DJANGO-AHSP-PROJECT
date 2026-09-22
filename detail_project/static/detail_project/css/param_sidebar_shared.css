@@ -354,13 +354,6 @@
   color: var(--dp-c-text);
 }
 
-.dp-param-sidebar .cparam-expression-chip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .2rem;
-  margin-top: .2rem;
-}
-
 .dp-param-sidebar .cparam-actions-cell {
   vertical-align: middle;
 }
@@ -390,45 +383,6 @@
 }
 
 /* ===== FORMULA CHIPS (in computed table) ===== */
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip {
-  border-radius: 999px;
-  padding: .08rem .38rem;
-  border: 1px solid color-mix(in srgb, var(--dp-c-primary) 30%, var(--dp-c-border));
-  font-size: .67rem;
-  line-height: 1.15;
-}
-
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip.dp-ps-chip-base {
-  background: color-mix(in srgb, var(--dp-c-primary) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-primary) 30%, var(--dp-c-border));
-}
-
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip.dp-ps-chip-computed {
-  background: color-mix(in srgb, var(--dp-c-info, #0dcaf0) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-info, #0dcaf0) 30%, var(--dp-c-border));
-}
-
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip.dp-ps-chip-operation {
-  background: color-mix(in srgb, var(--dp-c-warning, #ffc107) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-warning, #ffc107) 34%, var(--dp-c-border));
-}
-
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip.dp-ps-chip-number {
-  background: color-mix(in srgb, var(--dp-c-success, #198754) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-success, #198754) 30%, var(--dp-c-border));
-}
-
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip.dp-ps-chip-operator {
-  background: color-mix(in srgb, var(--dp-c-muted) 12%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-muted) 30%, var(--dp-c-border));
-}
-
-.dp-param-sidebar .cparam-expression-chip .dp-ps-formula-chip-raw {
-  font-family: var(--bs-font-monospace);
-  font-size: .67rem;
-  color: var(--dp-c-muted);
-}
-
 /* ===== USAGE BADGES ===== */
 .dp-param-sidebar .dp-ps-usage-badge {
   opacity: 0;

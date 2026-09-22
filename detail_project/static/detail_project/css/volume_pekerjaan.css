@@ -1371,13 +1371,6 @@ body[data-page="volume_pekerjaan"] {
   color: var(--dp-c-text);
 }
 
-#vp-cparam-table .cparam-expression-chip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .2rem;
-  margin-top: .2rem;
-}
-
 #vp-cparam-table .cparam-actions-cell {
   vertical-align: middle;
 }
@@ -1404,45 +1397,6 @@ body[data-page="volume_pekerjaan"] {
   justify-content: center;
   min-width: 1.6rem;
   min-height: 1.5rem;
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip {
-  border-radius: 999px;
-  padding: .08rem .38rem;
-  border: 1px solid color-mix(in srgb, var(--dp-c-primary) 30%, var(--dp-c-border));
-  font-size: .67rem;
-  line-height: 1.15;
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip.vp-chip-base {
-  background: color-mix(in srgb, var(--dp-c-primary) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-primary) 30%, var(--dp-c-border));
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip.vp-chip-computed {
-  background: color-mix(in srgb, var(--dp-c-info, #0dcaf0) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-info, #0dcaf0) 30%, var(--dp-c-border));
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip.vp-chip-operation {
-  background: color-mix(in srgb, var(--dp-c-warning, #ffc107) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-warning, #ffc107) 34%, var(--dp-c-border));
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip.vp-chip-number {
-  background: color-mix(in srgb, var(--dp-c-success, #198754) 8%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-success, #198754) 30%, var(--dp-c-border));
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip.vp-chip-operator {
-  background: color-mix(in srgb, var(--dp-c-muted) 12%, transparent);
-  border-color: color-mix(in srgb, var(--dp-c-muted) 30%, var(--dp-c-border));
-}
-
-#vp-cparam-table .cparam-expression-chip .vp-formula-chip-raw {
-  font-family: var(--bs-font-monospace);
-  font-size: .67rem;
-  color: var(--dp-c-muted);
 }
 
 #vp-var-table thead th {
