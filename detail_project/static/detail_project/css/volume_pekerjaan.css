@@ -2251,6 +2251,12 @@ td.text-wrap.text-start {
   /* Ensure above active topbar (12044) */
 }
 
+/* Palette dibuka DARI editor, jadi harus di atasnya -- tapi tetap di bawah
+   #dp-core-modal (13055). Lihat tangga lengkap di core.css. */
+#vpParamPaletteModal {
+  z-index: var(--dp-z-modal-nested);
+}
+
 /* Confirm / Alert dialog must appear above formula editor (13050) */
 #dp-core-modal {
   z-index: 13055 !important;

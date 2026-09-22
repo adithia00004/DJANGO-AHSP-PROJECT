@@ -1284,6 +1284,10 @@
 #taParamPaletteModal .vp-palette-empty { padding: .85rem; color: var(--dp-c-muted); }
 
 #taFormulaEditorModal { z-index: 13050; }
+/* Palette dibuka DARI editor, jadi harus di atasnya -- tapi tetap di bawah
+   #dp-core-modal (13055) supaya dialog konfirmasi dari dalam palette tetap
+   terlihat. Lihat tangga lengkap di core.css. */
+#taParamPaletteModal { z-index: var(--dp-z-modal-nested); }
 #taFormulaEditorModal~.modal-backdrop:last-of-type { z-index: 13054 !important; }
 
 @media (max-width: 768px) {

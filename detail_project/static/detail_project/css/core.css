@@ -31,6 +31,15 @@
   --dp-z-toast: 13100;
   /* toast area - ALWAYS visible, even above modal */
   --dp-z-modal: 13000;
+  /* Tangga modal bertumpuk (dibuka SATU DI ATAS yang lain). Urutannya:
+       --dp-z-modal          13000  modal biasa
+       --dp-z-modal-stacked  13050  Editor Formula (di atas topbar 12044)
+       --dp-z-modal-nested   13052  Parameter Palette, dibuka DARI editor
+       --dp-z-modal-dialog   13055  konfirmasi/alert, selalu paling atas
+       --dp-z-toast          13100  toast
+     Sebelumnya hanya editor yang dinaikkan (13050) sementara palette tetap
+     13000, sehingga palette terbit DI BAWAH editor yang memanggilnya. */
+  --dp-z-modal-nested: 13052;
   /* modal Bootstrap */
   --dp-z-backdrop: 12990;
   /* backdrop di bawah modal */
