@@ -13,7 +13,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate, BaseDocTemplate, PageTemplate, Frame,
-    Table, TableStyle, Paragraph, Flowable,
+    Table as _BaseTable, TableStyle, Paragraph, Flowable,
     Spacer, PageBreak, KeepTogether, Image, NextPageTemplate
 )
 from reportlab.graphics.shapes import Drawing, String, Line, Rect, Circle
@@ -59,9 +59,48 @@ PAGE_SIZE_MAP = {
 _BASE_STYLESHEET = None
 _CELL_STYLE_CACHE: Dict[tuple, ParagraphStyle] = {}
 
+# Tinggi baris minimum yang sedang berlaku (point). Diatur per-dokumen oleh
+# PDFExporter.export(); lihat ROW_MIN_HEIGHT_CM di table_styles.
+_ACTIVE_MIN_ROW_HEIGHT = [0.0]
 
-# Ukuran huruf per tingkat hierarki tabel (pt). Klasifikasi paling besar,
-# pekerjaan paling kecil, supaya tingkatannya terbaca tanpa mengandalkan warna.
+
+class Table(_BaseTable):
+    """Table ReportLab dengan tinggi baris MINIMUM.
+
+    ReportLab hanya mengenal tinggi baris OTOMATIS (mengikuti isi) atau TETAP
+    (`rowHeights`). Keduanya tidak cocok: otomatis membuat baris pendek terlalu
+    rapat, tetap memotong uraian panjang. Minimum ditegakkan dengan menaikkan
+    tinggi hasil hitungan ReportLab hanya bila di bawah ambang -- baris yang
+    isinya membungkus ke beberapa baris teks dibiarkan apa adanya.
+
+    Ditegakkan di `_calc`, BUKAN di `wrap`: `_calc` dipakai baik oleh wrap
+    maupun oleh split antar-halaman. Menaikkan tinggi hanya di `wrap` membuat
+    kedua jalur itu berbeda pendapat, dan ReportLab melempar "Splitting error"
+    saat tabel panjang dipecah ke halaman berikutnya.
+
+    Tabel yang tidak boleh terpengaruh (mis. blok tanda tangan yang sengaja
+    dirapatkan) cukup menyetel `enforce_min_row_height = False`.
+    """
+
+    enforce_min_row_height = True
+
+    def _calc(self, availWidth, availHeight):
+        super()._calc(availWidth, availHeight)
+        floor = _ACTIVE_MIN_ROW_HEIGHT[0]
+        if not floor or not self.enforce_min_row_height:
+            return
+        heights = getattr(self, '_rowHeights', None)
+        if not heights:
+            return
+        raised = False
+        for i, h in enumerate(heights):
+            if h is not None and h < floor:
+                heights[i] = floor
+                raised = True
+        if raised:
+            self._rowHeights = heights
+            self._height = sum(h for h in heights if h is not None)
+
 HIER_FONT_CATEGORY = 9
 HIER_FONT_SUBCATEGORY = 8.5
 HIER_FONT_ITEM = 7.5
@@ -705,6 +744,20 @@ class PDFExporter(ConfigExporterBase):
     
     def export(self, data: Dict[str, Any], collect_only: bool = False) -> HttpResponse:
         """Export to PDF (supports single or multi-page payload)"""
+
+        # Tinggi baris MINIMUM (keputusan owner 2026-09-22). Rincian AHSP memakai
+        # ambang lebih rendah: tabelnya paling padat -- satu pekerjaan bisa berisi
+        # belasan komponen, dan 0,7 cm akan membuatnya tumpah berhalaman-halaman.
+        from reportlab.lib.units import cm as _cm
+        from .table_styles import ROW_MIN_HEIGHT_CM, ROW_MIN_HEIGHT_RINCIAN_CM
+        _is_rincian = bool(
+            data.get('sections')
+            and isinstance(data['sections'][0], dict)
+            and 'pekerjaan' in data['sections'][0]
+        )
+        _ACTIVE_MIN_ROW_HEIGHT[0] = (
+            ROW_MIN_HEIGHT_RINCIAN_CM if _is_rincian else ROW_MIN_HEIGHT_CM
+        ) * _cm
         # WP Export: format canonical Decimal cells to display strings at this
         # text-exporter boundary (only column_formats-tagged tables are touched).
         from .cell_format import materialize_display_rows
@@ -846,7 +899,7 @@ class PDFExporter(ConfigExporterBase):
             story.append(Spacer(1, 3*mm))
             
             # Build Rekap table
-            rekap_headers = ['No', 'Kode', 'Uraian Pekerjaan', 'E — Jumlah', 'F — Profit/Margin', 'G — Harga Satuan']
+            rekap_headers = ['No', 'Kode', 'Uraian Pekerjaan', 'Jumlah', 'Profit/Margin', 'Harga Satuan']
             
             # Create wrap style for long text
             rekap_wrap_style = ParagraphStyle(
@@ -2859,6 +2912,9 @@ class PDFExporter(ConfigExporterBase):
             row_heights[i] = (SIGNATURE_SPACE_MM / len(blank_rows)) * mm
 
         sig_table = Table(sig_data, colWidths=[col_width] * n, rowHeights=row_heights)
+        # Blok ini sengaja dirapatkan (permintaan owner 2026-08-18); tinggi
+        # baris minimum tidak boleh membatalkannya.
+        sig_table.enforce_min_row_height = False
         sig_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),

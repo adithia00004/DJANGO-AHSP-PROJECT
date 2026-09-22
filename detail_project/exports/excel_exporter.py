@@ -702,7 +702,7 @@ class ExcelExporter(ConfigExporterBase):
         current_row += 2
 
         # Headers
-        headers = ['No', 'Kode', 'Uraian Pekerjaan', 'E — Jumlah (A+B+C+LAIN)', 'F — Profit/Margin', 'G — Harga Satuan']
+        headers = ['No', 'Kode', 'Uraian Pekerjaan', 'Jumlah', 'Profit/Margin', 'Harga Satuan']
         for col_idx, header in enumerate(headers, 1):
             cell = ws_rekap.cell(row=current_row, column=col_idx, value=header)
             cell.font = Font(bold=True, color='FFFFFF')

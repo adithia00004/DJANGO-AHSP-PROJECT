@@ -25,6 +25,14 @@ from reportlab.lib.units import mm
 # EXPORT DEFAULTS (SSOT)
 # =============================================================================
 
+# Tinggi baris MINIMUM tabel export (cm), keputusan owner 2026-09-22.
+# Minimum, bukan tetap: baris dengan uraian panjang tetap boleh lebih tinggi.
+# Rincian AHSP dikecualikan karena tabelnya paling padat -- satu pekerjaan bisa
+# berisi belasan komponen, dan 0,7 cm akan membuatnya tumpah berhalaman-halaman.
+ROW_MIN_HEIGHT_CM = 0.7
+ROW_MIN_HEIGHT_RINCIAN_CM = 0.4
+
+
 class ExportDefaults:
     """
     SSOT: Base defaults for all export formats (PDF, Word, Excel).

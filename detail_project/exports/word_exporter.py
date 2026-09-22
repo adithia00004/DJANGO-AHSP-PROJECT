@@ -68,6 +68,11 @@ class WordExporter:
         self.doc = None
         # Dinyalakan export_package(); lihat catatan di export().
         self._package_mode = False
+        # Tabel yang dikecualikan dari tinggi baris minimum (mis. blok tanda
+        # tangan yang sengaja dirapatkan). Berisi id(table._tbl).
+        self._min_height_exempt = set()
+        # Rincian AHSP memakai ambang minimum lebih rendah; lihat table_styles.
+        self._is_rincian_doc = False
     
     # =========================================================================
     # PUBLIC EXPORT METHODS
@@ -376,6 +381,8 @@ class WordExporter:
         2. Rincian (detail per pekerjaan)
         3. Lembar Pengesahan (at bottom of last rincian page)
         """
+        # Ambang tinggi baris minimum khusus Rincian AHSP (lihat table_styles).
+        self._is_rincian_doc = True
         # Mode paket: dokumen dan tata halaman sudah disiapkan export_package(),
         # dan responsnya dibuat sekali di akhir. Tanpa penjagaan ini tiap dokumen
         # akan membuat Document() baru dan menimpa isi sebelumnya.
@@ -424,7 +431,7 @@ class WordExporter:
         self.doc.add_paragraph()
         
         # Rekap table
-        rekap_headers = ['No', 'Kode', 'Uraian Pekerjaan', 'E — Jumlah', 'F — Profit/Margin', 'G — Harga Satuan']
+        rekap_headers = ['No', 'Kode', 'Uraian Pekerjaan', 'Jumlah', 'Profit/Margin', 'Harga Satuan']
         rekap_table = self.doc.add_table(rows=len(sections) + 1, cols=6)
         rekap_table.style = 'Table Grid'
         
@@ -956,6 +963,9 @@ class WordExporter:
         table = self.doc.add_table(rows=4 + max_details, cols=num_cols)
         # Tinggi ruang tanda tangan disamakan dengan PDF lewat konstanta bersama.
         table.rows[ROW_SPACE].height = Mm(SIGNATURE_SPACE_MM)
+        # Blok ini sengaja dirapatkan (permintaan owner 2026-08-18); tinggi baris
+        # minimum tidak boleh membatalkannya.
+        self._min_height_exempt.add(id(table._tbl))
 
         def _put(row_idx, col_idx, text, bold=False, underline=False):
             cell = table.rows[row_idx].cells[col_idx]
@@ -2037,6 +2047,8 @@ class WordExporter:
         return f"{numeric:.2f}%"
 
     def _create_daily_response(self, reports: List[Dict[str, Any]]) -> HttpResponse:
+        self._apply_min_row_heights()
+
         buffer = BytesIO()
         self.doc.save(buffer)
         content = self._daily_deduplicate_smartart_package(buffer.getvalue())
@@ -2245,6 +2257,38 @@ class WordExporter:
     # RESPONSE CREATION
     # =========================================================================
     
+    def _apply_min_row_heights(self):
+        """Terapkan tinggi baris MINIMUM ke semua tabel (keputusan owner 2026-09-22).
+
+        Word tidak menyimpan tinggi baris kecuali diminta, sehingga kerapatannya
+        ditentukan tema dokumen -- bukan oleh kita. `AT_LEAST` menetapkan lantai
+        tanpa memotong isi: baris dengan uraian panjang tetap boleh lebih tinggi.
+
+        Dipasang di `_create_response` karena itu satu-satunya titik yang dilalui
+        SEMUA jalur export; memasangnya per `add_table` berarti menyentuh belasan
+        tempat dan pasti ada yang terlewat.
+        """
+        from docx.enum.table import WD_ROW_HEIGHT_RULE
+        from docx.shared import Cm
+
+        from .table_styles import ROW_MIN_HEIGHT_CM, ROW_MIN_HEIGHT_RINCIAN_CM
+
+        floor = Cm(
+            ROW_MIN_HEIGHT_RINCIAN_CM if getattr(self, '_is_rincian_doc', False)
+            else ROW_MIN_HEIGHT_CM
+        )
+        exempt = getattr(self, '_min_height_exempt', set())
+        for table in self.doc.tables:
+            if id(table._tbl) in exempt:
+                continue
+            for row in table.rows:
+                # Jangan turunkan tinggi yang sudah ditetapkan lebih besar
+                # (mis. ruang tanda tangan basah).
+                if row.height is not None and row.height >= floor:
+                    continue
+                row.height = floor
+                row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+
     def _create_response(self, filename: str) -> HttpResponse:
         """
         Create HTTP response with Word document.
@@ -2255,6 +2299,8 @@ class WordExporter:
         Returns:
             HttpResponse with .docx attachment
         """
+        self._apply_min_row_heights()
+
         buffer = BytesIO()
         self.doc.save(buffer)
         buffer.seek(0)
