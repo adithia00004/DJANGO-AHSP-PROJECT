@@ -3101,39 +3101,26 @@ class PDFExporter(ConfigExporterBase):
         """
         Build professional cover page for report.
         
-        Design principles:
+        Design principles (disederhanakan 2026-09-27, registri R-36):
         - Border spans entire page margins (edge to edge)
         - Title: "LAPORAN BULAN ke-X" (no JADWAL PEKERJAAN)
-        - Logo box with 40% opacity
+        - TANPA kotak placeholder logo (tidak dipakai lagi di PDF)
+        - Pemisah = satu garis tipis (HRFlowable), bukan karakter '─' yang
+          tidak ada di Helvetica dan tercetak sebagai deret kotak
         - No header/footer on cover
-        
+
         Args:
             report_type: 'rekap', 'monthly', or 'weekly'
             project_info: Project information dict
             period_info: Period information for monthly/weekly reports
         """
+        from reportlab.platypus.flowables import HRFlowable
+
         elements = []
-        
+
         # Frame content (will be wrapped in border)
-        frame_content = []
-        
-        # ==============================================
-        # LOGO PLACEHOLDER (40% opacity / muted)
-        # Empty box - no text, just placeholder for logo image
-        # ==============================================
-        logo_border_color = colors.Color(0.3, 0.4, 0.6, alpha=0.4)  # 40% opacity
-        logo_bg_color = colors.Color(0.95, 0.96, 0.98, alpha=0.4)   # 40% opacity
-        
-        # Empty string instead of "LOGO" text
-        logo_table = Table([['']], colWidths=[40*mm], rowHeights=[25*mm])
-        logo_table.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 1, logo_border_color),
-            ('BACKGROUND', (0, 0), (-1, -1), logo_bg_color),
-        ]))
-        frame_content.append(Spacer(1, 25*mm))
-        frame_content.append(logo_table)
-        frame_content.append(Spacer(1, 25*mm))
-        
+        frame_content = [Spacer(1, 60*mm)]
+
         # ==============================================
         # MAIN TITLE - Dynamic based on report type
         # "LAPORAN BULAN ke-X" or "LAPORAN MINGGU ke-X" or "LAPORAN REKAPITULASI"
@@ -3147,7 +3134,7 @@ class PDFExporter(ConfigExporterBase):
             title_text = f"LAPORAN MINGGU ke-{week_num}"
         elif report_type == 'rekap':
             title_text = "LAPORAN REKAPITULASI"
-        
+
         title_style = ParagraphStyle(
             'CoverTitle',
             fontSize=22,
@@ -3157,20 +3144,12 @@ class PDFExporter(ConfigExporterBase):
             leading=28,
         )
         frame_content.append(Paragraph(f"<b>{title_text}</b>", title_style))
-        frame_content.append(Spacer(1, 10*mm))
-        
-        # ==============================================
-        # DECORATIVE LINE
-        # ==============================================
-        line_table = Table([['─' * 35]], colWidths=[100*mm])
-        line_table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor(UTS.PRIMARY_LIGHT)),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ]))
-        frame_content.append(line_table)
-        frame_content.append(Spacer(1, 10*mm))
-        
+        frame_content.append(Spacer(1, 6*mm))
+        frame_content.append(HRFlowable(
+            width=60*mm, thickness=1, color=colors.HexColor(UTS.PRIMARY_LIGHT), hAlign='CENTER',
+        ))
+        frame_content.append(Spacer(1, 8*mm))
+
         # ==============================================
         # PROJECT NAME
         # ==============================================
@@ -3182,10 +3161,10 @@ class PDFExporter(ConfigExporterBase):
             alignment=TA_CENTER,
             leading=20,
         )
-        project_name = project_info.get('nama', 'Nama Proyek')
-        frame_content.append(Paragraph(f"<b>{project_name}</b>", project_name_style))
-        frame_content.append(Spacer(1, 12*mm))
-        
+        project_name = project_info.get('nama') or 'Nama Proyek'
+        frame_content.append(Paragraph(f"<b>{escape(str(project_name))}</b>", project_name_style))
+        frame_content.append(Spacer(1, 6*mm))
+
         # ==============================================
         # PERIOD INFO (for monthly/weekly) - dates only
         # ==============================================
@@ -3213,7 +3192,7 @@ class PDFExporter(ConfigExporterBase):
             
             if period_text:
                 frame_content.append(Paragraph(period_text, period_style))
-                frame_content.append(Spacer(1, 12*mm))
+                frame_content.append(Spacer(1, 14*mm))
         
         # ==============================================
         # PROJECT DETAILS TABLE

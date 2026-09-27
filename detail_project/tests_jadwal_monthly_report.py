@@ -133,21 +133,27 @@ _PDF_TEXT = re.compile(rb"\(((?:\\.|[^\\)])*)\)\s*Tj")
 _PDF_ESCAPE = re.compile(rb"\\(.)")
 
 
-def pdf_page_texts(content: bytes) -> list[str]:
-    """Teks per halaman dari PDF ReportLab (tanpa dependensi PDF reader).
+def pdf_page_streams(content: bytes) -> list[bytes]:
+    """Content stream per halaman (terdekompresi) dari PDF ReportLab.
 
     ReportLab menulis satu content stream (ASCII85+Flate) per halaman, urut
-    halaman; teks ada di operator ``(...) Tj``.
+    halaman — tanpa perlu dependensi PDF reader.
     """
-    pages = []
+    streams = []
     for match in _PDF_STREAM.finditer(content):
         raw = content[match.end():match.end() + int(match.group(1))]
         data = zlib.decompress(base64.a85decode(raw.strip().rstrip(b"~>").rstrip(b"~"), adobe=False))
-        if b"BT" not in data:
-            continue
-        parts = [_PDF_ESCAPE.sub(rb"\1", m.group(1)).decode("latin-1") for m in _PDF_TEXT.finditer(data)]
-        pages.append("\n".join(parts))
-    return pages
+        if b"BT" in data:
+            streams.append(data)
+    return streams
+
+
+def pdf_page_texts(content: bytes) -> list[str]:
+    """Teks per halaman; teks ada di operator ``(...) Tj``."""
+    return [
+        "\n".join(_PDF_ESCAPE.sub(rb"\1", m.group(1)).decode("latin-1") for m in _PDF_TEXT.finditer(data))
+        for data in pdf_page_streams(content)
+    ]
 
 
 class ReportPeriodCountTests(_MonthlyFixtureMixin, TestCase):
@@ -304,6 +310,21 @@ class MonthlyPdfRenderTests(_MonthlyFixtureMixin, TestCase):
             "pdf", report_type="weekly", weeks=[3],
         )
         self._assert_identity_wrapped("\n".join(pdf_page_texts(weekly.content)))
+
+    def test_cover_is_simple_without_logo_box_or_glyph_divider(self):
+        Project.objects.filter(pk=self.project.pk).update(nama="Gedung A & B")
+        self.project.refresh_from_db()
+        for report_type, periods in (("monthly", {"months": [3]}), ("weekly", {"weeks": [3]})):
+            response = ExportManager(self.project, self.owner).export_jadwal_professional(
+                "pdf", report_type=report_type, **periods,
+            )
+            cover = pdf_page_texts(response.content)[0].splitlines()
+            # Dulu: '─' * 35 (tidak ada di Helvetica) tercetak sebagai deret kotak.
+            self.assertFalse([line for line in cover if len(set(line.strip())) == 1 and len(line.strip()) > 5])
+            self.assertIn("Gedung A & B", cover)  # nama proyek di-escape
+            self.assertTrue(cover[0].startswith("LAPORAN "))
+            # Kotak logo lama = rect 40x25mm (113.3858 x 70.86614 pt) di stream cover.
+            self.assertNotIn(b"113.3858 -70.86614 re", pdf_page_streams(response.content)[0])
 
     def test_ket_project_shown_when_filled(self):
         Project.objects.filter(pk=self.project.pk).update(ket_project1="Tahun Anggaran 2026")
