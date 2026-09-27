@@ -32,6 +32,9 @@ class ExportRowHeightTests(TestCase):
             sumber_dana="APBD",
             lokasi_project="Mataram",
             nama_client="Dinas",
+            # Baris pertama lembar pengesahan = instansi (R-37); dipakai untuk
+            # mengenali tabel tanda tangan.
+            instansi_client="Pemkab Uji Tinggi Baris",
             nama_konsultan_perencana="Perencana",
             anggaran_owner=Decimal("1000000"),
             tanggal_mulai=date(2027, 1, 1),
@@ -76,7 +79,7 @@ class ExportRowHeightTests(TestCase):
         rows = []
         for table in doc.tables:
             header = " ".join(c.text for c in table.rows[0].cells)
-            is_signature = "Mengetahui" in header
+            is_signature = "Pemkab Uji Tinggi Baris" in header
             for row in table.rows:
                 rows.append((is_signature, row.height.cm if row.height else None))
         return rows

@@ -52,28 +52,25 @@ class SignaturePresets:
             # Sebagian instansi mewajibkan sebutan lain ("Pejabat Pembuat
             # Komitmen Dinas X"). Diisi per-project; kosong -> pakai 'label'.
             'label_field': 'sebutan_client',
-            # Baris keterangan di bawah nama, berurutan. Hanya pemilik yang
-            # punya slot ini; peran lain cukup instansi.
-            'detail_fields': ['jabatan_client', 'ket_client2'],
-            'connective': 'Mengetahui,',
+            # Baris di bawah NAMA, berurutan (keputusan owner 2026-09-27, R-37):
+            # ket_client2 (NIP/ID) langsung setelah nama, lalu jabatan. Peran
+            # lain belum punya field jabatan -> tanpa baris keterangan.
+            'detail_fields': ['ket_client2', 'jabatan_client'],
         },
         'perencana': {
             'label': 'Konsultan Perencana',
             'field': 'nama_konsultan_perencana',  # Project.nama_konsultan_perencana ✓
             'instansi_field': 'instansi_konsultan_perencana',
-            'connective': 'Dibuat oleh,',
         },
         'kontraktor': {
             'label': 'Kontraktor Pelaksana',
             'field': 'nama_kontraktor',  # Project.nama_kontraktor ✓
             'instansi_field': 'instansi_kontraktor',
-            'connective': 'Dibuat oleh,',
         },
         'pengawas': {
             'label': 'Konsultan Pengawas',
             'field': 'nama_konsultan_pengawas',  # Project.nama_konsultan_pengawas ✓
             'instansi_field': 'instansi_konsultan_pengawas',
-            'connective': 'Diperiksa oleh,',
         },
     }
     
@@ -167,28 +164,23 @@ class SignaturePresets:
 
             name = _field(field)
 
-            # Instansi tampil di bawah nama pada lembar pengesahan. Slot
-            # 'position' sudah lama ada tapi selalu kosong, sehingga baris itu
-            # terbit tanpa isi; kini diisi dari field instansi milik peran yang
-            # bersangkutan (bukan instansi klien untuk semua peran).
-            position = _field(role.get('instansi_field', ''))
-
-            # Baris di bawah nama, berurutan dan tanpa slot kosong: keterangan
-            # khusus peran (pemilik: jabatan lalu NIP/ID) diikuti instansi.
-            # Baris kosong dibuang di sini supaya renderer tidak perlu tahu
-            # peran mana punya slot apa.
+            # Susunan lembar pengesahan (R-37): INSTANSI / ruang TTD / NAMA /
+            # keterangan. 'label' (sebutan peran) tidak lagi dicetak — tetap
+            # dikembalikan untuk mencocokkan peran di renderer.
+            instansi = _field(role.get('instansi_field', ''))
             details = [_field(a) for a in role.get('detail_fields', [])]
-            details.append(position)
             details = [d for d in details if d]
 
             signatures.append({
+                'role': role_key,
                 'label': label,
-                'connective': role.get('connective', ''),
+                'instansi': instansi,
                 'name': name,
-                'position': position,
+                # Alias lama untuk pemanggil yang membaca 'position'.
+                'position': instansi,
                 'details': details,
             })
-        
+
         return signatures
 
 

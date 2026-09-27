@@ -137,8 +137,6 @@ class SignatureSheetRenderTests(TestCase):
         flat = self._flat()
 
         for expected in (
-            "Pemilik Proyek",
-            "Konsultan Perencana",
             "Dinas Peternakan",
             "Rozan Fahriady",
             "Pemkab Lombok Barat",
@@ -151,35 +149,39 @@ class SignatureSheetRenderTests(TestCase):
                     f"'{expected}' tidak tercetak di lembar pengesahan PDF.",
                 )
 
-    def test_owner_label_can_be_overridden_per_project(self):
-        """Sebagian instansi mewajibkan sebutan lain untuk pemilik."""
+    def test_no_connective_or_role_label_is_printed(self):
+        """R-37 (owner 2026-09-27): susunan hanya Instansi / Nama / Jabatan.
+
+        Kata penghubung dan sebutan peran tidak dicetak, termasuk sebutan
+        kustom ``sebutan_client``.
+        """
         self.project.sebutan_client = "Pejabat Pembuat Komitmen Dinas Peternakan"
         self.project.save()
 
         flat = self._flat()
+        for removed in (
+            "Mengetahui,", "Dibuat oleh,", "Diperiksa oleh,",
+            "Pemilik Proyek", "Konsultan Perencana",
+            "Pejabat Pembuat Komitmen Dinas Peternakan",
+        ):
+            with self.subTest(removed=removed):
+                self.assertNotIn(removed, flat)
 
-        self.assertIn("Pejabat Pembuat Komitmen Dinas Peternakan", flat)
-        self.assertNotIn("Pemilik Proyek", flat)
-
-    def test_owner_label_falls_back_to_default_when_blank(self):
-        self.project.sebutan_client = ""
-        self.project.save()
-
-        self.assertIn("Pemilik Proyek", self._flat())
-
-    def test_owner_keterangan_slots_are_printed_in_order(self):
-        """Ket 1 (jabatan) lalu Ket 2 (NIP), baru instansi."""
+    def test_column_order_is_instansi_name_ket2_jabatan(self):
+        """Per pihak: INSTANSI, (ruang TTD), NAMA, lalu ket_client2, lalu jabatan."""
         self.project.jabatan_client = "PPK Konstruksi"
         self.project.ket_client2 = "NIP 19700101 199003 1 001"
         self.project.save()
 
         rows = self._signature_rows()
         owner_col = [self._plain(r[0]) for r in rows]
-        order = [owner_col.index(v) for v in (
-            "PPK Konstruksi", "NIP 19700101 199003 1 001", "Pemkab Lombok Barat",
-        )]
-
-        self.assertEqual(order, sorted(order), "urutan keterangan pemilik tertukar")
+        self.assertEqual(
+            [v for v in owner_col if v],
+            ["Pemkab Lombok Barat", "Dinas Peternakan", "NIP 19700101 199003 1 001", "PPK Konstruksi"],
+        )
+        # Pihak tanpa jabatan (perencana) tidak mendapat baris keterangan isian.
+        perencana_col = [self._plain(r[1]) for r in rows]
+        self.assertEqual([v for v in perencana_col if v], ["CV Kaleidoskop", "Rozan Fahriady"])
 
     def test_signature_table_fits_the_printable_width(self):
         """Lebar tabel dulu 250mm mati, melebihi area cetak A4 portrait 190mm."""
@@ -232,6 +234,62 @@ class SignatureSheetRenderTests(TestCase):
         self.assertTrue(name_cells, "nama tidak tercetak")
         self.assertIn("<u>", str(getattr(name_cells[0], "text", "")),
                       "nama tidak digarisbawahi")
+
+
+class SignatureWordExcelRenderTests(TestCase):
+    """R-37 di Word (blok baku) dan Excel (sheet Pengesahan Volume)."""
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user("ttd-word-excel", password="x")
+        self.project = Project.objects.create(
+            owner=self.owner,
+            nama="Proyek Pengesahan",
+            sumber_dana="APBD",
+            lokasi_project="Mataram",
+            nama_client="Dinas Peternakan",
+            instansi_client="Pemkab Lombok Barat",
+            nama_konsultan_perencana="Rozan Fahriady",
+            instansi_konsultan_perencana="CV Kaleidoskop",
+            anggaran_owner=Decimal("1000000"),
+        )
+
+    def test_word_block_is_instansi_space_name_details(self):
+        from io import BytesIO
+
+        from docx import Document
+
+        from detail_project.exports.export_manager import ExportManager
+
+        self.project.jabatan_client = "PPK Konstruksi"
+        self.project.ket_client2 = "NIP 1970"
+        self.project.save()
+        doc = Document(BytesIO(ExportManager(self.project).export_rekap_rab("word").content))
+        table = next(t for t in doc.tables if t.rows[0].cells[0].text == "Pemkab Lombok Barat")
+        rows = [[c.text for c in r.cells] for r in table.rows]
+
+        self.assertEqual(rows[0], ["Pemkab Lombok Barat", "CV Kaleidoskop"])
+        self.assertEqual(rows[1], ["", ""])  # ruang tanda tangan basah
+        self.assertEqual(rows[2], ["Dinas Peternakan", "Rozan Fahriady"])
+        self.assertEqual([r[0] for r in rows[3:]], ["NIP 1970", "PPK Konstruksi"])
+        self.assertTrue(all(run.underline for run in table.cell(2, 0).paragraphs[0].runs))
+        flat = " ".join(" ".join(r) for r in rows)
+        for stale in ("Mengetahui,", "Dibuat oleh,", "Pemilik Proyek", "Konsultan Perencana"):
+            self.assertNotIn(stale, flat)
+
+    def test_excel_volume_signature_sheet_uses_project_data(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        from detail_project.exports.export_manager import ExportManager
+
+        wb = load_workbook(BytesIO(ExportManager(self.project).export_volume_pekerjaan("xlsx").content))
+        values = [str(c.value) for row in wb["Pengesahan"].iter_rows() for c in row if c.value]
+
+        self.assertEqual(
+            values,
+            ["LEMBAR PENGESAHAN", "Pemkab Lombok Barat", "CV Kaleidoskop", "Dinas Peternakan", "Rozan Fahriady"],
+        )
 
 
 class SignatureCoverageTests(TestCase):

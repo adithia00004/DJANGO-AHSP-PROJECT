@@ -850,9 +850,12 @@ class JadwalDailyDocxExportTests(TestCase):
 
         doc = self._daily_docx(15)
         signatures = doc.tables[2]
-        labels = [cell.text for cell in signatures.rows[0].cells]
-        self.assertEqual(labels, ["Kontraktor Pelaksana", "Konsultan Pengawas"])
-        self.assertNotIn("Pemilik", " ".join(self._table_texts(signatures)))
+        # R-37: baris 0 = instansi (kosong di fixture), baris 2 = nama; tanpa sebutan peran.
+        names = [cell.text for cell in signatures.rows[2].cells]
+        self.assertEqual(names, ["Kontraktor Harian", "Pengawas Harian"])
+        flat = " ".join(self._table_texts(signatures))
+        for stale in ("Pemilik", "Owner Harian", "Kontraktor Pelaksana", "Konsultan Pengawas"):
+            self.assertNotIn(stale, flat)
         self.assertGreaterEqual(signatures.rows[1].height, Cm(2.1))  # 2.2cm, dibulatkan ke twips
 
     def test_daily_rejects_dates_outside_project_with_user_message(self):

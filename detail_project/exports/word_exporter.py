@@ -940,25 +940,20 @@ class WordExporter:
         # Get signature data from config
         sig_config = self.config.signature_config
         signatures = sig_config.signatures if sig_config and sig_config.enabled else []
-        
         if not signatures:
-            # Fallback to default signatures if none configured
-            signatures = [
-                {'label': 'Pemilik Proyek', 'name': '', 'position': ''},
-                {'label': 'Konsultan Perencana', 'name': '', 'position': ''},
-            ]
-        
-        # Susunan disamakan persis dengan PDFExporter._build_signatures:
-        # penghubung, sebutan peran, ruang tanda tangan basah, garis, nama,
-        # lalu baris keterangan. Jumlah baris keterangan berbeda antar peran,
-        # jadi tabel dipadatkan ke jumlah terbanyak agar kolom tetap sejajar.
-        num_cols = min(len(signatures), 3)
-        shown = signatures[:num_cols]
+            return
+
+        # Susunan disamakan persis dengan PDFExporter._build_signatures (R-37):
+        # INSTANSI / ruang TTD / NAMA (digarisbawahi) / keterangan (pemilik:
+        # ket_client2 lalu jabatan). Tanpa kata penghubung & sebutan peran.
+        # Baris keterangan dipadatkan ke jumlah terbanyak agar kolom sejajar.
+        shown = list(signatures)
+        num_cols = len(shown)
         details = [sig.get('details') or [] for sig in shown]
         max_details = max((len(d) for d in details), default=0)
 
-        ROW_CONNECTIVE, ROW_LABEL, ROW_SPACE, ROW_NAME = 0, 1, 2, 3
-        table = self.doc.add_table(rows=4 + max_details, cols=num_cols)
+        ROW_INSTANSI, ROW_SPACE, ROW_NAME = 0, 1, 2
+        table = self.doc.add_table(rows=3 + max_details, cols=num_cols)
         # Tinggi ruang tanda tangan disamakan dengan PDF lewat konstanta bersama.
         table.rows[ROW_SPACE].height = Mm(SIGNATURE_SPACE_MM)
         # Blok ini sengaja dirapatkan (permintaan owner 2026-08-18); tinggi baris
@@ -979,23 +974,17 @@ class WordExporter:
                     run.underline = underline
 
         for col_idx, sig in enumerate(shown):
-            _put(ROW_CONNECTIVE, col_idx, sig.get('connective', ''))
-            _put(ROW_LABEL, col_idx, sig.get('label', ''), bold=True)
-
-            # Ruang tanda tangan basah
-            space_cell = table.rows[ROW_SPACE].cells[col_idx]
-            space_cell.text = ''
-            space_para = space_cell.paragraphs[0]
-            space_para.paragraph_format.space_before = Pt(0)
-            space_para.paragraph_format.space_after = Pt(0)
-
-            # Nama digarisbawahi sebagai penanda tanda tangan (keputusan owner
-            # 2026-08-18), menggantikan baris garis bawah terpisah di atasnya.
+            _put(ROW_INSTANSI, col_idx, sig.get('instansi') or sig.get('position', ''), bold=True)
+            _put(ROW_SPACE, col_idx, '')
+            # Nama digarisbawahi sebagai penanda tanda tangan (R-21).
             _put(ROW_NAME, col_idx, sig.get('name', ''), bold=True, underline=True)
-
             for i in range(max_details):
                 value = details[col_idx][i] if i < len(details[col_idx]) else ''
                 _put(ROW_NAME + 1 + i, col_idx, value)
+
+        # Instansi terbungkus beda panjang -> ratakan ke bawah agar ruang TTD sejajar.
+        for cell in table.rows[ROW_INSTANSI].cells:
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.BOTTOM
     
     def _build_pengesahan_word_table(self, table_data: Dict[str, Any], col_widths: List = None):
         """
@@ -1881,46 +1870,44 @@ class WordExporter:
             self._daily_set_cell_text(row.cells[2], item.get('keterangan') or item.get('note') or '', size=8)
 
     def _daily_add_signatures(self):
+        """Pengesahan laporan harian: Kontraktor + Konsultan Pengawas (R-32).
+
+        Susunan sama dengan blok baku (R-37): INSTANSI / ruang TTD / NAMA
+        (digarisbawahi) / keterangan. Data dari ``config.signature_config``.
+        """
         paragraph = self.doc.add_paragraph()
         paragraph.paragraph_format.space_before = Pt(12)
         paragraph.paragraph_format.space_after = Pt(0)
         signatures = self._daily_signature_entries()
-        table = self.doc.add_table(rows=3, cols=len(signatures))
+        details = [sig.get('details') or [] for sig in signatures]
+        max_details = max((len(d) for d in details), default=0)
+
+        table = self.doc.add_table(rows=3 + max_details, cols=len(signatures))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
         self._daily_set_col_widths(table, [9.0] * len(signatures))
         # Ruang tanda tangan basah + stempel.
         table.rows[1].height = Cm(2.2)
         for idx, signature in enumerate(signatures):
-            self._daily_set_cell_text(table.cell(0, idx), signature['label'], bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            self._daily_set_cell_text(table.cell(0, idx), signature.get('instansi') or '', bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            table.cell(0, idx).vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.BOTTOM
             self._daily_set_cell_text(table.cell(1, idx), '', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
             name = signature.get('name') or '............................'
-            self._daily_set_cell_text(table.cell(2, idx), f'({name})', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            self._daily_set_cell_text(table.cell(2, idx), name, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            for run in table.cell(2, idx).paragraphs[0].runs:
+                run.underline = True
+            for i in range(max_details):
+                value = details[idx][i] if i < len(details[idx]) else ''
+                self._daily_set_cell_text(table.cell(3 + i, idx), value, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
         self._daily_set_table_borders(table, 'FFFFFF', '0')
 
-    def _daily_signature_entries(self) -> List[Dict[str, str]]:
-        signatures = []
+    def _daily_signature_entries(self) -> List[Dict[str, Any]]:
         sig_config = getattr(self.config, 'signature_config', None)
-        if sig_config and sig_config.enabled:
-            signatures = list(sig_config.signatures or [])
-
-        by_label = {
-            str(sig.get('label', '')).lower(): sig
-            for sig in signatures
-        }
-
-        def find_signature(*needles: str, fallback_label: str, force_label: bool = False):
-            for label, sig in by_label.items():
-                if any(needle in label for needle in needles):
-                    return {
-                        'label': fallback_label if force_label else (sig.get('label') or fallback_label),
-                        'name': sig.get('name') or '',
-                    }
-            return {'label': fallback_label, 'name': ''}
-
+        signatures = list(sig_config.signatures or []) if sig_config and sig_config.enabled else []
+        by_role = {sig.get('role'): sig for sig in signatures}
         return [
-            find_signature('kontraktor', fallback_label='Kontraktor Pelaksana'),
-            find_signature('pengawas', fallback_label='Konsultan Pengawas'),
+            by_role.get('kontraktor') or {'role': 'kontraktor'},
+            by_role.get('pengawas') or {'role': 'pengawas'},
         ]
 
     def _daily_add_photo_fallback(self):

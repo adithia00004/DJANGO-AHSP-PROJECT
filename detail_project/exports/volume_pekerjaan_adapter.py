@@ -76,17 +76,6 @@ class VolumePekerjaanAdapter:
         # ===== SEGMENT 2: VOLUME & FORMULA =====
         volume_page = self._build_volume_segment(klasifikasi_list, vol_map, formula_map)
 
-        # Build signature data (same as Harga Items)
-        signature_data = None
-        if self.include_signatures:
-            signature_data = {
-                'left_title': 'Disetujui Oleh,',
-                'left_name': '...........................',
-                'left_position': 'Pejabat Pembuat Komitmen',
-                'right_title': 'Dibuat Oleh,',
-                'right_name': '...........................',
-                'right_position': 'Konsultan Perencana',
-            }
 
         # Lembar pengesahan di halaman TERAKHIR, mengikuti konvensi Rekap RAB.
         # Penanda ini yang dibaca PDF/Word; kunci 'include_signatures' di level
@@ -98,7 +87,6 @@ class VolumePekerjaanAdapter:
         return {
             'pages': pages,  # Volume first, then Parameters as appendix
             'include_signatures': self.include_signatures,
-            'signature_data': signature_data,
             'parameter_cells': self._parameter_cells,  # For Excel formula references
         }
 

@@ -2162,7 +2162,7 @@ class PDFExporter(ConfigExporterBase):
         
         # 8. Signature Section - REMOVED for monthly reports per user request
         # This used config-based labels instead of the correct 3-column layout
-        # The correct signature is in _build_progress_signature_section() (Pelaksana, Pengawas, Pemilik)
+        # Pengesahan laporan progress ada di _build_progress_signature_section() -> _build_signatures() (R-37)
         # if self.config.signature_config.enabled:
         #     sig_elements = self._build_signatures()
         #     story.extend(sig_elements)
@@ -2904,11 +2904,27 @@ class PDFExporter(ConfigExporterBase):
             no_detail_para = Paragraph("<i>Tidak ada detail item untuk pekerjaan ini</i>", self.styles['normal'])
             story.append(no_detail_para)
 
-    def _build_signatures(self) -> List:
-        """Build signature section"""
+    def _build_signatures(self, width_mm: float = None) -> List:
+        """Lembar pengesahan — SATU-SATUNYA blok tanda tangan PDF (A-4).
+
+        Susunan per pihak (keputusan owner 2026-09-27, R-37; berlaku untuk
+        pemilik, perencana, kontraktor, pengawas):
+
+            INSTANSI
+            (ruang tanda tangan basah)
+            NAMA              <- digarisbawahi (R-21)
+            keterangan        <- pemilik: ket_client2 lalu jabatan; hanya yang terisi
+
+        Tanpa kata penghubung dan sebutan peran. Jumlah baris keterangan
+        berbeda antar pihak, jadi tabel dipadatkan ke jumlah terbanyak agar
+        kolom sejajar.
+
+        Args:
+            width_mm: lebar area cetak bila berbeda dari halaman config (mis.
+                halaman progress A4 portrait di dokumen Jadwal landscape).
+        """
         elements = []
-        
-        # Title
+
         sig_title = Paragraph(
             "<b>LEMBAR PENGESAHAN</b>",
             self.styles['subtitle']
@@ -2916,186 +2932,72 @@ class PDFExporter(ConfigExporterBase):
         elements.append(sig_title)
         elements.append(Spacer(1, 3*mm))
 
-        # Get signatures from config
         sigs = self.config.signature_config.signatures
         if self.config.signature_config.custom_signatures:
             sigs = self.config.signature_config.custom_signatures
-        
-        # Susunan baku lembar pengesahan, dari atas ke bawah:
-        #   tempat & tanggal (rata kanan, di luar tabel)
-        #   kata penghubung   -> "Mengetahui," / "Dibuat oleh,"
-        #   sebutan peran     -> dapat ditimpa per-project untuk pemilik
-        #   ruang tanda tangan basah
-        #   garis tanda tangan
-        #   NAMA
-        #   baris keterangan  -> jabatan, NIP/ID, instansi (hanya yang terisi)
-        #
-        # Jumlah baris keterangan berbeda antar peran (pemilik punya slot lebih
-        # banyak), jadi tabel dipadatkan ke jumlah terbanyak agar kolom tetap
-        # sejajar.
+        if not sigs:
+            return []
+
         n = len(sigs)
         details = [sig.get('details') or [] for sig in sigs]
         max_details = max((len(d) for d in details), default=0)
 
-        # Nama digarisbawahi sebagai penanda tanda tangan (keputusan owner
-        # 2026-08-18) -- menggantikan baris garis bawah terpisah yang dulu
-        # dicetak di atas nama. Dibungkus Paragraph karena garis bawah harus
-        # selebar teksnya, bukan selebar kolom seperti LINEBELOW.
+        instansi_style = ParagraphStyle(
+            'SignatureInstansi', alignment=TA_CENTER, fontName='Helvetica-Bold',
+            fontSize=9, leading=11,
+        )
+        # Nama digarisbawahi sebagai penanda tanda tangan (R-21). Paragraph agar
+        # garis bawah selebar teks, bukan selebar kolom seperti LINEBELOW.
         name_style = ParagraphStyle(
             'SignatureName', alignment=TA_CENTER, fontName='Helvetica-Bold',
             fontSize=9, leading=12,
         )
-
-        connective_row = [sig.get('connective', '') for sig in sigs]
-        label_row = [sig.get('label', '') for sig in sigs]
-        blank_rows = [[''] * n]  # satu baris; tingginya diatur eksplisit di bawah
-        name_row = [
-            Paragraph(f"<u>{escape(sig.get('name') or '')}</u>", name_style)
-            if (sig.get('name') or '') else ''
-            for sig in sigs
-        ]
-        detail_rows = [
-            [(d[i] if i < len(d) else '') for d in details]
-            for i in range(max_details)
-        ]
-
-        sig_data = (
-            [connective_row, label_row] + blank_rows + [name_row] + detail_rows
+        detail_style = ParagraphStyle(
+            'SignatureDetail', alignment=TA_CENTER, fontName='Helvetica',
+            fontSize=9, leading=10,
         )
 
-        # Lebar diturunkan dari lebar cetak sebenarnya. Nilai lama 250mm adalah
-        # angka mati yang melebihi area cetak A4 portrait (190mm dengan margin
-        # 10/10), sehingga kolom kanan terpotong saat dicetak.
-        usable_w_mm = self._get_page_width_mm() - (
-            self.config.margin_left + self.config.margin_right
+        def _para(text, style, underline=False):
+            text = (text or '').strip()
+            if not text:
+                return ''
+            body = escape(text)
+            return Paragraph(f"<u>{body}</u>" if underline else body, style)
+
+        instansi_row = [_para(sig.get('instansi') or sig.get('position'), instansi_style) for sig in sigs]
+        blank_row = [''] * n
+        name_row = [_para(sig.get('name'), name_style, underline=True) for sig in sigs]
+        detail_rows = [
+            [_para(d[i] if i < len(d) else '', detail_style) for d in details]
+            for i in range(max_details)
+        ]
+        sig_data = [instansi_row, blank_row, name_row] + detail_rows
+
+        # Lebar diturunkan dari lebar cetak sebenarnya (R-27).
+        usable_w_mm = width_mm or (
+            self._get_page_width_mm() - (self.config.margin_left + self.config.margin_right)
         )
         col_width = (usable_w_mm * mm) / n
 
-        # Spasi dirapatkan (permintaan owner): padding bawaan ReportLab 6pt
-        # atas-bawah per sel membuat blok ini terasa renggang. Semua padding
-        # dinolkan; satu-satunya ruang yang disisakan adalah tinggi baris
-        # kosong untuk tanda tangan basah.
-        blank_start = 2
-        blank_end = blank_start + len(blank_rows) - 1
+        # Padding nol; satu-satunya ruang = baris kosong tanda tangan basah (R-23).
         row_heights = [None] * len(sig_data)
-        for i in range(blank_start, blank_end + 1):
-            row_heights[i] = (SIGNATURE_SPACE_MM / len(blank_rows)) * mm
+        row_heights[1] = SIGNATURE_SPACE_MM * mm
 
         sig_table = Table(sig_data, colWidths=[col_width] * n, rowHeights=row_heights)
-        # Blok ini sengaja dirapatkan (permintaan owner 2026-08-18); tinggi
-        # baris minimum tidak boleh membatalkannya.
+        # Blok ini sengaja dirapatkan; tinggi baris minimum tidak boleh membatalkannya.
         sig_table.enforce_min_row_height = False
         sig_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('VALIGN', (0, 0), (-1, 0), 'BOTTOM'),  # instansi sejajar dasar meski terbungkus
+            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('LEADING', (0, 0), (-1, -1), 10),
             ('TOPPADDING', (0, 0), (-1, -1), 0),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-            # Sebutan peran ditebalkan; kata penghubung dibiarkan biasa.
-            # Baris nama membawa gayanya sendiri lewat Paragraph.
-            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 1), (-1, 1), 10),
         ]))
 
         elements.append(sig_table)
-        
-        # Wrap in KeepTogether so signature section stays together
         return [KeepTogether(elements)]
-
-    def _build_monthly_signature_page(self) -> List:
-        """
-        Build Lembar Pengesahan for Laporan Bulanan.
-        
-        Three columns:
-        - Pelaksana
-        - Pengawas
-        - Pemilik Pekerjaan
-        """
-        elements = []
-        
-        # Title
-        title_style = ParagraphStyle(
-            'SigTitle',
-            fontSize=16,
-            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
-            fontName='Helvetica-Bold',
-            alignment=TA_CENTER,
-            spaceAfter=10*mm,
-        )
-        elements.append(Spacer(1, 20*mm))
-        elements.append(Paragraph("<b>LEMBAR PENGESAHAN</b>", title_style))
-        elements.append(Spacer(1, 15*mm))
-        
-        # Signature roles
-        roles = [
-            {'label': 'PELAKSANA', 'position': 'Pelaksana Pekerjaan'},
-            {'label': 'PENGAWAS', 'position': 'Pengawas Lapangan'},
-            {'label': 'PEMILIK PEKERJAAN', 'position': 'Pemilik/Owner'},
-        ]
-        
-        # Build signature table data
-        # Row 1: Labels
-        labels_row = [role['label'] for role in roles]
-        
-        # Row 2-4: Empty space for signature
-        empty_rows = [[''] * 3 for _ in range(3)]
-        
-        # Row 5: Signature line
-        line_row = ['_' * 25] * 3
-        
-        # Row 6: "Nama:" label
-        name_label_row = ['Nama:'] * 3
-        
-        # Row 7: Name placeholder
-        name_row = ['_' * 25] * 3
-        
-        # Row 8: "Tanggal:" label
-        date_label_row = ['Tanggal:'] * 3
-        
-        # Row 9: Date placeholder
-        date_row = ['_' * 15] * 3
-        
-        sig_data = [labels_row] + empty_rows + [line_row, name_label_row, name_row, date_label_row, date_row]
-        
-        col_width = 80 * mm
-        sig_table = Table(sig_data, colWidths=[col_width] * 3)
-        sig_table.setStyle(TableStyle([
-            # Header row styling
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
-            
-            # Other rows
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
-            
-            # Spacing for signature area
-            ('TOPPADDING', (0, 1), (-1, 3), 8*mm),
-            ('BOTTOMPADDING', (0, 3), (-1, 3), 5*mm),
-            
-            # Normal padding for other rows
-            ('TOPPADDING', (0, 4), (-1, -1), 2*mm),
-            ('BOTTOMPADDING', (0, 4), (-1, -1), 2*mm),
-            
-            # Vertical alignment
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            
-            # Border only for signature boxes
-            ('BOX', (0, 0), (0, 4), 0.5, colors.HexColor(UTS.INNER_BORDER)),
-            ('BOX', (1, 0), (1, 4), 0.5, colors.HexColor(UTS.INNER_BORDER)),
-            ('BOX', (2, 0), (2, 4), 0.5, colors.HexColor(UTS.INNER_BORDER)),
-        ]))
-        
-        elements.append(sig_table)
-        
-        # Wrap in KeepTogether to ensure signature section stays on same page
-        return [KeepTogether(elements)]
-
-    # ------------------------------------------------------------------
-    # Professional Report Methods (Laporan Tertulis)
-    # ------------------------------------------------------------------
 
     def _build_cover_page(self, report_type: str, project_info: Dict[str, Any], period_info: Dict[str, Any] = None) -> List:
         """
@@ -4072,125 +3974,18 @@ class PDFExporter(ConfigExporterBase):
         return elements
     
     def _build_progress_signature_section(self, project_info: Dict[str, Any]) -> List:
+        """Pengesahan laporan progress (bulanan/mingguan) = blok baku ``_build_signatures``.
 
+        Dulu implementasi terpisah (PELAKSANA/PENGAWAS/PEMILIK PEKERJAAN, garis
+        ``___`` terpisah, jabatan "Direktur" karangan). Kini satu blok bersama
+        (A-4, R-37) selebar halaman progress A4 portrait; ``project_info`` tidak
+        dipakai lagi — data diambil dari ``config.signature_config``.
         """
-        Build reusable Lembar Pengesahan (signature section).
-        
-        Can be used in:
-        - Laporan Bulanan (monthly)
-        - Laporan Mingguan (weekly) 
-        - Rekap Laporan (rekap)
-        
-        Structure:
-        - Title: "LEMBAR PENGESAHAN" (10pt, centered)
-        - 3 columns: PELAKSANA | PENGAWAS | PEMILIK PEKERJAAN
-        - 2 empty rows for hand signature
-        - Names row with signature line (70mm underscores)
-        - Jabatan row: Direktur | Direktur | jabatan_client
-        - Instansi row: instansi_kontraktor | instansi_konsultan | instansi_client
-        
-        Args:
-            project_info: Dict containing:
-                - nama_kontraktor, nama_konsultan_pengawas, nama_client
-                - jabatan_client, instansi_client
-                - instansi_kontraktor, instansi_konsultan_pengawas
-        
-        Returns:
-            List of flowable elements for the signature section
-        """
-        sig_elements = []
-        sig_elements.append(Spacer(1, 10*mm))
-        
-        # Title style: 10pt bold, centered
-        sig_title_style = ParagraphStyle(
-            'SigTitle',
-            fontSize=10,
-            fontName='Helvetica-Bold',
-            textColor=colors.HexColor(UTS.TEXT_SECONDARY),
-            alignment=TA_CENTER,
-            spaceAfter=5*mm,
-        )
-        sig_elements.append(Paragraph("LEMBAR PENGESAHAN", sig_title_style))
-        
-        # Label style: 8pt normal, centered (for column headers)
-        sig_label_style = ParagraphStyle(
-            'SigLabel',
-            fontSize=8,
-            fontName='Helvetica',
-            alignment=TA_CENTER,
-        )
-        
-        # Name style: 7pt normal, centered (for names, jabatan, instansi)
-        sig_name_style = ParagraphStyle(
-            'SigName',
-            fontSize=7,
-            fontName='Helvetica',
-            alignment=TA_CENTER,
-        )
-        
-        # Get project info values
-        instansi_kontraktor = project_info.get('instansi_kontraktor', '-')
-        instansi_konsultan = project_info.get('instansi_konsultan_pengawas', '-')
-        jabatan_client = project_info.get('jabatan_client', '-')
-        if jabatan_client == '-':
-            jabatan_client = ''
-        instansi_client = project_info.get('instansi_client', '-')
-        blank_jabatan = 'Jabatan: ....................'
-        
-        # Build table data
-        sig_data = [
-            # Row 0: Headers (role titles)
-            [
-                Paragraph("PELAKSANA", sig_label_style),
-                Paragraph("PENGAWAS", sig_label_style), 
-                Paragraph("PEMILIK PEKERJAAN", sig_label_style)
-            ],
-            # Row 1-2: Space for hand signature
-            ['', '', ''],
-            ['', '', ''],
-            # Row 3: Signature names
-            [
-                Paragraph(project_info.get('nama_kontraktor', '-') or '-', sig_name_style),
-                Paragraph(project_info.get('nama_konsultan_pengawas', '-') or '-', sig_name_style),
-                Paragraph(project_info.get('nama_client', '-') or '-', sig_name_style)
-            ],
-            # Row 4: Signature line (70mm / 7cm centered)
-            [
-                Paragraph('_' * 35, sig_name_style),
-                Paragraph('_' * 35, sig_name_style),
-                Paragraph('_' * 35, sig_name_style)
-            ],
-            # Row 5: Jabatan
-            [
-                # Model belum punya field jabatan kontraktor/pengawas — kosongkan
-                # untuk diisi tangan, jangan karang "Direktur".
-                Paragraph(blank_jabatan, sig_name_style),
-                Paragraph(blank_jabatan, sig_name_style),
-                Paragraph(jabatan_client or blank_jabatan, sig_name_style)
-            ],
-            # Row 6: Instansi
-            [
-                Paragraph(instansi_kontraktor or "-", sig_name_style),
-                Paragraph(instansi_konsultan or "-", sig_name_style),
-                Paragraph(instansi_client or "-", sig_name_style)
-            ],
-        ]
-        
-        # Table: 3 columns x 60mm each = 180mm total
-        sig_table = Table(sig_data, colWidths=[60*mm, 60*mm, 60*mm])
-        sig_table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 1), (-1, 2), 6*mm),   # Space for hand signature
-            ('TOPPADDING', (0, 3), (-1, 4), 0),      # No space between name/line
-            ('BOTTOMPADDING', (0, 3), (-1, 4), 0),
-            ('TOPPADDING', (0, 5), (-1, -1), 0),     # Minimum spacing jabatan/instansi
-            ('BOTTOMPADDING', (0, 5), (-1, -1), 0),
-        ]))
-        sig_elements.append(sig_table)
-        
-        # Wrap in KeepTogether to stay with preceding content
-        return [KeepTogether(sig_elements)]
+        page_w_mm, _ = get_page_size_mm('A4')
+        width_mm = page_w_mm - (self.config.margin_left + self.config.margin_right)
+        block = self._build_signatures(width_mm=width_mm)
+        inner = list(block[0]._content) if block else []
+        return [KeepTogether([Spacer(1, 10*mm)] + inner)]
 
     def _build_executive_summary_section(self, summary: Dict[str, Any], mode: str = 'monthly') -> List:
         """

@@ -15,6 +15,7 @@ from typing import Any, Dict, List
 from decimal import Decimal
 
 from .base import ConfigExporterBase
+from .signature_config import SIGNATURE_SPACE_MM
 from ..export_config import build_identity_rows
 
 try:
@@ -512,10 +513,9 @@ class ExcelExporter(ConfigExporterBase):
             ws_volume.column_dimensions[get_column_letter(idx + 1)].width = self._mm_to_excel_width(w)
         
         # ========== SHEET 3: PENGESAHAN (Signatures) ==========
-        signature_data = data.get('signature_data')
-        if data.get('include_signatures') and signature_data:
+        if data.get('include_signatures'):
             ws_sign = wb.create_sheet("Pengesahan")
-            self._write_signature_sheet(ws_sign, signature_data)
+            self._write_signature_sheet(ws_sign)
         
         # Save workbook
         output = BytesIO()
@@ -574,53 +574,70 @@ class ExcelExporter(ConfigExporterBase):
         
         return excel_formula
 
-    def _write_signature_sheet(self, ws, signature_data: Dict[str, Any]):
-        """Write signature/pengesahan sheet matching Harga Items format."""
-        border = self._get_thin_border()
-        
-        # Title
-        ws.cell(row=1, column=1, value="LEMBAR PENGESAHAN")
-        ws.cell(row=1, column=1).font = Font(size=14, bold=True)
-        ws.merge_cells('A1:F1')
-        ws.cell(row=1, column=1).alignment = Alignment(horizontal='center')
-        
-        # Signature table starts at row 5
-        start_row = 5
-        
-        # Left signature
-        ws.cell(row=start_row, column=2, value=signature_data.get('left_title', 'Disetujui Oleh,'))
-        ws.cell(row=start_row, column=2).font = Font(bold=True)
-        ws.cell(row=start_row, column=2).alignment = Alignment(horizontal='center')
-        
-        # Right signature
-        ws.cell(row=start_row, column=5, value=signature_data.get('right_title', 'Dibuat Oleh,'))
-        ws.cell(row=start_row, column=5).font = Font(bold=True)
-        ws.cell(row=start_row, column=5).alignment = Alignment(horizontal='center')
-        
-        # Space for signature
-        space_row = start_row + 5
-        
-        # Names
-        ws.cell(row=space_row, column=2, value=signature_data.get('left_name', '...........................'))
-        ws.cell(row=space_row, column=2).alignment = Alignment(horizontal='center')
-        
-        ws.cell(row=space_row, column=5, value=signature_data.get('right_name', '...........................'))
-        ws.cell(row=space_row, column=5).alignment = Alignment(horizontal='center')
-        
-        # Positions
-        ws.cell(row=space_row + 1, column=2, value=signature_data.get('left_position', 'Pejabat Pembuat Komitmen'))
-        ws.cell(row=space_row + 1, column=2).alignment = Alignment(horizontal='center')
-        
-        ws.cell(row=space_row + 1, column=5, value=signature_data.get('right_position', 'Konsultan Perencana'))
-        ws.cell(row=space_row + 1, column=5).alignment = Alignment(horizontal='center')
-        
-        # Column widths
-        ws.column_dimensions['A'].width = 5
-        ws.column_dimensions['B'].width = 30
-        ws.column_dimensions['C'].width = 10
-        ws.column_dimensions['D'].width = 10
-        ws.column_dimensions['E'].width = 30
-        ws.column_dimensions['F'].width = 5
+    def _write_signature_sheet(self, ws):
+        """Sheet "Pengesahan" (Volume): blok baku ``_write_signature_block``."""
+        self._write_signature_block(ws, start_row=1, first_col=1, last_col=6)
+        for letter, width in zip('ABCDEF', (5, 25, 10, 10, 25, 5)):
+            ws.column_dimensions[letter].width = width
+
+    def _write_signature_block(self, ws, start_row: int, first_col: int, last_col: int,
+                               title: bool = True) -> int:
+        """Lembar pengesahan Excel — SATU blok untuk semua sheet (R-37).
+
+        Susunan per pihak, sama dengan PDF/Word:
+            INSTANSI / (ruang TTD) / NAMA (digarisbawahi) / keterangan
+        Data dari ``config.signature_config`` (preset dokumen), bukan teks mati.
+        Tanpa kata penghubung, sebutan peran, maupun tempat & tanggal (R-22).
+        Kolom ``first_col..last_col`` dibagi rata untuk tiap pihak.
+
+        Returns: baris pertama SETELAH blok.
+        """
+        sig_config = getattr(self.config, 'signature_config', None)
+        sigs = list(sig_config.signatures or []) if sig_config and sig_config.enabled else []
+        if not sigs:
+            return start_row
+
+        row = start_row
+        if title:
+            ws.merge_cells(start_row=row, start_column=first_col, end_row=row, end_column=last_col)
+            cell = ws.cell(row=row, column=first_col, value='LEMBAR PENGESAHAN')
+            cell.font = Font(bold=True, size=11)
+            cell.alignment = Alignment(horizontal='center')
+            row += 2
+
+        n = len(sigs)
+        total = last_col - first_col + 1
+        spans, col = [], first_col
+        for i in range(n):
+            width = total // n + (1 if i < total % n else 0)
+            spans.append((col, col + max(width, 1) - 1))
+            col += max(width, 1)
+
+        def put(r, span, text, bold=False, underline=False, vertical='top'):
+            first, last = span
+            if last > first:
+                ws.merge_cells(start_row=r, start_column=first, end_row=r, end_column=last)
+            cell = ws.cell(row=r, column=first, value=(text or None))
+            cell.font = Font(bold=bold, underline='single' if (underline and text) else None)
+            cell.alignment = Alignment(horizontal='center', vertical=vertical, wrap_text=True)
+
+        # INSTANSI (boleh terbungkus 2 baris; rata bawah agar ruang TTD sejajar)
+        for sig, span in zip(sigs, spans):
+            put(row, span, sig.get('instansi') or sig.get('position'), bold=True, vertical='bottom')
+        ws.row_dimensions[row].height = 30
+        row += 1
+        # Ruang tanda tangan basah (konstanta bersama PDF/Word; mm -> pt)
+        ws.row_dimensions[row].height = SIGNATURE_SPACE_MM * 72 / 25.4
+        row += 1
+        for sig, span in zip(sigs, spans):
+            put(row, span, sig.get('name'), bold=True, underline=True)
+        row += 1
+        details = [sig.get('details') or [] for sig in sigs]
+        for k in range(max((len(d) for d in details), default=0)):
+            for d, span in zip(details, spans):
+                put(row, span, d[k] if k < len(d) else '')
+            row += 1
+        return row
 
     def _export_rincian_ahsp_2sheet(self, data: Dict[str, Any]):
         """
@@ -2781,158 +2798,12 @@ class ExcelExporter(ConfigExporterBase):
         ws.column_dimensions['I'].width = 11
 
         # ==============================================
-        # SEGMENT 4: PENGESAHAN (at bottom of same sheet)
+        # SEGMENT 4: PENGESAHAN (at bottom of same sheet) — blok baku (R-37)
         # ==============================================
         current_row += 3  # Space before pengesahan
-
-        # Date/Location row
-        ws.merge_cells(f'F{current_row}:I{current_row}')
-        date_cell = ws[f'F{current_row}']
-        lokasi = project_info.get('lokasi', '..................')
-        date_str = self.config.export_date.strftime('%d %B %Y')
-        date_cell.value = f"{lokasi}, {date_str}"
-        date_cell.alignment = Alignment(horizontal='center')
-        current_row += 2
-
-        # Two signature blocks
-        # Left: Mengetahui (column B-C)
-        ws.merge_cells(f'B{current_row}:C{current_row}')
-        ws[f'B{current_row}'] = 'Mengetahui,'
-        ws[f'B{current_row}'].font = Font(bold=True)
-        ws[f'B{current_row}'].alignment = Alignment(horizontal='center')
-        
-        # Right: Dibuat Oleh (column G-H)
-        ws.merge_cells(f'G{current_row}:H{current_row}')
-        ws[f'G{current_row}'] = 'Dibuat Oleh,'
-        ws[f'G{current_row}'].font = Font(bold=True)
-        ws[f'G{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-
-        # Role/Title
-        ws.merge_cells(f'B{current_row}:C{current_row}')
-        ws[f'B{current_row}'] = 'Manajer Proyek'
-        ws[f'B{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'G{current_row}:H{current_row}')
-        ws[f'G{current_row}'] = 'Pelaksana'
-        ws[f'G{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 5  # Signature space
-
-        # Signature line
-        ws.merge_cells(f'B{current_row}:C{current_row}')
-        ws[f'B{current_row}'] = '.................................'
-        ws[f'B{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'G{current_row}:H{current_row}')
-        ws[f'G{current_row}'] = '.................................'
-        ws[f'G{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-
-        # Name placeholder
-        ws.merge_cells(f'B{current_row}:C{current_row}')
-        ws[f'B{current_row}'] = '(Nama Manajer)'
-        ws[f'B{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'G{current_row}:H{current_row}')
-        ws[f'G{current_row}'] = '(Nama Pelaksana)'
-        ws[f'G{current_row}'].alignment = Alignment(horizontal='center')
+        self._write_signature_block(ws, current_row, first_col=1, last_col=9)
 
         logger.debug("[ExcelExporter] Monthly Detail sheet created: %s rows + pengesahan", len(hierarchy_progress))
-
-    def _build_pengesahan_sheet(self, ws, month: int, project_info: Dict):
-        """
-        Build Pengesahan (signature/approval) sheet for monthly report.
-        
-        Contains signature blocks for:
-        - Mengetahui (Manager)
-        - Dibuat Oleh (Created By)
-        """
-        border = self._get_thin_border()
-        
-        # Column widths
-        ws.column_dimensions['A'].width = 5
-        ws.column_dimensions['B'].width = 25
-        ws.column_dimensions['C'].width = 5
-        ws.column_dimensions['D'].width = 5
-        ws.column_dimensions['E'].width = 25
-        ws.column_dimensions['F'].width = 5
-
-        current_row = 3
-
-        # Title
-        ws.merge_cells(f'A{current_row}:F{current_row}')
-        title = ws[f'A{current_row}']
-        title.value = 'LEMBAR PENGESAHAN'
-        title.font = Font(size=16, bold=True, color=COLORS['PRIMARY'])
-        title.alignment = Alignment(horizontal='center')
-        ws.row_dimensions[current_row].height = 30
-        current_row += 2
-
-        # Subtitle
-        ws.merge_cells(f'A{current_row}:F{current_row}')
-        subtitle = ws[f'A{current_row}']
-        subtitle.value = f'Laporan Bulan ke-{month}'
-        subtitle.font = Font(size=12)
-        subtitle.alignment = Alignment(horizontal='center')
-        current_row += 3
-
-        # Date/Location
-        ws.merge_cells(f'A{current_row}:F{current_row}')
-        date_cell = ws[f'A{current_row}']
-        lokasi = project_info.get('lokasi', '..................')
-        date_str = self.config.export_date.strftime('%d %B %Y')
-        date_cell.value = f"{lokasi}, {date_str}"
-        date_cell.alignment = Alignment(horizontal='center')
-        current_row += 3
-
-        # Two signature blocks side by side
-        # Left: Mengetahui
-        ws.merge_cells(f'A{current_row}:B{current_row}')
-        ws[f'A{current_row}'] = 'Mengetahui,'
-        ws[f'A{current_row}'].font = Font(bold=True)
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        # Right: Dibuat Oleh
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = 'Dibuat Oleh,'
-        ws[f'E{current_row}'].font = Font(bold=True)
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-
-        # Role/Title
-        ws.merge_cells(f'A{current_row}:B{current_row}')
-        ws[f'A{current_row}'] = 'Manajer Proyek'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = 'Pelaksana'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-
-        # Signature space
-        for _ in range(5):
-            current_row += 1
-
-        # Bottom line for signature
-        ws.merge_cells(f'A{current_row}:B{current_row}')
-        ws[f'A{current_row}'] = '.................................'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = '.................................'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-
-        # Name placeholder
-        ws.merge_cells(f'A{current_row}:B{current_row}')
-        ws[f'A{current_row}'] = '(Nama Manajer)'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = '(Nama Pelaksana)'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-
-        logger.debug("[ExcelExporter] Pengesahan sheet created")
 
     def _build_ssot_sheet(self, ws, project_info: Dict, base_rows: List[Dict], 
                           weekly_columns: List[Dict], planned_map: Dict, actual_map: Dict) -> Dict:
@@ -2941,7 +2812,7 @@ class ExcelExporter(ConfigExporterBase):
         
         Structure:
         - Rows 1-4: Identitas Project
-        - Rows 5-9: Pengesahan Template
+        - Rows 5-9: (kosong; dulu template pengesahan)
         - Row 10: Empty
         - Row 11: Table Header
         - Rows 12+: Data rows with all weeks
@@ -2978,39 +2849,10 @@ class ExcelExporter(ConfigExporterBase):
         ws['F4'] = ':'
         ws['G4'] = project_info.get('sumber_dana', '-')
         
-        # ================================================================
-        # SECTION 2: PENGESAHAN TEMPLATE (Rows 6-9)
-        # ================================================================
-        ws['A6'] = 'TEMPLATE PENGESAHAN'
-        ws['A6'].font = Font(bold=True, size=11, color=COLORS['PRIMARY'])
-        
-        # Row 7: Lokasi & Tanggal
-        ws['A7'] = 'Lokasi Pengesahan'
-        ws['B7'] = ':'
-        ws['C7'] = project_info.get('lokasi', '..................')
-        
-        ws['E7'] = 'Tanggal Export'
-        ws['F7'] = ':'
-        ws['G7'] = self.config.export_date.strftime('%d %B %Y')
-        
-        # Row 8: Label signature
-        ws['A8'] = 'Label Mengetahui'
-        ws['B8'] = ':'
-        ws['C8'] = 'Mengetahui,'
-        
-        ws['E8'] = 'Label Dibuat'
-        ws['F8'] = ':'
-        ws['G8'] = 'Dibuat Oleh,'
-        
-        # Row 9: Jabatan
-        ws['A9'] = 'Jabatan 1'
-        ws['B9'] = ':'
-        ws['C9'] = 'Manajer Proyek'
-        
-        ws['E9'] = 'Jabatan 2'
-        ws['F9'] = ':'
-        ws['G9'] = 'Pelaksana'
-        
+        # Rows 6-9 dulu "TEMPLATE PENGESAHAN" (Mengetahui/Manajer Proyek/...);
+        # dihapus 2026-09-27 — pengesahan kini dari data proyek (R-37). Baris
+        # dibiarkan kosong agar posisi tabel data (row 11+) tidak bergeser.
+
         # ================================================================
         # SECTION 3: DATA TABLE (Row 11+)
         # ================================================================
@@ -3423,14 +3265,6 @@ class ExcelExporter(ConfigExporterBase):
                 'pemilik': 'C4',
                 'sumber_dana': 'G4'
             },
-            'pengesahan': {
-                'lokasi': 'C7',
-                'tanggal': 'G7',
-                'label_mengetahui': 'C8',
-                'label_dibuat': 'G8',
-                'jabatan_1': 'C9',
-                'jabatan_2': 'G9'
-            },
             'table': {
                 'header_row': header_row,
                 'data_start_row': data_start_row,
@@ -3451,10 +3285,6 @@ class ExcelExporter(ConfigExporterBase):
                 'actual': project_actual,
                 'cumul_planned': project_cumul_planned,
                 'cumul_actual': project_cumul_actual,
-            },
-            'pengesahan_values': {                  # resolved strings (so views write a value, not a &-concat)
-                'lokasi': project_info.get('lokasi', '..................'),
-                'tanggal': self.config.export_date.strftime('%d %B %Y'),
             },
         }
 
@@ -3740,79 +3570,10 @@ class ExcelExporter(ConfigExporterBase):
         current_row += 3
         
         # ================================================================
-        # PENGESAHAN (3 signatures: Pemilik, Pelaksana, Pengawas)
+        # PENGESAHAN — blok baku (R-37), data dari preset PELAKSANAAN
         # ================================================================
-        pengesahan = ssot_ranges['pengesahan']
-        pv = ssot_ranges.get('pengesahan_values', {})
+        self._write_signature_block(ws, current_row, first_col=1, last_col=10)
 
-        # Date/Location — write the resolved string as a VALUE (not an &-concat of two
-        # Data Master cells, which would be a multi-reference formula).
-        ws.merge_cells(f'E{current_row}:G{current_row}')
-        ws[f'E{current_row}'] = f"{pv.get('lokasi', '')}, {pv.get('tanggal', '')}"
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 2
-        
-        # Signature labels (3 columns)
-        # Mengetahui - Pemilik
-        ws.merge_cells(f'A{current_row}:C{current_row}')
-        ws[f'A{current_row}'] = 'Mengetahui,'
-        ws[f'A{current_row}'].font = Font(bold=True)
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        # Pengawas
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = 'Pengawas,'
-        ws[f'E{current_row}'].font = Font(bold=True)
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        
-        # Pelaksana
-        ws.merge_cells(f'H{current_row}:J{current_row}')
-        ws[f'H{current_row}'] = 'Dibuat Oleh,'
-        ws[f'H{current_row}'].font = Font(bold=True)
-        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-        
-        # Jabatan row
-        ws.merge_cells(f'A{current_row}:C{current_row}')
-        ws[f'A{current_row}'] = 'Pemilik Proyek'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = 'Konsultan Pengawas'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'H{current_row}:J{current_row}')
-        ws[f'H{current_row}'] = 'Kontraktor Pelaksana'
-        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 5  # Space for signatures
-        
-        # Signature lines
-        ws.merge_cells(f'A{current_row}:C{current_row}')
-        ws[f'A{current_row}'] = '.................................'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = '.................................'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'H{current_row}:J{current_row}')
-        ws[f'H{current_row}'] = '.................................'
-        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 1
-        
-        # Name placeholders
-        ws.merge_cells(f'A{current_row}:C{current_row}')
-        ws[f'A{current_row}'] = '(Nama Pemilik)'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = '(Nama Pengawas)'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'H{current_row}:J{current_row}')
-        ws[f'H{current_row}'] = '(Nama Pelaksana)'
-        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
-        
         # Column widths
         ws.column_dimensions['A'].width = 5
         ws.column_dimensions['B'].width = 40
@@ -4504,41 +4265,10 @@ class ExcelExporter(ConfigExporterBase):
         current_row = total_row + 3
         
         # ==============================================
-        # LEMBAR PENGESAHAN (same as monthly)
+        # LEMBAR PENGESAHAN — blok baku (R-37), sama dengan bulanan
         # ==============================================
-        ws.merge_cells(f'A{current_row}:J{current_row}')
-        ws[f'A{current_row}'] = 'LEMBAR PENGESAHAN'
-        ws[f'A{current_row}'].font = Font(bold=True, size=11)
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        current_row += 2
-        
-        # Three signature columns
-        ws.merge_cells(f'A{current_row}:C{current_row}')
-        ws[f'A{current_row}'] = 'Dibuat oleh,'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = 'Diperiksa oleh,'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'H{current_row}:J{current_row}')
-        ws[f'H{current_row}'] = 'Disetujui oleh,'
-        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
-        
-        current_row += 4  # Space for signatures
-        
-        ws.merge_cells(f'A{current_row}:C{current_row}')
-        ws[f'A{current_row}'] = '(Nama Pelaksana)'
-        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'E{current_row}:F{current_row}')
-        ws[f'E{current_row}'] = '(Nama Pengawas)'
-        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
-        
-        ws.merge_cells(f'H{current_row}:J{current_row}')
-        ws[f'H{current_row}'] = '(Nama Pemilik)'
-        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
-        
+        self._write_signature_block(ws, current_row, first_col=1, last_col=10)
+
         # Column widths
         ws.column_dimensions['A'].width = 5
         ws.column_dimensions['B'].width = 40

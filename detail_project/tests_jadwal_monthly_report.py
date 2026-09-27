@@ -358,3 +358,77 @@ class CollapseRedundantPageBreakTests(TestCase):
             self._names(PDFExporter._collapse_redundant_page_breaks(story)),
             ["A", "PageBreak", "B"],
         )
+
+
+class ProgressSignatureLayoutTests(_MonthlyFixtureMixin, TestCase):
+    """R-37: pengesahan Jadwal di PDF/Excel/Word = Instansi / Nama / Jabatan,
+    data dari proyek (bukan "Manajer Proyek", "(Nama Pemilik)", "Direktur")."""
+
+    PIHAK = {
+        "instansi_client": "Pemkab Uji",
+        "instansi_kontraktor": "PT Kontraktor Uji",
+        "instansi_konsultan_pengawas": "CV Pengawas Uji",
+        "jabatan_client": "Kepala Dinas",
+        "ket_client2": "NIP 1970",
+    }
+    STALE = (
+        "Mengetahui,", "Dibuat oleh,", "Dibuat Oleh,", "Diperiksa oleh,", "Disetujui oleh,",
+        "PELAKSANA", "PEMILIK PEKERJAAN", "Pemilik Proyek", "Manajer Proyek",
+        "(Nama Pemilik)", "(Nama Pengawas)", "(Nama Pelaksana)", "Direktur", "Jabatan:",
+    )
+
+    def setUp(self):
+        super().setUp()
+        Project.objects.filter(pk=self.project.pk).update(**self.PIHAK)
+        self.project.refresh_from_db()
+
+    def _export(self, fmt, report_type, **periods):
+        return ExportManager(self.project, self.owner).export_jadwal_professional(
+            fmt, report_type=report_type, **periods,
+        )
+
+    def test_pdf_monthly_and_weekly_use_new_layout(self):
+        for report_type, periods in (("monthly", {"months": [3]}), ("weekly", {"weeks": [3]})):
+            lines = "\n".join(pdf_page_texts(self._export("pdf", report_type, **periods).content)).splitlines()
+            block = lines[lines.index("LEMBAR PENGESAHAN"):]
+            with self.subTest(report_type=report_type):
+                for stale in self.STALE:
+                    self.assertNotIn(stale, block)
+                # Instansi (3 pihak) -> nama -> NIP -> jabatan, berurutan.
+                idx = [block.index(v) for v in (
+                    "Pemkab Uji", "Owner Bulanan", "NIP 1970", "Kepala Dinas",
+                )]
+                self.assertEqual(idx, sorted(idx))
+                for pihak in ("PT Kontraktor Uji", "CV Pengawas Uji", "Kontraktor Bulanan", "Pengawas Bulanan"):
+                    self.assertIn(pihak, block)
+
+    def test_excel_monthly_and_weekly_use_project_data(self):
+        from openpyxl import load_workbook
+
+        for report_type, periods in (("monthly", {"months": [3]}), ("weekly", {"weeks": [3]})):
+            wb = load_workbook(BytesIO(self._export("xlsx", report_type, **periods).content))
+            cells = [c for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None]
+            values = [str(c.value) for c in cells]
+            with self.subTest(report_type=report_type):
+                for stale in self.STALE + ("TEMPLATE PENGESAHAN",):
+                    self.assertFalse([v for v in values if stale in v], stale)
+                self.assertFalse([v for v in values if v.startswith("....")], "nama titik-titik")
+                for expected in ("Pemkab Uji", "PT Kontraktor Uji", "CV Pengawas Uji",
+                                 "Owner Bulanan", "Kontraktor Bulanan", "Pengawas Bulanan",
+                                 "NIP 1970", "Kepala Dinas"):
+                    self.assertIn(expected, values)
+                name_cells = [c for c in cells if c.value == "Owner Bulanan" and c.font.underline]
+                self.assertTrue(name_cells, "nama pemilik tidak digarisbawahi di pengesahan Excel")
+
+    def test_word_daily_uses_new_layout(self):
+        from docx import Document
+
+        doc = Document(BytesIO(self._export("word", "daily", daily_mode="day", days=[15]).content))
+        signatures = doc.tables[2]
+        rows = [[cell.text for cell in row.cells] for row in signatures.rows]
+        self.assertEqual(rows[0], ["PT Kontraktor Uji", "CV Pengawas Uji"])  # instansi
+        self.assertEqual(rows[2], ["Kontraktor Bulanan", "Pengawas Bulanan"])  # nama
+        self.assertTrue(all(run.underline for run in signatures.cell(2, 0).paragraphs[0].runs))
+        flat = " ".join(" ".join(r) for r in rows)
+        for stale in ("Kontraktor Pelaksana", "Konsultan Pengawas"):
+            self.assertNotIn(stale, flat)
