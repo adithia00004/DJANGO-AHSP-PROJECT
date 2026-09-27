@@ -803,6 +803,80 @@ class JadwalDailyDocxExportTests(TestCase):
                 period=1,
             )
 
+    def _daily_docx(self, day):
+        from docx import Document
+
+        response = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "word", report_type="daily", daily_mode="day", days=[day],
+        )
+        return Document(BytesIO(response.content))
+
+    @staticmethod
+    def _table_texts(table):
+        return [cell.text for row in table.rows for cell in row.cells]
+
+    def test_daily_progress_is_cumulative_up_to_previous_week(self):
+        # Fixture: rencana 10%/minggu, realisasi 5%/minggu, 1 pekerjaan (bobot 1).
+        # 15 Jan = Minggu 3 -> kumulatif W1..W2 = 20% / 10% / -10%, bukan 10/5/-5
+        # (bug lama: hanya minggu sebelumnya saja).
+        texts = self._table_texts(self._daily_docx(15).tables[0])
+        self.assertIn("s.d. Minggu 2", texts)
+        self.assertIn("20.00%", texts)
+        self.assertIn("10.00%", texts)
+        self.assertIn("-10.00%", texts)
+
+    def test_daily_current_week_shows_planned_target_only(self):
+        # 15 Jan = Minggu 3: target kumulatif W1..W3 = 30% (+10% minggu ini);
+        # realisasi & deviasi minggu berjalan belum ada -> '-'.
+        table = self._daily_docx(15).tables[0]
+        current_col = [row.cells[4].text for row in table.rows]
+        self.assertEqual(current_col, ["s.d. Minggu 3", "30.00% (+10.00%)", "-", "-"])
+
+    def test_daily_progress_first_week_shows_zero_not_dash(self):
+        table = self._daily_docx(1).tables[0]
+        previous_col = [row.cells[3].text for row in table.rows]
+        self.assertEqual(previous_col, ["Awal Proyek", "0.00%", "0.00%", "0.00%"])
+        self.assertEqual(table.rows[1].cells[4].text, "10.00% (+10.00%)")
+
+    def test_daily_identity_table_drops_fields_shown_elsewhere(self):
+        texts = " ".join(self._table_texts(self._daily_docx(15).tables[0]))
+        for removed in ("No. Kontrak", "Kontraktor :", "Konsultan :", "Tgl Laporan"):
+            self.assertNotIn(removed, texts)
+        for kept in ("Proyek :", "Lokasi :", "Cuaca :", "Pemilik/Penanggung Jawab Project :"):
+            self.assertIn(kept, texts)
+
+    def test_daily_signatures_contractor_and_supervisor_only_with_signing_space(self):
+        from docx.shared import Cm
+
+        doc = self._daily_docx(15)
+        signatures = doc.tables[2]
+        labels = [cell.text for cell in signatures.rows[0].cells]
+        self.assertEqual(labels, ["Kontraktor Pelaksana", "Konsultan Pengawas"])
+        self.assertNotIn("Pemilik", " ".join(self._table_texts(signatures)))
+        self.assertGreaterEqual(signatures.rows[1].height, Cm(2.1))  # 2.2cm, dibulatkan ke twips
+
+    def test_daily_rejects_dates_outside_project_with_user_message(self):
+        from detail_project.exports.errors import ExportValidationError, export_error_response
+
+        # Proyek 01-28 Jan 2026: hari ke-40 di luar masa proyek.
+        with self.assertRaises(ExportValidationError) as ctx:
+            ExportManager(self.project, self.owner).export_jadwal_professional(
+                "word", report_type="daily", daily_mode="day", days=[40],
+            )
+        response = export_error_response(ctx.exception)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("di luar masa proyek", response.content.decode("utf-8"))
+
+    def test_daily_rejects_project_without_start_date(self):
+        from detail_project.exports.errors import ExportValidationError
+
+        Project.objects.filter(pk=self.project.pk).update(tanggal_mulai=None)
+        self.project.refresh_from_db()
+        with self.assertRaises(ExportValidationError):
+            ExportManager(self.project, self.owner).export_jadwal_professional(
+                "word", report_type="daily", daily_mode="day", days=[1],
+            )
+
 
 class VolumeExportParityTests(TestCase):
     """Volume value = canonical stored quantity (numeric); base param = backend

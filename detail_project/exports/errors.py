@@ -17,6 +17,18 @@ logger = logging.getLogger("detail_project.exports")
 GENERIC_EXPORT_MESSAGE = "Gagal membuat file export. Silakan coba lagi atau hubungi admin."
 
 
+class ExportValidationError(ValueError):
+    """Input export tidak valid; pesannya AMAN ditampilkan ke user (bukan detail internal).
+
+    `export_error_response` memetakannya ke HTTP 400 dengan pesan ini, bukan
+    pesan generik 500.
+    """
+
+    def __init__(self, user_message: str):
+        super().__init__(user_message)
+        self.user_message = user_message
+
+
 def new_correlation_id() -> str:
     return uuid.uuid4().hex[:12]
 
@@ -36,6 +48,11 @@ def log_export_error(exc, *, context: str = "", correlation_id: str | None = Non
 
 def export_error_response(exc, *, context: str = "", status: int = 500, user_message: str | None = None):
     """JSON error response that references a correlation ID — never leaks ``str(exc)``."""
+    if isinstance(exc, ExportValidationError):
+        return JsonResponse(
+            {"ok": False, "error": user_message or exc.user_message},
+            status=400,
+        )
     cid = log_export_error(exc, context=context)
     return JsonResponse(
         {

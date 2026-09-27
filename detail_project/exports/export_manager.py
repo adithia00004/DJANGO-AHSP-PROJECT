@@ -910,11 +910,14 @@ class ExportManager:
                 report_data = adapter.get_weekly_comparison_data(week)
         elif report_type == 'daily':
             full_data = adapter.get_monthly_comparison_data(1)
-            raw_base_rows, _ = adapter._build_base_rows()
-            base_rows_with_harga = self._build_jadwal_base_rows_with_harga(adapter, raw_base_rows)
+            raw_base_rows = full_data.get('base_rows') or adapter._build_base_rows()[0]
+            # Bobot dari sumber yang SAMA dengan laporan mingguan/bulanan/Kurva S
+            # (Decimal, harga rekap kanonik) agar progress harian cocok lintas laporan.
+            _, _, bobot_map = adapter._get_bobot_maps(raw_base_rows)
             daily_sheets = self._build_laporan_harian_sheets(
                 full_data=full_data,
-                base_rows=base_rows_with_harga,
+                base_rows=self._build_laporan_harian_base_rows(raw_base_rows),
+                bobot_map=bobot_map,
                 daily_mode=daily_mode or 'day',
                 period=period,
                 days=days,
@@ -1233,43 +1236,36 @@ class ExportManager:
         
         return exporter.export(data)
 
-    def _build_jadwal_base_rows_with_harga(self, adapter, raw_base_rows: list[dict]) -> list[dict]:
-        """Build lightweight pekerjaan rows for laporan harian.
+    # Batas atas halaman per export harian: 1 laporan = >=2 halaman (+ salinan
+    # SmartArt dokumentasi), jadi permintaan tanpa batas bisa memakan waktu/memori.
+    LAPORAN_HARIAN_MAX_DAYS = 62
 
-        This intentionally omits volume/bobot/progress display fields from the
-        final report, but keeps total_harga internally for previous-week progress
-        weighting.
-        """
-        base_rows = []
-        for row in raw_base_rows:
-            if row.get('type') != 'pekerjaan':
-                continue
-            pek_id = row.get('pekerjaan_id')
-            total_harga = adapter._get_pekerjaan_harga(pek_id) if pek_id else 0
-            base_rows.append({
-                'pekerjaan_id': pek_id,
-                'uraian': row.get('uraian', ''),
-                'total_harga': float(total_harga or 0),
-            })
-        return base_rows
+    def _build_laporan_harian_base_rows(self, raw_base_rows: list[dict]) -> list[dict]:
+        """Baris pekerjaan ringan untuk laporan harian (tanpa volume/harga/bobot)."""
+        return [
+            {'pekerjaan_id': row.get('pekerjaan_id'), 'uraian': row.get('uraian', '')}
+            for row in raw_base_rows
+            if row.get('type') == 'pekerjaan'
+        ]
 
     def _build_laporan_harian_sheets(
         self,
         *,
         full_data: dict,
         base_rows: list[dict],
+        bobot_map: dict,
         daily_mode: str,
         period: int | None,
         days: list[int] | None,
     ) -> list[dict]:
-        from datetime import timedelta
-        from decimal import Decimal
+        from .errors import ExportValidationError
 
         project_start = getattr(self.project, 'tanggal_mulai', None)
         project_end = getattr(self.project, 'tanggal_selesai', None)
         if not project_start:
-            from datetime import date
-            project_start = date.today()
+            raise ExportValidationError(
+                "Tanggal mulai proyek belum diisi. Lengkapi data proyek sebelum membuat laporan harian."
+            )
         if not project_end or project_end < project_start:
             project_end = project_start
 
@@ -1284,18 +1280,20 @@ class ExportManager:
             period=period,
             days=days,
         )
-
-        total_harga = sum(Decimal(str(row.get('total_harga') or 0)) for row in base_rows)
-        if total_harga <= 0:
-            total_harga = Decimal('1')
-        bobot_map = {
-            int(row['pekerjaan_id']): Decimal(str(row.get('total_harga') or 0)) / total_harga
-            for row in base_rows
-            if row.get('pekerjaan_id')
-        }
+        if not selected_dates:
+            raise ExportValidationError(
+                "Periode yang dipilih berada di luar masa proyek "
+                f"({project_start:%d/%m/%Y} - {project_end:%d/%m/%Y})."
+            )
+        if len(selected_dates) > self.LAPORAN_HARIAN_MAX_DAYS:
+            raise ExportValidationError(
+                f"Maksimal {self.LAPORAN_HARIAN_MAX_DAYS} hari per export laporan harian."
+            )
 
         sheets = []
         used_names = set()
+        progress_by_week = {}
+        current_target_by_week = {}
         for report_date in selected_dates:
             week_number = self._week_number_for_date(report_date, project_start, weekly_columns)
             previous_week = week_number - 1
@@ -1310,14 +1308,22 @@ class ExportManager:
                 if row.get('pekerjaan_id') in active_ids
             ]
 
-            prev_progress = {'planned': None, 'actual': None, 'deviation': None}
-            if previous_week >= 1:
-                planned_prev = self._weighted_week_progress(planned_map, bobot_map, previous_week)
-                actual_prev = self._weighted_week_progress(actual_map, bobot_map, previous_week)
-                prev_progress = {
+            # Progress KUMULATIF s.d. akhir minggu sebelumnya (W1..W[n-1]) — sama
+            # dengan `cumulative_*` laporan mingguan/bulanan. Minggu pertama = 0.
+            if previous_week not in progress_by_week:
+                planned_prev = self._weighted_cumulative_progress(planned_map, bobot_map, previous_week)
+                actual_prev = self._weighted_cumulative_progress(actual_map, bobot_map, previous_week)
+                progress_by_week[previous_week] = {
                     'planned': planned_prev,
                     'actual': actual_prev,
                     'deviation': actual_prev - planned_prev,
+                }
+            # Minggu berjalan: HANYA target rencana (realisasi belum terjadi).
+            if week_number not in current_target_by_week:
+                planned_now = self._weighted_cumulative_progress(planned_map, bobot_map, week_number)
+                current_target_by_week[week_number] = {
+                    'planned': planned_now,
+                    'planned_week': planned_now - progress_by_week[previous_week]['planned'],
                 }
 
             sheet_name = self._build_laporan_harian_sheet_name(report_date, used_names)
@@ -1328,7 +1334,8 @@ class ExportManager:
                 'day_number': (report_date - project_start).days + 1,
                 'week_number': week_number,
                 'previous_week': previous_week if previous_week >= 1 else None,
-                'previous_progress': prev_progress,
+                'previous_progress': dict(progress_by_week[previous_week]),
+                'current_week_target': dict(current_target_by_week[week_number]),
                 'work_items': work_items,
             })
 
@@ -1403,11 +1410,14 @@ class ExportManager:
                     active.add(pek_id)
         return active
 
-    def _weighted_week_progress(self, progress_map: dict, bobot_map: dict, week_number: int):
+    def _weighted_cumulative_progress(self, progress_map: dict, bobot_map: dict, up_to_week: int):
+        """Σ bobot × proporsi untuk minggu 1..up_to_week, sebagai pecahan (0-1)."""
         from decimal import Decimal
         total = Decimal('0')
+        if up_to_week < 1:
+            return total
         for (pek_id, wk), value in progress_map.items():
-            if wk != week_number:
+            if wk > up_to_week:
                 continue
             total += bobot_map.get(pek_id, Decimal('0')) * (Decimal(str(value or 0)) / Decimal('100'))
         return total

@@ -166,8 +166,6 @@ class WordExporter:
                     self._daily_subtitle(report),
                 )
                 self._daily_add_identity(project_info, report)
-                if page_index == 1:
-                    self._daily_add_previous_progress(report)
                 self._daily_add_work_table(chunk, page_index, page_count)
                 if page_index == page_count:
                     self._daily_add_signatures()
@@ -1678,7 +1676,8 @@ class WordExporter:
     # =========================================================================
 
     def _daily_work_rows_per_page(self) -> int:
-        return 28
+        # 24 baris + identitas + ruang TTD 2.2cm masih muat 1 halaman A4 portrait.
+        return 24
 
     def _setup_daily_doc_styles(self):
         styles = self.doc.styles
@@ -1818,38 +1817,43 @@ class WordExporter:
         run.font.color.rgb = RGBColor(90, 90, 90)
 
     def _daily_add_identity(self, project_info: Dict[str, Any], report: Dict[str, Any]):
-        table = self.doc.add_table(rows=4, cols=6)
+        # Tanggal & minggu sudah di subjudul; kontraktor & konsultan di pengesahan —
+        # tabel identitas hanya memuat yang belum tampil di tempat lain.
+        table = self.doc.add_table(rows=4, cols=5)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
-        self._daily_set_col_widths(table, [2.0, 4.8, 4.2, 2.6, 1.7, 2.7])
+        self._daily_set_col_widths(table, [3.2, 6.4, 2.2, 2.9, 3.3])
         self._daily_set_table_borders(table, '6B7280', '4')
 
-        progress = self._daily_progress_values(report)
+        previous = self._daily_progress_values(report)
+        current = self._daily_current_target_values(report)
+        previous_week = report.get('previous_week')
         rows = [
             ('Proyek :', self._project_value(project_info, 'nama_proyek', 'name', 'nama', default=self.config.project_name),
-             'Tgl Laporan :', self._daily_date_text(report), 'Progress :', ''),
+             'Progress Kumulatif',
+             f"s.d. Minggu {previous_week}" if previous_week else "Awal Proyek",
+             f"s.d. Minggu {report.get('week_number') or '-'}"),
             ('Lokasi :', self._project_value(project_info, 'lokasi', 'location', default=self.config.location),
-             'Cuaca :', '__________', 'Rencana :', progress[0]),
-            ('No. Kontrak :', self._project_value(project_info, 'nomor_kontrak', 'kode_proyek', 'code', default=self.config.project_code),
-             'Kontraktor :', self._project_value(project_info, 'kontraktor', 'nama_kontraktor', default=''), 'Realisasi :', progress[1]),
-            ('Konsultan :', self._project_value(project_info, 'konsultan_pengawas', 'nama_konsultan_pengawas', 'konsultan', default=''),
-             'Pemilik/Penanggung Jawab Project :', self._project_value(project_info, 'owner', 'nama_client', 'instansi', default=self.config.owner), 'Deviasi :', progress[2]),
+             'Rencana :', previous[0], current[0]),
+            ('Cuaca :', '__________',
+             'Realisasi :', previous[1], current[1]),
+            ('Pemilik/Penanggung Jawab Project :', self._project_value(project_info, 'owner', 'nama_client', 'instansi', default=self.config.owner),
+             'Deviasi :', previous[2], current[2]),
         ]
         for row_idx, row_values in enumerate(rows):
             for col_idx, value in enumerate(row_values):
-                self._daily_set_cell_text(table.cell(row_idx, col_idx), value, bold=col_idx in (0, 2, 4), size=7)
-                if col_idx in (0, 2, 4):
-                    self._daily_set_cell_shading(table.cell(row_idx, col_idx), 'F3F4F6')
-
-    def _daily_add_previous_progress(self, report: Dict[str, Any]):
-        previous_week = report.get('previous_week')
-        text = f"Progress minggu sebelumnya: W{previous_week}" if previous_week else "Progress minggu sebelumnya: belum ada periode pembanding"
-        paragraph = self.doc.add_paragraph()
-        paragraph.paragraph_format.space_before = Pt(3)
-        paragraph.paragraph_format.space_after = Pt(0)
-        run = paragraph.add_run(text)
-        run.font.size = Pt(7)
-        run.font.color.rgb = RGBColor(90, 90, 90)
+                cell = table.cell(row_idx, col_idx)
+                is_label = col_idx in (0, 2)
+                is_progress_header = row_idx == 0 and col_idx >= 2
+                if col_idx >= 3:
+                    align = WD_ALIGN_PARAGRAPH.CENTER if row_idx == 0 else WD_ALIGN_PARAGRAPH.RIGHT
+                else:
+                    align = None
+                self._daily_set_cell_text(cell, value, bold=is_label or is_progress_header, size=7, align=align)
+                if is_progress_header:
+                    self._daily_set_cell_shading(cell, 'E5E7EB')
+                elif is_label:
+                    self._daily_set_cell_shading(cell, 'F3F4F6')
 
     def _daily_add_work_table(self, items: List[Dict[str, Any]], page_index: int, page_count: int):
         paragraph = self.doc.add_paragraph()
@@ -1878,15 +1882,18 @@ class WordExporter:
 
     def _daily_add_signatures(self):
         paragraph = self.doc.add_paragraph()
-        paragraph.paragraph_format.space_before = Pt(3)
-        table = self.doc.add_table(rows=3, cols=3)
+        paragraph.paragraph_format.space_before = Pt(12)
+        paragraph.paragraph_format.space_after = Pt(0)
+        signatures = self._daily_signature_entries()
+        table = self.doc.add_table(rows=3, cols=len(signatures))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
-        self._daily_set_col_widths(table, [6.0, 6.0, 6.0])
-        signatures = self._daily_signature_entries()
+        self._daily_set_col_widths(table, [9.0] * len(signatures))
+        # Ruang tanda tangan basah + stempel.
+        table.rows[1].height = Cm(2.2)
         for idx, signature in enumerate(signatures):
             self._daily_set_cell_text(table.cell(0, idx), signature['label'], bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
-            self._daily_set_cell_text(table.cell(1, idx), '\n\n', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
+            self._daily_set_cell_text(table.cell(1, idx), '', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
             name = signature.get('name') or '............................'
             self._daily_set_cell_text(table.cell(2, idx), f'({name})', align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
         self._daily_set_table_borders(table, 'FFFFFF', '0')
@@ -1914,7 +1921,6 @@ class WordExporter:
         return [
             find_signature('kontraktor', fallback_label='Kontraktor Pelaksana'),
             find_signature('pengawas', fallback_label='Konsultan Pengawas'),
-            find_signature('pemilik', 'owner', fallback_label='Pemilik/Penanggung Jawab Project', force_label=True),
         ]
 
     def _daily_add_photo_fallback(self):
@@ -1982,6 +1988,9 @@ class WordExporter:
                 self._daily_set_cell_border(cell, color=color, size=size)
 
     def _daily_set_col_widths(self, table, widths_cm: List[float]):
+        # tblGrid ikut diset: LibreOffice/Google Docs membaca grid, bukan tcW.
+        for grid_col, width in zip(table._tbl.tblGrid.findall(qn('w:gridCol')), widths_cm):
+            grid_col.set(qn('w:w'), str(Cm(width).twips))
         for row in table.rows:
             for idx, width in enumerate(widths_cm):
                 if idx < len(row.cells):
@@ -2034,6 +2043,17 @@ class WordExporter:
             self._daily_percent(progress.get('actual')),
             self._daily_percent(progress.get('deviation'), signed=True),
         )
+
+    def _daily_current_target_values(self, report: Dict[str, Any]) -> tuple[str, str, str]:
+        """Minggu berjalan: hanya target rencana kumulatif (+target minggu ini).
+
+        Realisasi & deviasi minggu ini belum diketahui saat laporan dibuat.
+        """
+        target = report.get('current_week_target') or {}
+        planned = self._daily_percent(target.get('planned'))
+        if planned != '-' and target.get('planned_week') is not None:
+            planned = f"{planned} ({self._daily_percent(target.get('planned_week'), signed=True)})"
+        return planned, '-', '-'
 
     def _daily_percent(self, value, signed: bool = False) -> str:
         if value is None:
