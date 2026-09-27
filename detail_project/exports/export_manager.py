@@ -836,7 +836,8 @@ class ExportManager:
 
         if report_type == 'daily' and format_type != 'word':
             raise ValueError("Laporan harian hanya tersedia dalam format Word (.docx).")
-        
+        self._validate_report_periods(report_type, period, months, weeks)
+
         from reportlab.platypus import PageBreak, Spacer
         from reportlab.lib.units import mm
         
@@ -1235,6 +1236,25 @@ class ExportManager:
             return result
         
         return exporter.export(data)
+
+    def _validate_report_periods(self, report_type, period, months, weeks):
+        """Tolak bulan/minggu di luar masa proyek (dulu menghasilkan laporan kosong 0%)."""
+        if report_type not in ('monthly', 'weekly'):
+            return
+        from detail_project.timeline_utils import project_report_period_counts
+        from .errors import ExportValidationError
+
+        total_weeks, total_months = project_report_period_counts(self.project)
+        if report_type == 'monthly':
+            requested, limit, unit = (months or [period or 1]), total_months, 'Bulan'
+        else:
+            requested, limit, unit = (weeks or [period or 1]), total_weeks, 'Minggu'
+        invalid = sorted({int(p) for p in requested if int(p) < 1 or int(p) > limit})
+        if invalid:
+            raise ExportValidationError(
+                f"{unit} {', '.join(map(str, invalid))} di luar masa proyek "
+                f"(proyek ini hanya {limit} {unit.lower()})."
+            )
 
     # Batas atas halaman per export harian: 1 laporan = >=2 halaman (+ salinan
     # SmartArt dokumentasi), jadi permintaan tanpa batas bisa memakan waktu/memori.

@@ -23,6 +23,7 @@ from reportlab.graphics.widgets.markers import makeMarker
 from io import BytesIO
 from typing import Dict, Any, List
 from .base import ConfigExporterBase
+from .cell_format import format_cell_display
 from ..export_config import get_page_size_mm
 from .table_styles import (
     UnifiedTableStyles as UTS,
@@ -655,11 +656,23 @@ class PDFExporter(ConfigExporterBase):
         if value is None or value == 0:
             return '-'
         try:
-            formatted = f"{int(value):,}".replace(',', '.')
+            # Dibulatkan (bukan int() yang memotong), pemisah ribuan id-ID.
+            formatted = format_cell_display(float(value), '#,##0')
             return f"Rp {formatted}" if with_prefix else formatted
         except (ValueError, TypeError):
             return '-'
     
+    @staticmethod
+    def _fit_font_size(text: str, width: float, base: float = 7, minimum: float = 4.5,
+                       font: str = 'Helvetica', padding: float = 4) -> float:
+        """Perkecil font agar teks muat di sel Drawing — jangan potong angka."""
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        size = base
+        while size > minimum and stringWidth(str(text), font, size) > width - padding:
+            size -= 0.5
+        return size
+
     @staticmethod
     def _format_percent(value: float, decimals: int = 2, show_zero: bool = True) -> str:
         """
@@ -1221,6 +1234,37 @@ class PDFExporter(ConfigExporterBase):
             self.config.project_name, filename_title, 'pdf', self.config.export_date
         )
         return self._create_response(pdf_content, filename, 'application/pdf')
+
+    @staticmethod
+    def _collapse_redundant_page_breaks(story: List) -> List:
+        """Buang PageBreak yang langsung disusul PageBreak lain.
+
+        Section builder saling menambahkan PageBreak (mis. akhir halaman Progress
+        + awal Kurva S landscape), sehingga muncul halaman KOSONG. Penanda
+        tanpa tinggi (NextPageTemplate/SegmentMarker) di antaranya tetap
+        dipertahankan & ikut ke halaman berikutnya.
+        """
+        result: List = []
+        pending_break = None
+        held_markers: List = []  # SegmentMarker milik halaman SESUDAH break
+        for flowable in story:
+            if isinstance(flowable, PageBreak):
+                pending_break = flowable  # PageBreak sebelumnya (jika ada) dibuang
+                continue
+            if pending_break is not None:
+                if isinstance(flowable, NextPageTemplate):
+                    # Harus mendahului break agar berlaku untuk halaman berikutnya.
+                    result.append(flowable)
+                    continue
+                if isinstance(flowable, SegmentMarker):
+                    held_markers.append(flowable)
+                    continue
+                result.append(pending_break)
+                result.extend(held_markers)
+                pending_break, held_markers = None, []
+            result.append(flowable)
+        # PageBreak di ujung dokumen hanya menghasilkan halaman kosong terakhir.
+        return result
 
     def export_professional(self, data: Dict[str, Any]) -> HttpResponse:
         """
@@ -2101,6 +2145,7 @@ class PDFExporter(ConfigExporterBase):
         # Build PDF with NumberedCanvas for headers/footers
         project_name = project_info.get('nama', self.config.project_name) or ''
         section_title = 'Jadwal Pekerjaan'
+        story = self._collapse_redundant_page_breaks(story)
         doc.build(story, canvasmaker=make_numbered_canvas(project_name, section_title))
         
         pdf_content = buffer.getvalue()
@@ -3283,9 +3328,17 @@ class PDFExporter(ConfigExporterBase):
         identity_header = Paragraph("IDENTITAS PROJECT", section_title_style)
         identity_data = [
             ['Nama Project', ':', project_info.get('nama', '-')],
-            ['Ket. Project 1', ':', project_info.get('keterangan_1', project_info.get('sumber_dana', '-'))],
-            ['Ket. Project 2', ':', project_info.get('keterangan_2', project_info.get('nama_client', '-'))],
+            ['Pemilik', ':', project_info.get('nama_client', '-')],
+            ['Sumber Dana', ':', project_info.get('sumber_dana', '-')],
             ['Lokasi', ':', project_info.get('lokasi', '-')],
+        ] + [
+            # Keterangan proyek (field Dashboard) hanya bila diisi.
+            [label, ':', value]
+            for label, value in (
+                ('Ket. Project 1', project_info.get('ket_project1')),
+                ('Ket. Project 2', project_info.get('ket_project2')),
+            )
+            if value and value != '-'
         ]
         identity_table = Table(identity_data, colWidths=[32*mm, 3*mm, 58*mm])
         identity_table.setStyle(TableStyle([
@@ -3505,7 +3558,7 @@ class PDFExporter(ConfigExporterBase):
                 progress_kumulatif_fmt = ""
             else:
                 # Pekerjaan: show all values using helpers
-                volume_fmt = f"{volume:,.2f}".replace(',', '.') if volume > 0 else "-"
+                volume_fmt = format_cell_display(float(volume), '#,##0.00') if volume > 0 else "-"
                 harga_satuan_fmt = self._format_rupiah(harga_satuan) if harga_satuan > 0 else "-"
                 harga_fmt = self._format_rupiah(harga) if harga > 0 else "-"
                 bobot_fmt = self._format_percent(bobot, show_zero=False)
@@ -3556,8 +3609,8 @@ class PDFExporter(ConfigExporterBase):
         table_data.append(total_row)
         
         # Column widths - A4 Portrait usable ~180mm
-        # URAIAN(55) | VOL(12) | H.SAT(22) | TOTAL(22) | BOBOT(12) | KUM.LALU(18) | PROG.INI(18) | KUM.INI(18) = 177mm
-        col_widths = [55*mm, 12*mm, 22*mm, 22*mm, 12*mm, 18*mm, 18*mm, 18*mm]
+        # URAIAN(49) | VOL(18, muat "30.000,00" tanpa patah) | H.SAT(22) | TOTAL(22) | BOBOT(12) | KUM.LALU(18) | PROG.INI(18) | KUM.INI(18) = 177mm
+        col_widths = [49*mm, 18*mm, 22*mm, 22*mm, 12*mm, 18*mm, 18*mm, 18*mm]
         
         # ==========================================
         # TABLE SPLITTING FOR KEEPTOGETHER WITH SIGNATURE
@@ -3695,9 +3748,17 @@ class PDFExporter(ConfigExporterBase):
         identity_header = Paragraph("IDENTITAS PROJECT", section_title_style)
         identity_data = [
             ['Nama Project', ':', project_info.get('nama', '-')],
-            ['Ket. Project 1', ':', project_info.get('keterangan_1', project_info.get('sumber_dana', '-'))],
-            ['Ket. Project 2', ':', project_info.get('keterangan_2', project_info.get('nama_client', '-'))],
+            ['Pemilik', ':', project_info.get('nama_client', '-')],
+            ['Sumber Dana', ':', project_info.get('sumber_dana', '-')],
             ['Lokasi', ':', project_info.get('lokasi', '-')],
+        ] + [
+            # Keterangan proyek (field Dashboard) hanya bila diisi.
+            [label, ':', value]
+            for label, value in (
+                ('Ket. Project 1', project_info.get('ket_project1')),
+                ('Ket. Project 2', project_info.get('ket_project2')),
+            )
+            if value and value != '-'
         ]
         identity_table = Table(identity_data, colWidths=[32*mm, 3*mm, 58*mm])
         identity_table.setStyle(TableStyle([
@@ -3880,7 +3941,7 @@ class PDFExporter(ConfigExporterBase):
                 kumulatif_lalu_fmt = ""
                 progress_kumulatif_fmt = ""
             else:
-                volume_fmt = f"{volume:,.2f}".replace(',', '.') if volume > 0 else "-"
+                volume_fmt = format_cell_display(float(volume), '#,##0.00') if volume > 0 else "-"
                 harga_satuan_fmt = self._format_rupiah(harga_satuan) if harga_satuan > 0 else "-"
                 harga_fmt = self._format_rupiah(harga) if harga > 0 else "-"
                 bobot_fmt = self._format_percent(bobot, show_zero=False)
@@ -3926,7 +3987,7 @@ class PDFExporter(ConfigExporterBase):
             table_data.append(row)
         table_data.append(total_row)
         
-        col_widths = [55*mm, 12*mm, 22*mm, 22*mm, 12*mm, 18*mm, 18*mm, 18*mm]
+        col_widths = [49*mm, 18*mm, 22*mm, 22*mm, 12*mm, 18*mm, 18*mm, 18*mm]
         
         MIN_ROWS_WITH_SIGNATURE = 5
         
@@ -4047,7 +4108,10 @@ class PDFExporter(ConfigExporterBase):
         instansi_kontraktor = project_info.get('instansi_kontraktor', '-')
         instansi_konsultan = project_info.get('instansi_konsultan_pengawas', '-')
         jabatan_client = project_info.get('jabatan_client', '-')
+        if jabatan_client == '-':
+            jabatan_client = ''
         instansi_client = project_info.get('instansi_client', '-')
+        blank_jabatan = 'Jabatan: ....................'
         
         # Build table data
         sig_data = [
@@ -4074,9 +4138,11 @@ class PDFExporter(ConfigExporterBase):
             ],
             # Row 5: Jabatan
             [
-                Paragraph("Direktur", sig_name_style),
-                Paragraph("Direktur", sig_name_style),
-                Paragraph(jabatan_client or "-", sig_name_style)
+                # Model belum punya field jabatan kontraktor/pengawas — kosongkan
+                # untuk diisi tangan, jangan karang "Direktur".
+                Paragraph(blank_jabatan, sig_name_style),
+                Paragraph(blank_jabatan, sig_name_style),
+                Paragraph(jabatan_client or blank_jabatan, sig_name_style)
             ],
             # Row 6: Instansi
             [
@@ -5628,10 +5694,10 @@ class PDFExporter(ConfigExporterBase):
         # COLUMN WIDTHS (fixed for portrait)
         # Total: 750pt for A3 Portrait
         # =================================================================
-        uraian_width = 350      # Reduced from 450 to make room for progress columns
-        volume_width = 25
+        uraian_width = 300      # Diperkecil agar Volume/Total Harga muat utuh (tak dipotong)
+        volume_width = 40
         satuan_width = 25
-        harga_width = 65
+        harga_width = 80
         bobot_width = 30
         progress_lalu_width = 45  # NEW: Progress Bulan Lalu
         progress_ini_width = 45   # NEW: Progress Bulan Ini
@@ -5803,16 +5869,16 @@ class PDFExporter(ConfigExporterBase):
                 if row_type == 'pekerjaan':
                     vol = row.get('volume', 0) or 0
                     try:
-                        vol_str = f"{float(vol):.1f}" if vol else ''
+                        vol_str = format_cell_display(float(vol), '#,##0.00') if vol else ''
                     except (ValueError, TypeError):
                         vol_str = str(vol)[:5]
-                    drawing.add(String(uraian_width + volume_width/2, row_y + row_height * 0.35, vol_str[:5], fontSize=7, fontName='Helvetica', textAnchor='middle'))
+                    drawing.add(String(uraian_width + volume_width/2, row_y + row_height * 0.35, vol_str, fontSize=self._fit_font_size(vol_str, volume_width), fontName='Helvetica', textAnchor='middle'))
                 
                 # Satuan - center aligned
                 drawing.add(Rect(uraian_width + volume_width, row_y, satuan_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
                 if row_type == 'pekerjaan':
                     sat = row.get('satuan', '') or ''
-                    drawing.add(String(uraian_width + volume_width + satuan_width/2, row_y + row_height * 0.35, str(sat)[:4], fontSize=7, fontName='Helvetica', textAnchor='middle'))
+                    drawing.add(String(uraian_width + volume_width + satuan_width/2, row_y + row_height * 0.35, str(sat), fontSize=self._fit_font_size(str(sat), satuan_width), fontName='Helvetica', textAnchor='middle'))
                 
                 # Total Harga - hierarchy_progress uses 'harga' directly
                 drawing.add(Rect(uraian_width + volume_width + satuan_width, row_y, harga_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
@@ -5822,8 +5888,8 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         harga = 0
                     if harga > 0:
-                        harga_fmt = f"Rp{int(harga):,}".replace(',', '.')
-                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width/2, row_y + row_height * 0.35, harga_fmt[:14], fontSize=7, fontName='Helvetica', textAnchor='middle'))
+                        harga_fmt = self._format_rupiah(harga)
+                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width/2, row_y + row_height * 0.35, harga_fmt, fontSize=self._fit_font_size(harga_fmt, harga_width), fontName='Helvetica', textAnchor='middle'))
                 
                 # Bobot - hierarchy_progress uses 'bobot' directly
                 drawing.add(Rect(uraian_width + volume_width + satuan_width + harga_width, row_y, bobot_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
@@ -5833,7 +5899,7 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         bobot = 0
                     if bobot > 0:
-                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width + bobot_width/2, row_y + row_height * 0.35, f"{bobot:.1f}%", fontSize=7, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width + bobot_width/2, row_y + row_height * 0.35, self._format_percent(bobot), fontSize=self._fit_font_size(self._format_percent(bobot), bobot_width), fontName='Helvetica', textAnchor='middle'))
                 
                 # Progress Bulan Lalu
                 progress_lalu_x = uraian_width + volume_width + satuan_width + harga_width + bobot_width
@@ -5844,7 +5910,7 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         prog_lalu = 0
                     if prog_lalu > 0:
-                        drawing.add(String(progress_lalu_x + progress_lalu_width/2, row_y + row_height * 0.35, f"{prog_lalu:.1f}%", fontSize=7, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(progress_lalu_x + progress_lalu_width/2, row_y + row_height * 0.35, self._format_percent(prog_lalu), fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Progress Bulan Ini
                 progress_ini_x = progress_lalu_x + progress_lalu_width
@@ -5855,7 +5921,7 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         prog_ini = 0
                     if prog_ini > 0:
-                        drawing.add(String(progress_ini_x + progress_ini_width/2, row_y + row_height * 0.35, f"{prog_ini:.1f}%", fontSize=7, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(progress_ini_x + progress_ini_width/2, row_y + row_height * 0.35, self._format_percent(prog_ini), fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Week columns with progress values - with enhanced borders
                 # Get row identifier for progress lookup

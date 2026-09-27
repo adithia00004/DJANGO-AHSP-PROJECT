@@ -805,20 +805,7 @@
       function initializeWeekCheckboxes() {
         if (!weekCheckboxGrid) return;
 
-        // Primary source: Django template variable (server-side calculated)
-        // Note: Django evaluates {{ total_weeks|default:12 }} to an integer at render time
-        let totalWeeks = parseInt('{{ total_weeks|default:12 }}', 10) || 12;
-
-        // Fallback: Try to get from window.__JADWAL_APP_STATE__ (set by TanStackGridManager)
-        if (window.__JADWAL_APP_STATE__ && window.__JADWAL_APP_STATE__.weekColumns) {
-          const jsWeeks = window.__JADWAL_APP_STATE__.weekColumns.length;
-          if (jsWeeks > totalWeeks) {
-            totalWeeks = jsWeeks;
-          }
-        }
-
-        // Minimum 4 weeks, max 200 weeks
-        totalWeeks = Math.max(4, Math.min(200, totalWeeks));
+        const totalWeeks = getTotalWeeksForProject();
 
         // Clear existing content
         weekCheckboxGrid.innerHTML = '';
@@ -860,18 +847,16 @@
         return Math.floor((end - start) / 86400000) + 1;
       }
 
+      // Jumlah periode = hitungan server (timeline_utils.project_report_period_counts),
+      // sumber yang sama dengan validasi export backend. JANGAN ditambah minimum
+      // atau diperbesar dari kolom grid di sini (bug lama: proyek 6 minggu
+      // menawarkan Minggu 1-12 / Bulan 1-3).
       function getTotalWeeksForProject() {
-        const totalDays = getProjectDurationDays();
-        let totalWeeks = totalDays ? Math.ceil(totalDays / 7) : parseInt('{{ total_weeks|default:12 }}', 10) || 12;
-        if (window.__JADWAL_APP_STATE__?.weekColumns?.length) {
-          totalWeeks = Math.max(totalWeeks, window.__JADWAL_APP_STATE__.weekColumns.length);
-        }
-        return Math.max(1, Math.min(200, totalWeeks));
+        return Math.max(1, parseInt('{{ total_weeks|default:1 }}', 10) || 1);
       }
 
       function getTotalMonthsForProject() {
-        const totalWeeks = getTotalWeeksForProject();
-        return Math.max(1, Math.min(50, Math.ceil(totalWeeks / 4)));
+        return Math.max(1, parseInt('{{ total_months|default:1 }}', 10) || 1);
       }
 
       function initializeDailyWeekOptions() {
@@ -944,20 +929,8 @@
       function initializeMonthCheckboxes() {
         if (!monthCheckboxGrid) return;
 
-        // Primary source: Django template variable (server-side calculated)
-        let totalMonths = parseInt('{{ total_months|default:12 }}', 10) || 12;
-
-        // Fallback: calculate from weeks if available
-        if (window.__JADWAL_APP_STATE__ && window.__JADWAL_APP_STATE__.weekColumns) {
-          const jsWeeks = window.__JADWAL_APP_STATE__.weekColumns.length;
-          const jsMonths = Math.ceil(jsWeeks / 4);
-          if (jsMonths > totalMonths) {
-            totalMonths = jsMonths;
-          }
-        }
-
-        // Minimum 1 month, max 50 months
-        totalMonths = Math.max(1, Math.min(50, totalMonths));
+        const totalMonths = getTotalMonthsForProject();
+        const totalWeeks = getTotalWeeksForProject();
 
         // Clear existing content
         monthCheckboxGrid.innerHTML = '';
@@ -966,7 +939,9 @@
         for (let m = 1; m <= totalMonths; m++) {
           const label = document.createElement('label');
           label.className = 'btn btn-outline-primary btn-sm month-checkbox';
-          label.innerHTML = `<input type="checkbox" name="months" value="${m}" class="d-none"> Bulan ${m}`;
+          const startWeek = ((m - 1) * 4) + 1;
+          const endWeek = Math.min(m * 4, totalWeeks);
+          label.innerHTML = `<input type="checkbox" name="months" value="${m}" class="d-none"> Bulan ${m} <span class="small opacity-75">(M${startWeek}-${endWeek})</span>`;
           monthCheckboxGrid.appendChild(label);
         }
 

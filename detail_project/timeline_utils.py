@@ -13,7 +13,7 @@ from fractions import Fraction
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import F, Max, Q
 
 from detail_project.models import (
     DetailAHSPAudit,
@@ -126,6 +126,34 @@ def expected_week_count(project_start, project_end, week_end_day=6):
     if project_end <= first_week_end:
         return 1
     return 1 + ((project_end - first_week_end).days + 6) // 7
+
+
+REPORT_WEEKS_PER_MONTH = 4
+
+
+def project_report_period_counts(project):
+    """Jumlah periode laporan proyek: ``(total_weeks, total_months)``.
+
+    SATU sumber untuk pilihan periode di modal export, validasi export, dan
+    kolom mingguan adapter — jangan hitung ulang di tempat lain (bug lama: view
+    memaksa minimal 12 minggu/3 bulan, adapter memakai ceil(hari/7) yang
+    mengabaikan batas minggu). "Bulan" laporan = 4 minggu.
+    """
+    start = getattr(project, 'tanggal_mulai', None)
+    end = getattr(project, 'tanggal_selesai', None)
+    weeks = expected_week_count(start, end, getattr(project, 'week_end_day', 6))
+    if not weeks:
+        # Tanggal proyek belum lengkap: pakai struktur/data mingguan yang ada.
+        weeks = TahapPelaksanaan.objects.filter(
+            project=project, is_auto_generated=True, generation_mode='weekly',
+        ).count()
+    if not weeks:
+        weeks = PekerjaanProgressWeekly.objects.filter(project=project).aggregate(
+            max_week=Max('week_number'),
+        )['max_week'] or 0
+    weeks = max(1, weeks)
+    months = -(-weeks // REPORT_WEEKS_PER_MONTH)
+    return weeks, months
 
 
 def invalidate_schedule_caches(project_id, pekerjaan_ids=None):

@@ -573,10 +573,11 @@ class JadwalPekerjaanExportAdapter:
         return approx
 
     def _estimate_week_count(self, project_start: date, project_end: date) -> int:
-        if not project_start or not project_end:
-            return 1
-        days = max(0, (project_end - project_start).days) + 1
-        return max(1, math.ceil(days / 7))
+        # Batas minggu kanonik (week_end_day), sama dengan pembentuk tahapan &
+        # pilihan periode modal export — bukan ceil(hari/7).
+        from detail_project.timeline_utils import expected_week_count
+
+        return max(1, expected_week_count(project_start, project_end, self._get_week_end_day()))
 
     def _get_week_end_day(self) -> int:
         raw = getattr(self.project, "week_end_day", None)
@@ -1118,83 +1119,54 @@ class JadwalPekerjaanExportAdapter:
         - name: uraian pekerjaan
         - harga: total harga per pekerjaan
         - bobot: percentage of total project cost
-        - progress_bulan_ini: weighted actual progress this month
-        - progress_bulan_lalu: weighted actual progress previous month
+        - progress_bulan_ini: weighted actual progress this month (W start..end)
+        - progress_bulan_lalu: weighted actual progress KUMULATIF s.d. akhir
+          bulan lalu (W1..start_week-1) — bukan hanya minggu bulan lalu.
+
+        Nilai TIDAK dibulatkan per baris (pembulatan hanya saat tampil) agar
+        TOTAL tabel = akumulasi di Ringkasan Progress.
         """
         volume_map = self._load_volume_map()
-        
-        # Calculate total harga for bobot
-        total_harga = Decimal("0")
-        pekerjaan_rows = [r for r in base_rows if r.get("type") == "pekerjaan"]
-        for row in pekerjaan_rows:
-            pek_id = row.get("pekerjaan_id")
-            if pek_id:
-                total_harga += self._get_pekerjaan_harga(pek_id)
-        
-        # Previous month weeks
-        prev_month = month - 1
-        prev_start_week = (prev_month - 1) * 4 + 1 if prev_month >= 1 else 0
-        prev_end_week = prev_month * 4 if prev_month >= 1 else 0
-        
+        _, _, bobot_map = self._get_bobot_maps(base_rows)
+
         result = []
-        
-        # Track klasifikasi totals for aggregation
-        klasifikasi_totals = {}  # idx -> {harga, bobot, progress_ini, progress_lalu}
-        
+
         for idx, row in enumerate(base_rows):
             row_type = row.get("type")
             level = hierarchy.get(idx, 0)
             uraian = row.get("uraian", "")
-            
+
             if row_type == "pekerjaan":
                 pek_id = row.get("pekerjaan_id")
-                
-                # Get volume and harga_satuan
-                from detail_project.models import VolumePekerjaan
-                volume = Decimal("0")
-                try:
-                    vol = VolumePekerjaan.objects.get(pekerjaan_id=pek_id)
-                    volume = self._to_decimal(vol.quantity)
-                except VolumePekerjaan.DoesNotExist:
-                    volume = Decimal("1")
-                
+                volume = volume_map.get(pek_id, Decimal("0")) if pek_id else Decimal("0")
                 harga_dengan_markup = self._get_pekerjaan_harga(pek_id) if pek_id else Decimal("0")
-                # Harga satuan = total / volume
                 harga_satuan = harga_dengan_markup / volume if volume > 0 else Decimal("0")
-                
-                bobot = float(harga_dengan_markup / total_harga * 100) if total_harga > 0 else 0.0
-                
-                # Calculate actual progress this month (sum of weeks in this month)
+                bobot_fraction = bobot_map.get(pek_id, Decimal("0")) if pek_id else Decimal("0")
+
                 actual_ini = sum(
-                    float(actual_map.get((pek_id, w), Decimal("0")))
-                    for w in range(start_week, end_week + 1)
-                ) if pek_id else 0.0
-                
-                # Calculate actual progress previous month
-                actual_lalu = 0.0
-                if prev_month >= 1 and pek_id:
-                    actual_lalu = sum(
-                        float(actual_map.get((pek_id, w), Decimal("0")))
-                        for w in range(prev_start_week, prev_end_week + 1)
-                    )
-                
-                # Weighted by bobot for total contribution
-                progress_ini = actual_ini * bobot / 100 if bobot > 0 else 0.0
-                progress_lalu = actual_lalu * bobot / 100 if bobot > 0 else 0.0
-                
+                    (actual_map.get((pek_id, w), Decimal("0")) for w in range(start_week, end_week + 1)),
+                    Decimal("0"),
+                ) if pek_id else Decimal("0")
+                actual_lalu = sum(
+                    (actual_map.get((pek_id, w), Decimal("0")) for w in range(1, start_week)),
+                    Decimal("0"),
+                ) if pek_id else Decimal("0")
+
                 result.append({
                     "type": "pekerjaan",
                     "level": level,
                     "name": uraian,
                     "pekerjaan_id": pek_id,  # Added for Portrait Kurva S progress lookup
                     "volume": float(volume),
+                    "satuan": row.get("unit", ""),
                     "harga_satuan": float(harga_satuan),
                     "harga": float(harga_dengan_markup),
-                    "bobot": round(bobot, 2),
-                    "progress_bulan_ini": round(progress_ini, 2),
-                    "progress_bulan_lalu": round(progress_lalu, 2),
+                    "bobot": float(bobot_fraction * 100),
+                    # Kontribusi tertimbang ke progress proyek (%).
+                    "progress_bulan_ini": float(actual_ini * bobot_fraction),
+                    "progress_bulan_lalu": float(actual_lalu * bobot_fraction),
                 })
-                
+
             else:
                 # Klasifikasi or sub_klasifikasi - will be populated later from children
                 result.append({
@@ -1256,14 +1228,7 @@ class JadwalPekerjaanExportAdapter:
             if row_type == "pekerjaan":
                 pek_id = row.get("pekerjaan_id")
                 
-                # Get volume
-                from detail_project.models import VolumePekerjaan
-                volume = Decimal("0")
-                try:
-                    vol = VolumePekerjaan.objects.get(pekerjaan_id=pek_id)
-                    volume = self._to_decimal(vol.quantity)
-                except VolumePekerjaan.DoesNotExist:
-                    volume = Decimal("1")
+                volume = volume_map.get(pek_id, Decimal("0")) if pek_id else Decimal("0")
                 
                 harga_dengan_markup = self._get_pekerjaan_harga(pek_id) if pek_id else Decimal("0")
                 # Harga satuan = total / volume
@@ -1292,9 +1257,11 @@ class JadwalPekerjaanExportAdapter:
                     "volume": float(volume),
                     "harga_satuan": float(harga_satuan),
                     "harga": float(harga_dengan_markup),
-                    "bobot": round(bobot, 2),
-                    "progress_minggu_ini": round(progress_ini, 2),  # Weighted by bobot
-                    "progress_minggu_lalu": round(progress_lalu, 2),  # Weighted by bobot
+                    "satuan": row.get("unit", ""),
+                    # Tidak dibulatkan per baris: pembulatan hanya saat tampil agar TOTAL = Ringkasan.
+                    "bobot": bobot,
+                    "progress_minggu_ini": progress_ini,  # Weighted by bobot
+                    "progress_minggu_lalu": progress_lalu,  # Weighted by bobot
                 })
                 
             else:
@@ -1585,6 +1552,8 @@ class JadwalPekerjaanExportAdapter:
             "durasi_hari": getattr(self.project, "durasi_hari", 0),
             "sumber_dana": ident["sumber_dana"],
             "nama_client": ident["client"],
+            "ket_project1": ident["ket_project1"],
+            "ket_project2": ident["ket_project2"],
             # Signature section fields
             "jabatan_client": ident["jabatan_client"] or "-",
             "instansi_client": ident["instansi_client"] or "-",

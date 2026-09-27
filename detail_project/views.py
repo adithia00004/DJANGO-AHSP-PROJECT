@@ -315,25 +315,11 @@ def jadwal_pekerjaan_view(request, project_id: int):
     """
     project = _project_or_404(project_id, request.user)
     
-    # Calculate total weeks from PekerjaanProgressWeekly (has week_number field)
-    from .models import PekerjaanProgressWeekly
-    from django.db.models import Max
-    
-    progress_max_week = PekerjaanProgressWeekly.objects.filter(project=project).aggregate(
-        max_week=Max('week_number')
-    )['max_week'] or 0
-    
-    # Alternative: Calculate from project dates if no progress data exists
-    if progress_max_week == 0:
-        # Fallback: calculate from project start/end dates if available
-        start_date = getattr(project, 'tanggal_mulai', None)
-        end_date = getattr(project, 'tanggal_selesai', None)
-        if start_date and end_date:
-            days_diff = (end_date - start_date).days
-            progress_max_week = max(1, (days_diff + 6) // 7)  # Round up to weeks
-    
-    total_weeks = max(progress_max_week, 12)  # At least 12 weeks
-    total_months = max((total_weeks + 3) // 4, 3)  # At least 3 months
+    # Pilihan periode modal export = periode NYATA proyek (tanpa minimum buatan);
+    # sumber yang sama dipakai validasi export di backend.
+    from .timeline_utils import project_report_period_counts
+
+    total_weeks, total_months = project_report_period_counts(project)
 
     context = {
         "project": project,
