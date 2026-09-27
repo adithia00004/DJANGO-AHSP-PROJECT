@@ -141,8 +141,11 @@ def pdf_page_streams(content: bytes) -> list[bytes]:
     """
     streams = []
     for match in _PDF_STREAM.finditer(content):
-        raw = content[match.end():match.end() + int(match.group(1))]
-        data = zlib.decompress(base64.a85decode(raw.strip().rstrip(b"~>").rstrip(b"~"), adobe=False))
+        # Batas stream dari penanda akhir ASCII85 '~>' (bukan /Length, yang tidak
+        # selalu cocok dengan byte sebenarnya); dekompresi toleran.
+        end = content.index(b"~>", match.end())
+        encoded = content[match.end():end].strip()
+        data = zlib.decompressobj().decompress(base64.a85decode(encoded, adobe=False))
         if b"BT" in data:
             streams.append(data)
     return streams
