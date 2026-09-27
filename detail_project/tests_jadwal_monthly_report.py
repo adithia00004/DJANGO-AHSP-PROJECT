@@ -277,6 +277,34 @@ class MonthlyPdfRenderTests(_MonthlyFixtureMixin, TestCase):
         self.assertNotIn("Ket. Project 1", text)  # field Dashboard kosong -> tidak tampil
         self.assertNotIn("Direktur", text)
 
+    LONG_NAME = (
+        "Perencanaan Pembangunan Kandang Ternak Kelompok Tani Ternak Beriuk Rajin "
+        "Bedugul Daya & Sarana Pendukung"
+    )
+    LONG_LOKASI = "Desa Bedugul, Kecamatan Sambelia, Kabupaten Lombok Timur, Nusa Tenggara Barat"
+
+    def _assert_identity_wrapped(self, pages_text):
+        lines = pages_text.splitlines()
+        # Dulu satu baris utuh yang meluber keluar bingkai; kini dibungkus beberapa baris.
+        self.assertNotIn(self.LONG_NAME, lines)
+        self.assertNotIn(self.LONG_LOKASI, lines)
+        joined = " ".join(line.strip() for line in lines)
+        self.assertIn("Beriuk Rajin", joined)
+        self.assertIn("Daya & Sarana", joined)  # '&' di-escape, tidak merusak Paragraph
+        self.assertIn("Nusa Tenggara Barat", joined)
+
+    def test_long_identity_values_wrap_monthly_and_weekly(self):
+        Project.objects.filter(pk=self.project.pk).update(
+            nama=self.LONG_NAME, lokasi_project=self.LONG_LOKASI,
+        )
+        self.project.refresh_from_db()
+        self._assert_identity_wrapped("\n".join(self._monthly_pdf_pages(3)))
+
+        weekly = ExportManager(self.project, self.owner).export_jadwal_professional(
+            "pdf", report_type="weekly", weeks=[3],
+        )
+        self._assert_identity_wrapped("\n".join(pdf_page_texts(weekly.content)))
+
     def test_ket_project_shown_when_filled(self):
         Project.objects.filter(pk=self.project.pk).update(ket_project1="Tahun Anggaran 2026")
         self.project.refresh_from_db()

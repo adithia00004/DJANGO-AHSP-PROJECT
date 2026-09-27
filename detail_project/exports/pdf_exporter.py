@@ -663,6 +663,31 @@ class PDFExporter(ConfigExporterBase):
             return '-'
     
     @staticmethod
+    def _wrap_label_value_rows(rows, *, font_size, label_color, value_color, label_align=TA_LEFT):
+        """Baris ``[label, ':', nilai]`` -> Paragraph agar teks panjang dibungkus.
+
+        String polos di sel ``Table`` ReportLab TIDAK pernah dibungkus — nama
+        proyek/lokasi panjang meluber keluar bingkai. Teks di-escape (``&``, ``<``).
+        """
+        label_style = ParagraphStyle(
+            'IdentityLabel', fontName='Helvetica-Bold', fontSize=font_size,
+            leading=font_size * 1.25, textColor=colors.HexColor(label_color), alignment=label_align,
+        )
+        value_style = ParagraphStyle(
+            'IdentityValue', fontName='Helvetica', fontSize=font_size,
+            leading=font_size * 1.25, textColor=colors.HexColor(value_color),
+        )
+        wrapped = []
+        for label, separator, value in rows:
+            text = '-' if value in (None, '') else str(value)
+            wrapped.append([
+                Paragraph(escape(str(label)), label_style),
+                separator,
+                Paragraph(escape(text), value_style),
+            ])
+        return wrapped
+
+    @staticmethod
     def _fit_font_size(text: str, width: float, base: float = 7, minimum: float = 4.5,
                        font: str = 'Helvetica', padding: float = 4) -> float:
         """Perkecil font agar teks muat di sel Drawing — jangan potong angka."""
@@ -3213,13 +3238,19 @@ class PDFExporter(ConfigExporterBase):
             details.append(['Anggaran', ':', anggaran_fmt])
         
         if details:
-            details_table = Table(details, colWidths=[40*mm, 5*mm, 100*mm])
+            details_table = Table(
+                self._wrap_label_value_rows(
+                    details,
+                    font_size=10,
+                    label_color=UTS.TEXT_SECONDARY,
+                    value_color='#2d3748',
+                    label_align=TA_RIGHT,
+                ),
+                colWidths=[40*mm, 5*mm, 100*mm],
+            )
             details_table.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
-                ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#2d3748')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
                 ('ALIGN', (1, 0), (1, -1), 'CENTER'),
                 ('ALIGN', (2, 0), (2, -1), 'LEFT'),
@@ -3340,13 +3371,20 @@ class PDFExporter(ConfigExporterBase):
             )
             if value and value != '-'
         ]
-        identity_table = Table(identity_data, colWidths=[32*mm, 3*mm, 58*mm])
+        # Lebar total 85mm muat di sel kiri 90mm (dulu 93mm > 90mm). Nilai dibungkus
+        # Paragraph agar teks panjang turun baris, bukan meluber keluar bingkai.
+        identity_table = Table(
+            self._wrap_label_value_rows(
+                identity_data,
+                font_size=8,
+                label_color=UTS.TEXT_SECONDARY,
+                value_color=UTS.TEXT_PRIMARY,
+            ),
+            colWidths=[27*mm, 3*mm, 55*mm],
+        )
         identity_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor(UTS.TEXT_PRIMARY)),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('TOPPADDING', (0, 0), (-1, -1), 1*mm),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1*mm),
@@ -3760,13 +3798,20 @@ class PDFExporter(ConfigExporterBase):
             )
             if value and value != '-'
         ]
-        identity_table = Table(identity_data, colWidths=[32*mm, 3*mm, 58*mm])
+        # Lebar total 85mm muat di sel kiri 90mm (dulu 93mm > 90mm). Nilai dibungkus
+        # Paragraph agar teks panjang turun baris, bukan meluber keluar bingkai.
+        identity_table = Table(
+            self._wrap_label_value_rows(
+                identity_data,
+                font_size=8,
+                label_color=UTS.TEXT_SECONDARY,
+                value_color=UTS.TEXT_PRIMARY,
+            ),
+            colWidths=[27*mm, 3*mm, 55*mm],
+        )
         identity_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor(UTS.TEXT_PRIMARY)),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('TOPPADDING', (0, 0), (-1, -1), 1*mm),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1*mm),
