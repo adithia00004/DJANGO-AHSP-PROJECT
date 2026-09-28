@@ -137,10 +137,11 @@
 
       <div class="vr d-none d-sm-block"></div>
 
-      <!-- Bulk Edit Toggle -->
-      <button type="button" class="btn btn-outline-warning btn-sm" id="bulkModeToggleBtn"
-        title="Pilih project untuk diedit atau dihapus">
-        <i class="fas fa-check-square"></i> <span class="d-none d-md-inline">Pilih Project</span>
+      {% comment %}Edit Massal: pintu masuk langsung di toolbar. Dulu tersembunyi di balik
+        "Pilih Project" -> bar -> "Edit Massal" (3 langkah, label tanpa kata "edit").{% endcomment %}
+      <button type="button" class="btn btn-outline-primary btn-sm" id="massEditEntryBtn"
+        title="Edit beberapa project sekaligus langsung di tabel">
+        <i class="fas fa-table"></i> <span class="d-none d-sm-inline">Edit Massal</span>
       </button>
     </div>
 
@@ -166,8 +167,9 @@
     </div>
   </div>
 
-  <!-- Bulk Actions Bar (hidden by default, shown when bulk mode active) -->
-  <div class="card shadow-sm mt-2" id="bulkActionsBar" style="display: none;">
+  <!-- Bar aksi terpilih: muncul otomatis begitu ada project dicentang
+       (kolom checkbox selalu terlihat; tidak ada lagi "mode pilih"). -->
+  <div class="card shadow-sm mt-2 dp-bulk-bar-sticky" id="bulkActionsBar" style="display: none;">
     <div class="card-body py-2 bg-warning-subtle">
       <div class="d-flex justify-content-between align-items-center">
         <div>
@@ -176,15 +178,15 @@
         </div>
         {# U16: konsep tunggal "Hapus" — Archive/Unarchive dihapus dari UI (soft-delete; pemulihan via admin) #}
         <div class="btn-group btn-group-sm" role="group">
-          <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn"
-            title="Edit beberapa project sekaligus langsung di tabel">
-            <i class="fas fa-table"></i> Edit Massal
+          <button type="button" class="btn btn-primary" id="massEditToggleBtn"
+            title="Edit project terpilih langsung di tabel">
+            <i class="fas fa-table"></i> Edit <span id="massEditSelectedCount">0</span> project
           </button>
           <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
             <i class="fas fa-trash"></i> Hapus
           </button>
-          <button type="button" class="btn btn-outline-secondary" id="bulkCancelBtn" title="Batal">
-            <i class="fas fa-times"></i> Batal
+          <button type="button" class="btn btn-outline-secondary" id="bulkCancelBtn" title="Batalkan pilihan">
+            <i class="fas fa-times"></i> Batalkan pilihan
           </button>
         </div>
       </div>
@@ -233,7 +235,8 @@
     <thead class="table-light dp-thead-sticky">
       <tr>
         <th class="text-center checkbox-column" style="width: 40px;">
-          <input type="checkbox" id="selectAll" class="form-check-input" title="Pilih semua">
+          <input type="checkbox" id="selectAll" class="form-check-input" title="Pilih semua di halaman ini"
+            aria-label="Pilih semua project di halaman ini">
         </th>
         <th style="width: 250px; min-width: 200px;">Nama Project</th>
         <th class="text-center" style="width: 160px;">Aksi</th>
@@ -268,10 +271,10 @@
         data-instansi-konsultan-pengawas="{{ project.instansi_konsultan_pengawas|default:'' }}"
         data-deskripsi="{{ project.deskripsi|default:'' }}" data-kategori="{{ project.kategori|default:'' }}">
 
-        <!-- Checkbox for mass edit -->
+        <!-- Checkbox untuk edit massal / hapus massal (selalu terlihat) -->
         <td class="text-center checkbox-column">
           <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}"
-            data-project-name="{{ project.nama }}">
+            data-project-name="{{ project.nama }}" aria-label="Pilih {{ project.nama }}">
         </td>
 
         <!-- Nama Project (wrapped text) -->
@@ -489,6 +492,13 @@
 </div>
 
 <style>
+  /* Bar aksi terpilih tetap terlihat saat menggulir tabel panjang */
+  .dp-bulk-bar-sticky {
+    position: sticky;
+    top: calc(var(--dp-topbar-h, 72px) + .5rem);
+    z-index: 1020;
+  }
+
   /* U16: kemunculan bar aksi lebih halus */
   #bulkActionsBar,
   #massEditActionBar {
@@ -627,8 +637,6 @@
   document.addEventListener('DOMContentLoaded', function () {
     const selectAllCheckbox = document.getElementById('selectAll');
     const desktopTable = document.querySelector('.dashboard-project-table');
-    const tableWrapper = document.querySelector('.dashboard-table-wrapper');
-    const bulkModeToggleBtn = document.getElementById('bulkModeToggleBtn');
     const bulkCancelBtn = document.getElementById('bulkCancelBtn');
 
     // Only get checkboxes from desktop table to avoid counting mobile duplicates
@@ -653,37 +661,17 @@
       return Promise.resolve(false);
     };
 
-    // === BULK MODE TOGGLE ===
-    let bulkModeActive = false;
-
-    function toggleBulkMode(enable) {
-      bulkModeActive = enable;
-
-      if (enable) {
-        tableWrapper.classList.add('bulk-mode-active');
-        bulkModeToggleBtn.classList.add('active');
-        bulkActionsBar.style.display = 'block';
-      } else {
-        tableWrapper.classList.remove('bulk-mode-active');
-        bulkModeToggleBtn.classList.remove('active');
-        bulkActionsBar.style.display = 'none';
-        // Uncheck all when exiting bulk mode
-        projectCheckboxes.forEach(cb => cb.checked = false);
-        if (selectAllCheckbox) selectAllCheckbox.checked = false;
-        updateBulkActionsUI();
-      }
-    }
-
-    if (bulkModeToggleBtn) {
-      bulkModeToggleBtn.addEventListener('click', function () {
-        toggleBulkMode(!bulkModeActive);
-      });
+    // Kolom checkbox selalu terlihat; bar aksi muncul/hilang mengikuti jumlah
+    // pilihan. (Dulu ada "mode pilih" terpisah: bar bisa hilang saat pilihan
+    // kosong padahal mode masih aktif, dan tombolnya malah mematikan mode.)
+    function clearSelection() {
+      projectCheckboxes.forEach(cb => cb.checked = false);
+      if (selectAllCheckbox) selectAllCheckbox.checked = false;
+      updateBulkActionsUI();
     }
 
     if (bulkCancelBtn) {
-      bulkCancelBtn.addEventListener('click', function () {
-        toggleBulkMode(false);
-      });
+      bulkCancelBtn.addEventListener('click', clearSelection);
     }
 
     // Function to update UI based on selection
@@ -693,6 +681,8 @@
       const count = checkedBoxes.length;
 
       selectedCountSpan.textContent = count;
+      const editCountSpan = document.getElementById('massEditSelectedCount');
+      if (editCountSpan) editCountSpan.textContent = count;
 
       if (count > 0) {
         bulkActionsBar.style.display = 'block';

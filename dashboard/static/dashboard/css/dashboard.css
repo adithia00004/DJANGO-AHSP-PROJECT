@@ -1536,12 +1536,10 @@ table .dp-thead-sticky th {
   }
 }
 
-/* Hide checkbox column by default when not in bulk mode */
+/* Kolom checkbox SELALU terlihat: mencentang baris memunculkan bar aksi
+   (Edit Massal / Hapus). Dulu disembunyikan sampai "mode pilih" aktif, sehingga
+   edit massal tidak bisa ditemukan tanpa tahu tombol "Pilih Project". */
 .dashboard-project-table .checkbox-column {
-  display: none;
-}
-
-.bulk-mode-active .dashboard-project-table .checkbox-column {
   display: table-cell;
 }
 

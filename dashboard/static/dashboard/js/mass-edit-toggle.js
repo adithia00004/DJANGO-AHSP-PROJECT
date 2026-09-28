@@ -129,23 +129,20 @@
     const toggleBtn = document.getElementById('massEditToggleBtn');
     const saveBtn = document.getElementById('massEditSaveAllBtn');
     const cancelBtn = document.getElementById('massEditCancelBtn');
-    const bulkModeToggleBtn = document.getElementById('bulkModeToggleBtn');
+    const entryBtn = document.getElementById('massEditEntryBtn');
+    const fabEntryBtn = document.getElementById('fabMassEdit');
 
     if (!toggleBtn) {
       console.warn('Mass Edit Toggle button not found');
       return;
     }
 
-    function updateMobileAvailability() {
-      const unavailable = window.innerWidth <= 992;
-      if (!bulkModeToggleBtn || isEditMode) return;
-      bulkModeToggleBtn.disabled = unavailable;
-      bulkModeToggleBtn.title = unavailable
-        ? 'Edit massal tersedia pada layar desktop (lebih dari 992px)'
-        : 'Pilih project untuk diedit atau dihapus';
-    }
-    updateMobileAvailability();
-    window.addEventListener('resize', updateMobileAvailability);
+    // Pintu masuk langsung (toolbar & FAB). Layar kecil TIDAK lagi mematikan
+    // tombol diam-diam (tooltip tak muncul di layar sentuh) — enterEditMode()
+    // menjelaskan alasannya lewat toast.
+    [entryBtn, fabEntryBtn].forEach(btn => {
+      if (btn) btn.addEventListener('click', handleEntryClick);
+    });
 
     // Toggle Edit Mode
     toggleBtn.addEventListener('click', function() {
@@ -214,6 +211,49 @@
   // ============================================================================
   // ENTER EDIT MODE
   // ============================================================================
+
+  function getSelectableCheckboxes() {
+    const table = document.querySelector('.dashboard-project-table');
+    return table ? Array.from(table.querySelectorAll('tbody .project-checkbox')) : [];
+  }
+
+  /**
+   * Klik "Edit Massal" dari toolbar/FAB.
+   * - Ada project dicentang  -> langsung masuk mode edit.
+   * - Belum ada yang dicentang -> tawarkan edit semua project di halaman ini;
+   *   bila ditolak, beri petunjuk cara memilih.
+   */
+  async function handleEntryClick(event) {
+    if (event) event.preventDefault();
+    if (isEditMode) return;
+    if (window.innerWidth <= 992) {
+      toast('Edit massal membutuhkan layar desktop (lebar lebih dari 992px).', 'warning', 5000);
+      return;
+    }
+
+    const checkboxes = getSelectableCheckboxes();
+    if (checkboxes.length === 0) {
+      toast('Belum ada project di halaman ini.', 'info', 4000);
+      return;
+    }
+    if (!checkboxes.some(cb => cb.checked)) {
+      const confirmed = await confirmAction({
+        title: 'Edit Massal',
+        message: `Belum ada project yang dicentang. Edit semua ${checkboxes.length} project di halaman ini?`,
+        confirmText: 'Edit semua',
+        confirmClass: 'btn-primary'
+      });
+      if (!confirmed) {
+        toast('Centang project di kolom kiri tabel, lalu klik Edit.', 'info', 5000);
+        return;
+      }
+      checkboxes.forEach(cb => {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+    enterEditMode();
+  }
 
   function enterEditMode() {
 
@@ -312,6 +352,10 @@
   // ============================================================================
 
   function disableUIInteractions() {
+    // Pintu masuk tidak boleh diklik lagi selama mode edit
+    const entryBtn = document.getElementById('massEditEntryBtn');
+    if (entryBtn) entryBtn.disabled = true;
+
     // Disable FAB menu
     const fabMainBtn = document.getElementById('fabMainBtn');
     const fabMenu = document.getElementById('fabMenu');

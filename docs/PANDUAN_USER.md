@@ -140,7 +140,10 @@ Fitur bantu:
 - Pencarian/filter lanjutan: nama, lokasi, client, tahun, sumber dana, status timeline, rentang anggaran, rentang tanggal.
 - Filter status proyek: `Aktif` / `Archived` / `Semua`.
 - `Export Full` untuk ekspor daftar proyek sesuai filter aktif.
-- `Edit Project` untuk mode edit massal langsung di tabel.
+- `Edit Massal` untuk mengubah data beberapa proyek sekaligus langsung di tabel (khusus layar desktop, lebar > 992px):
+  1. Centang proyek di kolom paling kiri tabel (atau centang kotak di header untuk semua proyek di halaman). Bar aksi muncul di atas tabel.
+  2. Klik `Edit N project` di bar tersebut, atau tombol `Edit Massal` di toolbar / menu tombol bulat (Quick Actions). Bila belum ada yang dicentang, Anda ditawari mengedit semua proyek di halaman.
+  3. Ubah nilai di tabel (sel kuning = diubah, merah = belum valid), atur kolom tambahan lewat `Atur Kolom`, lalu `Simpan`.
 - Statistik: total proyek, total anggaran, proyek aktif, notifikasi overdue/deadline.
 
 Catatan:
@@ -439,7 +442,7 @@ Fitur:
 - Impor JSON (opsional ikutkan data jadwal/progres).
 - Duplikasi proyek lengkap untuk proyek sejenis.
 - Unggah massal proyek via Excel.
-- Aksi massal yang terlihat di UI: `Bulk Delete` (hapus lunak/arsip) dan `Edit Data` (edit massal langsung di tabel).
+- Aksi massal di dashboard: centang proyek di kolom kiri tabel, lalu pilih `Edit N project` (edit massal langsung di tabel) atau `Hapus` (hapus lunak/arsip) pada bar aksi yang muncul.
 - `Export Full` di dashboard untuk ekspor daftar proyek sesuai filter yang aktif.
 
 Kapan dipakai:
