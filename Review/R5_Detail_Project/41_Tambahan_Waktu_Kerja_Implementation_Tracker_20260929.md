@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 1 REVIEW** — Langkah 1.1–1.6 selesai; kode 1.7 dan build selesai; UAT manual masih menunggu. Lihat §4, §6, dan §9 |
+| Status keseluruhan | **TAHAP 1 REVIEW** — laporan blocker sudah diperbaiki; suite penuh kembali ke 3 kegagalan baseline. UAT manual dan keputusan D-11 masih menunggu. Lihat §4, §6, dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -75,7 +75,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | DONE | `d64494ac` | 2026-09-29 |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | DONE | `33cd8aa7` | 2026-09-29 |
 | 1.6 | Ubah hari batas minggu | DONE | `e1482ce6` | 2026-09-29 |
-| 1.7 | Frontend (tombol, dialog, grid, Kurva S/Gantt, build) | REVIEW | `d87390af` | 2026-09-30 |
+| 1.7 | Frontend (tombol, dialog, grid, Kurva S/Gantt, build) | REVIEW | `d87390af` + `6b506eed` | 2026-09-30 |
 | UAT | Checklist §6 | TODO | | |
 
 ---
@@ -130,7 +130,7 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 - File diubah: template Jadwal, `views_api_tahapan.py`, `timeline_utils.py`, `jadwal_kegiatan_app.js`, DataLoader, TimeColumnGenerator, TanStack grid, overlay Kurva S/Gantt, tes JS/Python, bundle `dist/`.
 - Uji baru / diubah: metadata API dan halaman, lock planned vs actual, tanggal lokal, penanda grafik, perpanjangan/pengurangan, progres/catatan di luar rentang.
 - Hasil uji (perintah + angka): PostgreSQL 46 tes gabungan lulus; suite halaman/API 13 tes lulus; Vitest penuh 33 file, 408 lulus dan 25 skipped; `npm run build` berhasil.
-- Commit: `d87390af`.
+- Commit: `d87390af`; perbaikan review `6b506eed`.
 - Temuan di luar rencana (→ §8): minggu yang akan dipendekkan bisa berisi catatan walau progresnya nol; perubahan kini ditahan agar catatan tidak hilang (D-13).
 - Catatan untuk langkah berikutnya: kode siap UAT; checklist manual §6 belum dijalankan.
 
@@ -173,9 +173,10 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 | 2026-09-29 | D-8 | Konsolidasi pinggiran (Tahap 0) sebelum fitur | Owner | Doc 40 §3 |
 | 2026-09-29 | D-9 | G0-1: WIP owner dibiarkan; branch kerja dari HEAD `e0a4cb71` | Owner | Gate 0 |
 | 2026-09-29 | D-10 | G0-5: duplikasi dengan tanggal mulai baru mempertahankan nomor minggu; luapan tidak disalin & dilaporkan | Owner | Langkah 0.3 |
-| 2026-09-29 | D-11 | Saat tanggal timeline duplikasi berubah, durasi tambahan (jumlah hari dari akhir kontrak ke akhir tambahan) dipertahankan dari akhir kontrak hasil salinan | Implementasi 1.2 | W-1b; uji duplikasi dengan tanggal baru |
+| 2026-09-29 | D-11 | Implementasi saat ini mempertahankan jarak hari tambahan saat duplikasi dengan tanggal kontrak baru; **menunggu konfirmasi owner** apakah tambahan seharusnya dikosongkan untuk proyek baru | Implementasi 1.2 | W-1b; jangan ubah perilaku sampai owner memilih |
 | 2026-09-29 | D-12 | Perubahan hari batas yang mengurangi jumlah minggu dan akan menyembunyikan baris progres di luar rentang baru ditolak; tidak ada baris yang dihapus | Implementasi 1.6 | Invariant I-3; 409 pada kedua API; pengguna perlu menyesuaikan timeline terlebih dahulu |
 | 2026-09-30 | D-13 | Pemendekan tambahan ditolak bila minggu yang akan dikeluarkan masih memiliki catatan, termasuk baris dengan nilai progres nol | Implementasi 1.7 | Catatan tidak lagi hilang saat resolusi timeline; catatan harus dipindahkan atau dihapus terlebih dahulu |
+| 2026-09-30 | D-14 | Repair timeline tanpa perubahan tanggal tetap menganalisis baris mingguan basi; target tambahan melarang perubahan tanggal mulai; resolusi yang akan menaruh planned pada minggu tambahan tidak ditawarkan | Review Codex | Memperbaiki temuan blocker/major/minor; tanpa mengubah tanggal kontrak |
 
 ---
 
@@ -189,6 +190,8 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | G0-4 | Percobaan pertama memakai database uji bawaan gagal karena database itu tidak ada; hasil dibuang dan baseline diulang dengan nama database khusus | Log `/tmp/twk-baseline-isolated-20260929.log` di container | Baseline terisolasi selesai; database aplikasi tidak disentuh |
 | 2026-09-29 | 1.6 | Perubahan hari batas dapat mengurangi jumlah bucket dan membuat baris progres akhir tidak lagi punya kolom | Tes `test_week_boundary_that_would_hide_progress_outside_new_work_range_is_blocked` | D-12: tolak perubahan dan pertahankan data; kebijakan ini menghindari nilai progres tersembunyi |
 | 2026-09-30 | 1.7 | Baris catatan tanpa planned/actual/biaya tetap merupakan data dan bisa berada di minggu yang dipendekkan | Tes `test_shortening_additional_period_does_not_drop_notes_outside_new_range` | D-13: preview dan commit menolak perubahan; catatan harus dipindahkan/dihapus dulu |
+| 2026-09-30 | Review | Repair timeline dengan tanggal tidak berubah tidak memeriksa baris mingguan yang tanggalnya sudah di luar jendela; API tambahan juga belum melarang perubahan tanggal mulai | `tests_timeline_repair_ui`, tes target tambahan, dan suite penuh terisolasi | Diperbaiki: deteksi kembali ke tanggal baris aktual; tambahan menolak tanggal mulai berbeda; opsi `accumulate_edge` dihilangkan bila targetnya minggu tambahan |
+| 2026-09-30 | Review | Perbaikan repair perlu memilih `tanggal_akhir_tambahan` saat proyek punya tambahan; bila memakai akhir waktu kerja sebagai akhir kontrak, tombol dapat mengubah kontrak | Tes repair proyek bertambahan mempertahankan `tanggal_selesai` | `timeline_repair.js` kini memilih target sesuai metadata proyek; API service tetap menjadi pagar tanggal mulai |
 
 ---
 
@@ -218,6 +221,12 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-30 | 1.7 | PostgreSQL: API metadata, timeline, batas minggu, audit, dan guard catatan | 46 tes gabungan lulus; suite halaman/API 13 tes lulus | Database uji terisolasi; render halaman baru dicek oleh Django Client |
 | 2026-09-30 | 1.7 | `npm run test:frontend -- --reporter=dot` | 33 file; 408 lulus, 25 skipped | Pengulangan penuh lulus; satu percobaan paralel dengan build sempat timeout lalu tes dan suite lulus saat build selesai |
 | 2026-09-30 | 1.7 | `npm run build` | Berhasil | Bundle Jadwal tetap >500 kB; artifact Vite baru ikut commit `d87390af` |
+| 2026-09-30 | Review fixes | PostgreSQL: `tests_timeline_repair_ui` + `tests_additional_plan_guard` | 27 tes lulus | Tiga regresi repair, target tambahan, tanggal mulai yang dimanipulasi, dan resolusi planned yang aman |
+| 2026-09-30 | Review gate | Runner penuh PostgreSQL terisolasi `test_twk_reviewfix_full_20260930`; `detail_project` + `dashboard` | 894 tes: **3 gagal baseline**, 40 skipped | Tidak ada kegagalan baru. Tiga yang gagal sama dengan §3: `test_shared_signature_has_bounded_query_count`, `test_query_budget_constant_no_n_plus_1`, `test_template_does_not_auto_reload_pending_jobs_on_open` |
+| 2026-09-30 | Review fixes | `npm run test:frontend -- --reporter=dot` | 33 file; 408 lulus, 25 skipped | Berhasil setelah perubahan target payload timeline repair |
+| 2026-09-30 | Review fixes | PostgreSQL: `tests_timeline_repair_ui` + `tests_additional_plan_guard` | 27 tes lulus | Termasuk preview/commit repair tanpa mengubah kontrak pada proyek bertambahan, reject tanggal mulai, dan satu-satunya resolusi yang aman |
+| 2026-09-30 | Review gate final | Runner penuh serial PostgreSQL; database `test_twk_reviewfix_full_20260930`; `detail_project` + `dashboard` | **894 tes; 3 gagal baseline, 40 skipped** | Sama persis dengan tiga kegagalan §3; tidak ada kegagalan baru. Runner berakhir non-zero hanya karena tiga guard baseline |
+| 2026-09-30 | Review gate final | `npm run test:frontend -- --reporter=dot` | 33 file; 408 lulus, 25 skipped | Lulus setelah perubahan repair payload |
 | | | | | |
 
 ---
