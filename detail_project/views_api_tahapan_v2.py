@@ -38,7 +38,11 @@ from detail_project.progress_utils import (
 )
 from detail_project.timeline_utils import (
     ALL_RESOLUTIONS,
+    RESOLUTION_MOVE_PLANNED_TO_BOUNDARY,
     TimelineChangeError,
+    _align_weekly_row_dates,
+    _move_planned_to_contract_boundary,
+    analyze_week_boundary_contract_impact,
     analyze_project_timeline_change,
     apply_project_timeline_change,
     build_resolution_preview,
@@ -57,6 +61,63 @@ from detail_project.api_helpers import atomic_error_response, limit_request_body
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def _week_boundary_plan_decision(project, new_week_end_day, resolution=None):
+    """Preview or apply K-6 when a new calendar boundary moves planned into extra."""
+    impact = analyze_week_boundary_contract_impact(project, new_week_end_day)
+    if impact['progress_outside_new_work_period_records']:
+        return impact, [], 0, JsonResponse({
+            'ok': False,
+            'code': 'week_boundary_excludes_progress',
+            'error': (
+                'Perubahan batas minggu akan membuat data progres berada di luar '
+                'rentang minggu kerja. Perubahan dibatalkan.'
+            ),
+            'impact': impact,
+            'old_week_start_day': project.week_start_day,
+            'old_week_end_day': project.week_end_day,
+            'schedule_revision': project.schedule_revision,
+        }, status=409)
+
+    if impact['planned_extension_records']:
+        if resolution != RESOLUTION_MOVE_PLANNED_TO_BOUNDARY:
+            return impact, [], 0, JsonResponse({
+                'ok': False,
+                'code': 'week_boundary_moves_plan_into_extension',
+                'error': (
+                    'Perubahan batas minggu membuat rencana berada di minggu tambahan. '
+                    'Pilih pindahkan rencana atau batalkan perubahan.'
+                ),
+                'impact': impact,
+                'old_week_start_day': project.week_start_day,
+                'old_week_end_day': project.week_end_day,
+                'schedule_revision': project.schedule_revision,
+            }, status=409)
+        try:
+            snapshot, moved_count = _move_planned_to_contract_boundary(
+                project,
+                impact['new_boundary_week'],
+                impact['new_work_week_count'],
+                week_end_day=new_week_end_day,
+                source_max_week=impact['old_boundary_week'],
+            )
+        except TimelineChangeError as exc:
+            return impact, [], 0, JsonResponse({
+                'ok': False,
+                'code': exc.impact.get('reason', 'week_boundary_plan_move_failed'),
+                'error': str(exc),
+                'impact': {**impact, **exc.impact},
+            }, status=400)
+        return impact, snapshot, moved_count, None
+
+    if resolution not in (None, '', 'none'):
+        return impact, [], 0, JsonResponse({
+            'ok': False,
+            'error': 'Tidak ada rencana terdampak untuk tindakan yang dipilih.',
+            'impact': impact,
+        }, status=400)
+    return impact, [], 0, None
 
 
 def _require_schedule_revision(project, data, *, required=False):
@@ -558,15 +619,64 @@ def api_update_week_boundaries(request, project_id):
             normalized_end = (week_start_day + 6) % 7
         week_end_day = normalized_end
 
+    boundary_impact, plan_rows_before, planned_moved_count, decision_error = (
+        _week_boundary_plan_decision(
+            project,
+            week_end_day,
+            data.get('plan_resolution'),
+        )
+    )
+    if decision_error:
+        return decision_error
+
+    old_week_start_day, old_week_end_day = project.week_start_day, project.week_end_day
     project.week_start_day = week_start_day
     project.week_end_day = week_end_day
     project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
+    aligned_count, date_rows_before = _align_weekly_row_dates(
+        project,
+        project.tanggal_mulai,
+        work_period_end(project),
+        week_end_day,
+    )
     invalidate_schedule_caches(project.id)
+
+    if old_week_start_day != week_start_day or old_week_end_day != week_end_day:
+        try:
+            from detail_project.models import DetailAHSPAudit
+            DetailAHSPAudit.objects.create(
+                project=project,
+                pekerjaan=None,
+                action=DetailAHSPAudit.ACTION_UPDATE,
+                old_data={
+                    'week_start_day': old_week_start_day,
+                    'week_end_day': old_week_end_day,
+                    'rows_before': plan_rows_before + date_rows_before,
+                },
+                new_data={
+                    'week_start_day': week_start_day,
+                    'week_end_day': week_end_day,
+                    'planned_moved_count': planned_moved_count,
+                    'weekly_date_rows_aligned': aligned_count,
+                },
+                triggered_by='user',
+                user=request.user if getattr(request.user, 'id', None) else None,
+                change_summary=(
+                    f"Batas minggu {old_week_start_day}/{old_week_end_day} → "
+                    f"{week_start_day}/{week_end_day}; "
+                    f"{planned_moved_count} rencana dipindah ke minggu batas"
+                ),
+            )
+        except Exception:
+            logger.exception("[PROGRESS_AUDIT] gagal mencatat batas minggu project %s", project.id)
 
     return JsonResponse({
         'ok': True,
         'week_start_day': week_start_day,
         'week_end_day': week_end_day,
+        'planned_moved_count': planned_moved_count,
+        'weekly_date_rows_aligned': aligned_count,
+        'boundary_impact': boundary_impact,
         'schedule_revision': project.schedule_revision,
     })
 
@@ -1172,6 +1282,16 @@ def api_regenerate_tahapan_v2(request, project_id):
                 'code': 'incomplete_timeline',
             }, status=400)
 
+        boundary_impact, plan_rows_before, planned_moved_count, decision_error = (
+            _week_boundary_plan_decision(
+                project,
+                week_end_day,
+                data.get('plan_resolution'),
+            )
+        )
+        if decision_error:
+            return decision_error
+
         # WP-P7b (audit-gap): catat perubahan konfigurasi batas minggu (memengaruhi
         # interpretasi seluruh minggu) — project-level, hanya bila benar berubah.
         _old_wsd, _old_wed = project.week_start_day, project.week_end_day
@@ -1187,13 +1307,28 @@ def api_regenerate_tahapan_v2(request, project_id):
             # selected boundaries are unchanged.
             project.schedule_revision = (project.schedule_revision or 1) + 1
             project.save(update_fields=['schedule_revision', 'updated_at'])
+        aligned_count, date_rows_before = _align_weekly_row_dates(
+            project,
+            project.tanggal_mulai,
+            work_period_end(project),
+            week_end_day,
+        )
         if boundary_changed:
             try:
                 from detail_project.models import DetailAHSPAudit
                 DetailAHSPAudit.objects.create(
                     project=project, pekerjaan=None, action=DetailAHSPAudit.ACTION_UPDATE,
-                    old_data={"week_start_day": _old_wsd, "week_end_day": _old_wed},
-                    new_data={"week_start_day": week_start_day, "week_end_day": week_end_day},
+                    old_data={
+                        "week_start_day": _old_wsd,
+                        "week_end_day": _old_wed,
+                        "rows_before": plan_rows_before + date_rows_before,
+                    },
+                    new_data={
+                        "week_start_day": week_start_day,
+                        "week_end_day": week_end_day,
+                        "planned_moved_count": planned_moved_count,
+                        "weekly_date_rows_aligned": aligned_count,
+                    },
                     triggered_by="user",
                     user=request.user if getattr(request.user, "id", None) else None,
                     change_summary=f"Regenerate struktur waktu (mode={mode}); batas minggu "
@@ -1219,6 +1354,9 @@ def api_regenerate_tahapan_v2(request, project_id):
                 'tahapan_count': existing_tahapan.count(),
                 'assignments_synced': synced_count,
                 'schedule_revision': project.schedule_revision,
+                'planned_moved_count': planned_moved_count,
+                'weekly_date_rows_aligned': aligned_count,
+                'boundary_impact': boundary_impact,
             })
 
         # STEP 1: Delete old auto-generated tahapan ONLY
@@ -1254,6 +1392,9 @@ def api_regenerate_tahapan_v2(request, project_id):
             'tahapan_created': len(created_tahapan),
             'assignments_synced': synced_count,
             'schedule_revision': project.schedule_revision,
+            'planned_moved_count': planned_moved_count,
+            'weekly_date_rows_aligned': aligned_count,
+            'boundary_impact': boundary_impact,
             'tahapan': [
                 {
                     'tahapan_id': t.id,
@@ -1272,6 +1413,9 @@ def api_regenerate_tahapan_v2(request, project_id):
         return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
     except Exception:
         # WP-P7 Batch A hardening: do not leak internal exception text to the client.
+        # This view catches exceptions inside transaction.atomic(); mark rollback
+        # explicitly so boundary/plan writes cannot survive a failed regeneration.
+        transaction.set_rollback(True)
         logger.exception("[REGENERATE_TAHAPAN] gagal regenerate project %s", project_id)
         return JsonResponse({'ok': False, 'error': 'Gagal memperbarui struktur waktu. Silakan coba lagi.'}, status=500)
 

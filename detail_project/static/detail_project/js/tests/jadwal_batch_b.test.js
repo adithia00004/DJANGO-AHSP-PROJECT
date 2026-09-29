@@ -53,6 +53,20 @@ describe('JDW-11/JDW-15 - boundary confirmation and project identity metadata', 
     expect(persistIdx).toBeGreaterThan(mutateIdx);
   });
 
+  test('week boundary API asks before moving planned values and can cancel cleanly', () => {
+    expect(app).toContain("data?.code === 'week_boundary_moves_plan_into_extension'");
+    expect(app).toContain("saveBoundary('move_planned_to_boundary')");
+    expect(app).toContain('Realisasi dan biaya aktual tetap di minggu asal.');
+    expect(app).toContain('this.state.weekStartDay = data.old_week_start_day;');
+    expect(app).toContain('this.state.weekEndDay = data.old_week_end_day;');
+  });
+
+  test('week boundary change is rejected visibly if it would hide progress rows', () => {
+    expect(app).toContain("data?.code === 'week_boundary_excludes_progress'");
+    expect(app).toContain('this._regenerateColumnsForWeekBoundary();');
+    expect(app).toContain('this.showToast(data.error ||');
+  });
+
   test('active template reads project location from lokasi_project', () => {
     expect(template).toContain('data-project-location="{{ project.lokasi_project|default:\'-\' }}"');
     expect(template).not.toContain('data-project-location="{{ project.lokasi|default:\'-\' }}"');

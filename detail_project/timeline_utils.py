@@ -171,6 +171,86 @@ def is_extension_day(project, target_date):
     )
 
 
+def analyze_week_boundary_contract_impact(project, new_week_end_day):
+    """List planned rows that become additional when the week boundary changes."""
+    start = getattr(project, 'tanggal_mulai', None)
+    contract_end = getattr(project, 'tanggal_selesai', None)
+    additional_end = getattr(project, 'tanggal_akhir_tambahan', None)
+    old_week_end = project.week_end_day if project.week_end_day is not None else 6
+    new_week_end_day = int(new_week_end_day) % 7
+    old_boundary = expected_week_count(start, contract_end, old_week_end)
+    new_boundary = expected_week_count(start, contract_end, new_week_end_day)
+    old_work_week_count = expected_week_count(
+        start, work_period_end(project), old_week_end
+    )
+    new_work_week_count = expected_week_count(
+        start, work_period_end(project), new_week_end_day
+    )
+    planned_rows = []
+    if additional_end and new_boundary < old_boundary:
+        planned_rows = list(
+            PekerjaanProgressWeekly.objects.filter(
+                project=project,
+                planned_proportion__gt=0,
+                week_number__gt=new_boundary,
+                week_number__lte=min(old_boundary, new_work_week_count),
+            )
+            .select_related('pekerjaan')
+            .order_by('week_number', 'pekerjaan_id')
+        )
+    out_of_range_rows = []
+    if new_work_week_count < old_work_week_count:
+        out_of_range_rows = list(
+            PekerjaanProgressWeekly.objects.filter(
+                project=project,
+                week_number__gt=new_work_week_count,
+                week_number__lte=old_work_week_count,
+            )
+            .exclude(
+                planned_proportion=0,
+                actual_proportion=0,
+                actual_cost__isnull=True,
+                notes='',
+            )
+            .select_related('pekerjaan')
+            .order_by('week_number', 'pekerjaan_id')
+        )
+    _, old_contract_end, _ = _persisted_project_dates(project)
+    return {
+        'old_boundary_week': old_boundary,
+        'new_boundary_week': new_boundary,
+        'old_work_week_count': old_work_week_count,
+        'new_work_week_count': new_work_week_count,
+        'boundary_changed': old_boundary != new_boundary,
+        'old_contract_end': old_contract_end.isoformat() if old_contract_end else None,
+        'new_contract_end': contract_end.isoformat() if contract_end else None,
+        'planned_extension_records': len(planned_rows),
+        'planned_extension_rows': [
+            {
+                'pekerjaan_id': row.pekerjaan_id,
+                'kode': row.pekerjaan.snapshot_kode or '',
+                'uraian': row.pekerjaan.snapshot_uraian or '',
+                'week_number': row.week_number,
+                'planned_proportion': str(row.planned_proportion),
+            }
+            for row in planned_rows
+        ],
+        'progress_outside_new_work_period_records': len(out_of_range_rows),
+        'progress_outside_new_work_period_rows': [
+            {
+                'pekerjaan_id': row.pekerjaan_id,
+                'kode': row.pekerjaan.snapshot_kode or '',
+                'uraian': row.pekerjaan.snapshot_uraian or '',
+                'week_number': row.week_number,
+                'planned_proportion': str(row.planned_proportion),
+                'actual_proportion': str(row.actual_proportion),
+                'has_actual_cost': row.actual_cost is not None,
+            }
+            for row in out_of_range_rows
+        ],
+    }
+
+
 REPORT_WEEKS_PER_MONTH = 4
 
 
@@ -915,16 +995,20 @@ def _align_weekly_row_dates(project, new_start, new_end, week_end_day):
     return len(changed), snapshot
 
 
-def _move_planned_to_contract_boundary(project, contract_week, work_week_count):
+def _move_planned_to_contract_boundary(
+    project, contract_week, work_week_count, *, week_end_day=None,
+    source_max_week=None,
+):
     """Move only selected planned values from new extension weeks to boundary."""
-    source_rows = list(
-        PekerjaanProgressWeekly.objects.filter(
-            project=project,
-            planned_proportion__gt=0,
-            week_number__gt=contract_week,
-            week_number__lte=work_week_count,
-        ).order_by('pekerjaan_id', 'week_number')
+    source_query = PekerjaanProgressWeekly.objects.filter(
+        project=project,
+        planned_proportion__gt=0,
+        week_number__gt=contract_week,
+        week_number__lte=work_week_count,
     )
+    if source_max_week is not None:
+        source_query = source_query.filter(week_number__lte=source_max_week)
+    source_rows = list(source_query.order_by('pekerjaan_id', 'week_number'))
     if not source_rows:
         return [], 0
 
@@ -954,15 +1038,8 @@ def _move_planned_to_contract_boundary(project, contract_week, work_week_count):
                 },
             )
 
-    rows_before = source_rows + list(boundary_rows.values())
-    snapshot = _snapshot_rows(rows_before)
-    for row in source_rows:
-        row.planned_proportion = Decimal('0.00')
-    PekerjaanProgressWeekly.objects.bulk_update(
-        source_rows, ['planned_proportion'], batch_size=500
-    )
-
-    week_end_day = project.week_end_day if project.week_end_day is not None else 6
+    if week_end_day is None:
+        week_end_day = project.week_end_day if project.week_end_day is not None else 6
     boundary_dates = {
         number: (start, end)
         for number, start, end in build_week_buckets(
@@ -974,6 +1051,14 @@ def _move_planned_to_contract_boundary(project, contract_week, work_week_count):
             'Minggu batas kontrak tidak tersedia dalam rentang jadwal.',
             {'safe': False, 'reason': 'contract_boundary_outside_schedule'},
         )
+
+    rows_before = source_rows + list(boundary_rows.values())
+    snapshot = _snapshot_rows(rows_before)
+    for row in source_rows:
+        row.planned_proportion = Decimal('0.00')
+    PekerjaanProgressWeekly.objects.bulk_update(
+        source_rows, ['planned_proportion'], batch_size=500
+    )
 
     missing_boundaries = []
     for pekerjaan_id, planned in planned_by_job.items():

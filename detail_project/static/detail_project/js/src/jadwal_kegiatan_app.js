@@ -1835,28 +1835,71 @@ class JadwalKegiatanApp {
       this._weekBoundarySaveTimer = null;
       const payload = this._pendingWeekBoundary || { weekStartDay, weekEndDay };
       this._pendingWeekBoundary = null;
-      const body = JSON.stringify({
-        week_start_day: payload.weekStartDay,
-        week_end_day: payload.weekEndDay,
-        schedule_revision: this.state.scheduleRevision,
-      });
-
-      fetch(endpoint, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': this._getCsrfToken(),
-        },
-        body,
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+      const saveBoundary = async (planResolution = null) => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': this._getCsrfToken(),
+          },
+          body: JSON.stringify({
+            week_start_day: payload.weekStartDay,
+            week_end_day: payload.weekEndDay,
+            schedule_revision: this.state.scheduleRevision,
+            ...(planResolution ? { plan_resolution: planResolution } : {}),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (
+          response.status === 409
+          && data?.code === 'week_boundary_excludes_progress'
+        ) {
+          this.state.weekStartDay = data.old_week_start_day;
+          this.state.weekEndDay = data.old_week_end_day;
+          this._syncWeekBoundaryControls();
+          this._regenerateColumnsForWeekBoundary();
+          this.showToast(data.error || 'Perubahan batas minggu dibatalkan karena ada progres di luar rentang baru.', 'danger', 3600);
+          return null;
+        }
+        if (
+          response.status === 409
+          && data?.code === 'week_boundary_moves_plan_into_extension'
+        ) {
+          const rows = data.impact?.planned_extension_rows || [];
+          const details = rows.map((row) => (
+            `${row.kode || `Pekerjaan #${row.pekerjaan_id}`} · M${row.week_number} `
+            + `${row.planned_proportion}% → M${data.impact?.new_boundary_week}`
+          )).join('\n');
+          const confirmed = await this._confirmAction({
+            title: 'Batas minggu mengubah batas kontrak',
+            message: (
+              `Rencana berikut akan berada di minggu tambahan:\n${details}\n\n`
+              + 'Pindahkan planned saja ke minggu batas kontrak? '
+              + 'Realisasi dan biaya aktual tetap di minggu asal.'
+            ),
+            confirmLabel: 'Pindahkan rencana',
+            danger: false,
+          });
+          if (!confirmed) {
+            this.state.weekStartDay = data.old_week_start_day;
+            this.state.weekEndDay = data.old_week_end_day;
+            this._syncWeekBoundaryControls();
+            this._regenerateColumnsForWeekBoundary();
+            this.showToast('Perubahan batas minggu dibatalkan.', 'info', 2200);
+            return null;
           }
-          return response.json();
-        })
+          return saveBoundary('move_planned_to_boundary');
+        }
+        if (!response.ok) {
+          throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+        return data;
+      };
+
+      saveBoundary()
         .then((data) => {
+          if (!data) return;
           const resolvedStart =
             typeof data?.week_start_day !== 'undefined' ? data.week_start_day : payload.weekStartDay;
           const resolvedEnd =

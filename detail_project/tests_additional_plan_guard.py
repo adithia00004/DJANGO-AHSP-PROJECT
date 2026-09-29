@@ -1,6 +1,7 @@
 import json
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
@@ -12,7 +13,11 @@ from detail_project.models import Klasifikasi, Pekerjaan, PekerjaanProgressWeekl
 from detail_project.progress_utils import build_week_buckets
 from detail_project.progress_write_service import PlannedProgressOutsideWorkPeriod, write_progress
 from detail_project.readiness import compute_project_readiness
-from detail_project.timeline_utils import TimelineChangeError, _guard_target
+from detail_project.timeline_utils import (
+    TimelineChangeError,
+    _guard_target,
+    analyze_week_boundary_contract_impact,
+)
 
 
 class AdditionalWorkPlanGuardTests(TestCase):
@@ -28,7 +33,7 @@ class AdditionalWorkPlanGuardTests(TestCase):
             lokasi_project="Makassar", nama_client="Dinas",
             anggaran_owner=Decimal("1000"),
             tanggal_mulai=date(2026, 9, 6),
-            tanggal_selesai=date(2026, 9, 13),
+            tanggal_selesai=date(2026, 9, 7),
             tanggal_akhir_tambahan=date(2026, 9, 20),
             week_start_day=0, week_end_day=6,
         )
@@ -123,6 +128,183 @@ class AdditionalWorkPlanGuardTests(TestCase):
                 [self._week_three_cell(planned_proportion=Decimal("5"))],
                 kind="user_move",
             )
+
+    def test_week_boundary_preview_finds_newly_additional_planned_week(self):
+        _, start, end = build_week_buckets(
+            self.project.tanggal_mulai,
+            self.project.tanggal_akhir_tambahan,
+            self.project.week_end_day,
+        )[1]
+        write_progress(self.project, [{
+            "pekerjaan_id": self.pekerjaan.id,
+            "week_number": 2,
+            "week_start_date": start,
+            "week_end_date": end,
+            "planned_proportion": Decimal("20"),
+            "actual_proportion": Decimal("0"),
+        }], kind="historical")
+
+        impact = analyze_week_boundary_contract_impact(self.project, 0)
+        self.assertEqual(impact["old_boundary_week"], 2)
+        self.assertEqual(impact["new_boundary_week"], 1)
+        self.assertEqual(impact["planned_extension_records"], 1)
+        self.assertEqual(impact["planned_extension_rows"][0]["week_number"], 2)
+
+    def _seed_week_two_extension_plan(self):
+        _, start, end = build_week_buckets(
+            self.project.tanggal_mulai,
+            self.project.tanggal_akhir_tambahan,
+            self.project.week_end_day,
+        )[1]
+        write_progress(self.project, [{
+            "pekerjaan_id": self.pekerjaan.id,
+            "week_number": 2,
+            "week_start_date": start,
+            "week_end_date": end,
+            "planned_proportion": Decimal("20"),
+            "actual_proportion": Decimal("15"),
+            "actual_cost": Decimal("5000"),
+            "notes": "rencana dan realisasi lama",
+        }], kind="historical")
+
+    def _seed_week_three_legacy_plan(self):
+        _, start, end = build_week_buckets(
+            self.project.tanggal_mulai,
+            self.project.tanggal_akhir_tambahan,
+            self.project.week_end_day,
+        )[2]
+        write_progress(self.project, [{
+            "pekerjaan_id": self.pekerjaan.id,
+            "week_number": 3,
+            "week_start_date": start,
+            "week_end_date": end,
+            "planned_proportion": Decimal("7"),
+            "actual_proportion": Decimal("8"),
+            "actual_cost": Decimal("3000"),
+            "notes": "data minggu tambahan lama",
+        }], kind="historical")
+
+    def _post_week_boundary(self, route, plan_resolution=None):
+        url = reverse(route, kwargs={"project_id": self.project.pk})
+        payload = {
+            "week_start_day": 1,
+            "week_end_day": 0,
+            "schedule_revision": self.project.schedule_revision,
+        }
+        if route == "detail_project:api_v2_regenerate_tahapan":
+            payload["mode"] = "weekly"
+        if plan_resolution:
+            payload["plan_resolution"] = plan_resolution
+        request = RequestFactory().post(url, data=json.dumps(payload), content_type="application/json")
+        request.user = self.owner
+        match = resolve(url)
+        return match.func(request, **match.kwargs)
+
+    def test_week_boundary_api_requires_choice_and_moves_only_newly_additional_plan(self):
+        route = "detail_project:api_update_week_boundaries"
+        self._seed_week_two_extension_plan()
+        self._seed_week_three_legacy_plan()
+
+        response = self._post_week_boundary(route)
+        payload = json.loads(response.content)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["code"], "week_boundary_moves_plan_into_extension")
+        self.assertEqual(payload["impact"]["planned_extension_records"], 1)
+        self.assertEqual(payload["impact"]["planned_extension_rows"][0]["week_number"], 2)
+        self.project.refresh_from_db()
+        self.assertEqual((self.project.week_start_day, self.project.week_end_day), (0, 6))
+
+        response = self._post_week_boundary(route, "move_planned_to_boundary")
+        self.assertEqual(response.status_code, 200, response.content[:400])
+        self.assertEqual(json.loads(response.content)["planned_moved_count"], 1)
+        rows = {
+            row.week_number: row
+            for row in PekerjaanProgressWeekly.objects.filter(project=self.project)
+        }
+        self.assertEqual(rows[1].planned_proportion, Decimal("20"))
+        self.assertEqual((rows[1].week_start_date, rows[1].week_end_date), (
+            date(2026, 9, 6), date(2026, 9, 7),
+        ))
+        self.assertEqual(rows[2].planned_proportion, Decimal("0"))
+        self.assertEqual(rows[2].actual_proportion, Decimal("15"))
+        self.assertEqual(rows[2].actual_cost, Decimal("5000"))
+        self.assertEqual((rows[2].week_start_date, rows[2].week_end_date), (
+            date(2026, 9, 8), date(2026, 9, 14),
+        ))
+        # Historical plans already in extension weeks are not part of K-6.
+        self.assertEqual(rows[3].planned_proportion, Decimal("7"))
+        self.assertEqual(rows[3].actual_proportion, Decimal("8"))
+        self.assertEqual(rows[3].actual_cost, Decimal("3000"))
+
+    def test_week_boundary_without_affected_plan_saves_without_confirmation(self):
+        response = self._post_week_boundary("detail_project:api_update_week_boundaries")
+        self.assertEqual(response.status_code, 200, response.content[:400])
+        self.assertEqual(json.loads(response.content)["planned_moved_count"], 0)
+        self.project.refresh_from_db()
+        self.assertEqual((self.project.week_start_day, self.project.week_end_day), (1, 0))
+
+    def test_week_boundary_regeneration_uses_the_same_plan_confirmation(self):
+        route = "detail_project:api_v2_regenerate_tahapan"
+        self._seed_week_two_extension_plan()
+
+        response = self._post_week_boundary(route)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            json.loads(response.content)["code"],
+            "week_boundary_moves_plan_into_extension",
+        )
+        self.project.refresh_from_db()
+        self.assertEqual((self.project.week_start_day, self.project.week_end_day), (0, 6))
+
+        response = self._post_week_boundary(route, "move_planned_to_boundary")
+        self.assertEqual(response.status_code, 200, response.content[:400])
+        rows = {
+            row.week_number: row
+            for row in PekerjaanProgressWeekly.objects.filter(project=self.project)
+        }
+        self.assertEqual(rows[1].planned_proportion, Decimal("20"))
+        self.assertEqual(rows[2].planned_proportion, Decimal("0"))
+        self.assertEqual(rows[2].actual_proportion, Decimal("15"))
+        self.assertEqual(rows[2].actual_cost, Decimal("5000"))
+
+    def test_failed_week_boundary_regeneration_rolls_back_plan_move_and_settings(self):
+        self._seed_week_two_extension_plan()
+        with patch(
+            "detail_project.views_api_tahapan_v2.sync_weekly_to_tahapan",
+            side_effect=RuntimeError("simulated sync failure"),
+        ):
+            response = self._post_week_boundary(
+                "detail_project:api_v2_regenerate_tahapan",
+                "move_planned_to_boundary",
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.project.refresh_from_db()
+        self.assertEqual((self.project.week_start_day, self.project.week_end_day), (0, 6))
+        rows = {
+            row.week_number: row
+            for row in PekerjaanProgressWeekly.objects.filter(project=self.project)
+        }
+        self.assertEqual(rows[2].planned_proportion, Decimal("20"))
+        self.assertEqual(rows[2].actual_proportion, Decimal("15"))
+        self.assertEqual(rows[2].actual_cost, Decimal("5000"))
+        self.assertNotIn(1, rows)
+
+    def test_week_boundary_that_would_hide_progress_outside_new_work_range_is_blocked(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 14)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        self._seed_week_three_legacy_plan()
+
+        response = self._post_week_boundary("detail_project:api_update_week_boundaries")
+        payload = json.loads(response.content)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["code"], "week_boundary_excludes_progress")
+        self.assertEqual(payload["impact"]["new_work_week_count"], 2)
+        self.project.refresh_from_db()
+        self.assertEqual((self.project.week_start_day, self.project.week_end_day), (0, 6))
+        row = PekerjaanProgressWeekly.objects.get(project=self.project, week_number=3)
+        self.assertEqual(row.actual_proportion, Decimal("8"))
+        self.assertEqual(row.actual_cost, Decimal("3000"))
 
     def test_timeline_resolution_rejects_new_plan_in_extension_but_keeps_legacy_plan(self):
         write_progress(self.project, [self._week_three_cell(
