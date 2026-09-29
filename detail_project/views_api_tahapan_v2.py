@@ -595,6 +595,7 @@ def _serialize_resolution_preview(preview):
         'total_planned_before': str(preview['total_planned_before']),
         'total_planned_after': str(preview['total_planned_after']),
         'planned_lost': str(preview['planned_lost']),
+        'moved_planned': preview.get('moved_planned', []),
         'weeks': [
             {
                 'week_number': week['week_number'],

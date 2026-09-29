@@ -79,7 +79,7 @@ class TimelineDialogTests(TestCase):
 
     # ------------------------------------------------------------------ helpers
 
-    def _seed(self, week_number, planned='0', actual='0'):
+    def _seed(self, week_number, planned='0', actual='0', actual_cost=None):
         buckets = {
             num: (start, end)
             for num, start, end in build_week_buckets(
@@ -97,6 +97,7 @@ class TimelineDialogTests(TestCase):
             week_end_date=end,
             planned_proportion=Decimal(planned),
             actual_proportion=Decimal(actual),
+            actual_cost=actual_cost,
         )
 
     def _payload(self, **overrides):
@@ -147,6 +148,54 @@ class TimelineDialogTests(TestCase):
             PekerjaanProgressWeekly.objects.get(week_number=8).planned_proportion,
             Decimal('40.00'),
         )
+
+    def test_contract_shortening_offers_planned_only_move_and_preserves_actual_cost(self):
+        self._seed(5, planned='10', actual='12')
+        source = self._seed(8, planned='20', actual='15')
+        source.actual_cost = Decimal('5000')
+        source.save(update_fields=['actual_cost', 'updated_at'])
+        boundary = PekerjaanProgressWeekly.objects.get(
+            project=self.project, pekerjaan=self.pekerjaan, week_number=5
+        )
+        boundary.actual_cost = Decimal('3000')
+        boundary.save(update_fields=['actual_cost', 'updated_at'])
+        self.project.tanggal_akhir_tambahan = date(2026, 3, 31)
+        self.project.save(update_fields=['tanggal_akhir_tambahan', 'updated_at'])
+        self.project.refresh_from_db()
+
+        request_data = self._payload(tanggal_selesai='2026-01-31')
+        preview = self.client.post(self.url, request_data)
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(
+            preview.context['timeline_impact']['allowed_resolutions'],
+            ['move_planned_to_boundary'],
+        )
+        self.assertEqual(
+            preview.context['timeline_impact']['planned_extension_records'], 1
+        )
+        self.assertContains(preview, 'Pindahkan rencana ke minggu batas kontrak')
+        self.assertContains(preview, 'P1 — Pekerjaan 1')
+        self.assertContains(preview, 'M8')
+        self.assertContains(preview, '20.00%')
+        self.assertContains(preview, 'Realisasi dan biaya aktual tetap di minggu semula')
+        self.assertEqual(self.project.tanggal_selesai, date(2026, 2, 28))
+        source.refresh_from_db()
+        self.assertEqual(source.planned_proportion, Decimal('20.00'))
+
+        request_data['timeline_resolution'] = 'move_planned_to_boundary'
+        committed = self.client.post(self.url, request_data)
+        self.assertEqual(committed.status_code, 302, committed.content[:400])
+        self.project.refresh_from_db()
+        source.refresh_from_db()
+        boundary.refresh_from_db()
+        self.assertEqual(self.project.tanggal_selesai, date(2026, 1, 31))
+        self.assertEqual(self.project.tanggal_akhir_tambahan, date(2026, 3, 31))
+        self.assertEqual(boundary.planned_proportion, Decimal('30.00'))
+        self.assertEqual(boundary.actual_proportion, Decimal('12.00'))
+        self.assertEqual(boundary.actual_cost, Decimal('3000'))
+        self.assertEqual(source.planned_proportion, Decimal('0.00'))
+        self.assertEqual(source.actual_proportion, Decimal('15.00'))
+        self.assertEqual(source.actual_cost, Decimal('5000'))
 
     def test_dialog_shows_old_and_new_values_per_week(self):
         self._seed(1, planned='10')

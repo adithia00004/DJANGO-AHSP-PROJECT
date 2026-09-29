@@ -108,6 +108,12 @@ def _timeline_blocking_message(impact):
         ' Minggu bermasalah: ' + ', '.join(str(number) for number in weeks) + '.'
         if weeks else ''
     )
+    if impact.get('blocking_reason') == 'mixed_planned_extension_and_range_change':
+        return (
+            'Perubahan tanggal mulai dan batas kontrak sekaligus berdampak pada '
+            'rencana di masa tambahan. Ubah tanggal mulai lebih dulu; setelah itu '
+            'atur kembali batas kontrak.'
+        )
     if impact.get('blocking_reason') == 'actual_present_start_shift':
         return (
             'Tanggal mulai tidak dapat digeser karena project sudah memiliki '
@@ -728,7 +734,7 @@ def project_edit(request, pk):
                 # The timeline service locks and updates a fresh Project row.
                 # Refresh only the internal revision. A full refresh would
                 # discard ModelForm's cleaned metadata before form.save().
-                project.refresh_from_db(fields=['schedule_revision'])
+                project.refresh_from_db(fields=['schedule_revision', 'tanggal_akhir_tambahan'])
             form.save()
 
             messages.success(request, 'Project berhasil diperbarui.')

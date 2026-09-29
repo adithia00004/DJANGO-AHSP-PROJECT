@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from dashboard.forms import ProjectForm
@@ -38,6 +39,15 @@ class AdditionalWorkTimeFieldTests(TestCase):
         self.assertIsNone(project.tanggal_akhir_tambahan)
         self.assertNotIn("tanggal_akhir_tambahan", ProjectForm().fields)
 
+        project.tanggal_akhir_tambahan = date(2026, 12, 31)
+        project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        self.client.force_login(self.owner)
+        response = self.client.get(
+            reverse("dashboard:project_edit", kwargs={"pk": project.pk})
+        )
+        self.assertContains(response, "Tambahan waktu kerja: s.d. 31 Des 2026")
+        self.assertNotContains(response, 'name="tanggal_akhir_tambahan"')
+
     def test_additional_end_change_increments_schedule_revision(self):
         project = self._project()
         before = project.schedule_revision
@@ -66,3 +76,26 @@ class AdditionalWorkTimeFieldTests(TestCase):
                     tanggal_akhir_tambahan=date(2026, 12, 31),
                 )
                 project.save()
+
+    def test_edit_project_contract_past_additional_end_clears_excluded_field(self):
+        from django.urls import reverse
+
+        project = self._project(tanggal_akhir_tambahan=date(2026, 12, 31))
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("dashboard:project_edit", kwargs={"pk": project.pk}),
+            {
+                "nama": project.nama,
+                "tanggal_mulai": "2026-09-01",
+                "tanggal_selesai": "2027-01-15",
+                "durasi_hari": "",
+                "sumber_dana": project.sumber_dana,
+                "lokasi_project": project.lokasi_project,
+                "nama_client": project.nama_client,
+                "anggaran_owner": "1000",
+            },
+        )
+        self.assertEqual(response.status_code, 302, response.content[:400])
+        project.refresh_from_db()
+        self.assertEqual(project.tanggal_selesai, date(2027, 1, 15))
+        self.assertIsNone(project.tanggal_akhir_tambahan)

@@ -9,7 +9,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from dashboard.models import Project
-from detail_project.timeline_utils import apply_project_timeline_change
+from detail_project.models import Klasifikasi, Pekerjaan, PekerjaanProgressWeekly, SubKlasifikasi
+from detail_project.progress_utils import build_week_buckets
+from detail_project.timeline_utils import apply_project_timeline_change, expected_week_count
 
 
 User = get_user_model()
@@ -153,6 +155,78 @@ class MassEditProjectTests(TestCase):
         self.assertEqual(apply_mock.call_args.args[0].pk, self.project_a.pk)
         self.assertEqual(apply_mock.call_args.kwargs["resolution"], "none")
         self.assertEqual(response.json()["needs_decision"], [])
+
+    def test_mass_edit_skips_contract_change_with_plan_in_new_extension_week(self):
+        self.project_a.tanggal_akhir_tambahan = date(2027, 2, 28)
+        self.project_a.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        klas = Klasifikasi.objects.create(
+            project=self.project_a, name="K", ordering_index=1
+        )
+        sub = SubKlasifikasi.objects.create(
+            project=self.project_a, klasifikasi=klas, name="S", ordering_index=1
+        )
+        pekerjaan = Pekerjaan.objects.create(
+            project=self.project_a,
+            sub_klasifikasi=sub,
+            source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode="P-EXT",
+            snapshot_uraian="Rencana setelah kontrak",
+            snapshot_satuan="m2",
+            ordering_index=1,
+        )
+        old_boundary = expected_week_count(
+            self.project_a.tanggal_mulai,
+            self.project_a.tanggal_selesai,
+            self.project_a.week_end_day,
+        )
+        row_week = old_boundary + 1
+        buckets = {
+            number: (start, end)
+            for number, start, end in build_week_buckets(
+                self.project_a.tanggal_mulai,
+                self.project_a.tanggal_akhir_tambahan,
+                self.project_a.week_end_day,
+            )
+        }
+        week_start, week_end = buckets[row_week]
+        row = PekerjaanProgressWeekly.objects.create(
+            project=self.project_a,
+            pekerjaan=pekerjaan,
+            week_number=row_week,
+            week_start_date=week_start,
+            week_end_date=week_end,
+            planned_proportion=Decimal("20"),
+            actual_proportion=Decimal("0"),
+        )
+
+        response = self._post([{
+            "id": self.project_a.pk,
+            "tanggal_selesai": "2026-12-15",
+        }])
+
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(len(body["needs_decision"]), 1)
+        self.assertEqual(body["needs_decision"][0]["planned_extension_records"], 1)
+        self.project_a.refresh_from_db()
+        row.refresh_from_db()
+        self.assertEqual(self.project_a.tanggal_selesai, date(2026, 12, 31))
+        self.assertEqual(self.project_a.tanggal_akhir_tambahan, date(2027, 2, 28))
+        self.assertEqual(row.planned_proportion, Decimal("20.00"))
+
+    def test_mass_edit_contract_past_addition_clears_excluded_field(self):
+        self.project_a.tanggal_akhir_tambahan = date(2027, 1, 31)
+        self.project_a.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+
+        response = self._post([{
+            "id": self.project_a.pk,
+            "tanggal_selesai": "2027-02-15",
+        }])
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.project_a.refresh_from_db()
+        self.assertEqual(self.project_a.tanggal_selesai, date(2027, 2, 15))
+        self.assertIsNone(self.project_a.tanggal_akhir_tambahan)
 
 
 class MassEditFrontendGuardTests(TestCase):

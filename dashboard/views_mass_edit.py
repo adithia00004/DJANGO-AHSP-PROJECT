@@ -30,6 +30,11 @@ def _decision_message(impact):
             "Tanggal baru melewati minggu yang sudah memiliki realisasi atau "
             "biaya aktual."
         )
+    if impact.get("planned_extension_records"):
+        return (
+            "Perubahan akhir waktu kerja membuat rencana berada di masa tambahan. "
+            "Ubah project satu per satu untuk memilih pemindahan rencana atau membatalkan."
+        )
     if impact.get("start_requires_policy"):
         return (
             "Tanggal mulai bergeser sedangkan project sudah memiliki rencana "
@@ -50,6 +55,7 @@ def _decision_entry(project, impact, message):
         "allowed_resolutions": (impact or {}).get("allowed_resolutions", []),
         "recommended_resolution": (impact or {}).get("recommended_resolution"),
         "planned_records": (impact or {}).get("planned_records", 0),
+        "planned_extension_records": (impact or {}).get("planned_extension_records", 0),
         "actual_records": (impact or {}).get("actual_records", 0),
     }
 
@@ -229,6 +235,7 @@ def mass_edit_bulk_update(request):
                     impact.get("blocking_reason")
                     or impact.get("start_requires_policy")
                     or impact.get("planned_records")
+                    or impact.get("planned_extension_records")
                 ):
                     needs_decision.append(
                         _decision_entry(project, impact, _decision_message(impact))
@@ -255,7 +262,7 @@ def mass_edit_bulk_update(request):
                 # Service sudah menyimpan tanggal dan membangun ulang jadwal.
                 # Refresh hanya revisi internal: refresh penuh akan membuang
                 # cleaned_data yang belum sempat tersimpan lewat form.save().
-                project.refresh_from_db(fields=["schedule_revision"])
+                project.refresh_from_db(fields=["schedule_revision", "tanggal_akhir_tambahan"])
                 form.save()
                 updated_count += 1
 

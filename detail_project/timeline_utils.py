@@ -43,6 +43,7 @@ RESOLUTION_TRIM_PLANNED = 'trim_planned'
 RESOLUTION_KEEP_ORDINAL = 'keep_ordinal'          # "Pertahankan urutan minggu"
 RESOLUTION_ACCUMULATE_EDGE = 'accumulate_edge'    # "Padatkan ke minggu batas"
 RESOLUTION_FOLLOW_DATE = 'follow_date'            # "Hapus yang di luar jadwal baru"
+RESOLUTION_MOVE_PLANNED_TO_BOUNDARY = 'move_planned_to_boundary'
 
 LEGACY_RESOLUTIONS = frozenset({RESOLUTION_NONE, RESOLUTION_TRIM_PLANNED})
 ENGINE_RESOLUTIONS = frozenset({
@@ -50,7 +51,9 @@ ENGINE_RESOLUTIONS = frozenset({
     RESOLUTION_ACCUMULATE_EDGE,
     RESOLUTION_FOLLOW_DATE,
 })
-ALL_RESOLUTIONS = LEGACY_RESOLUTIONS | ENGINE_RESOLUTIONS
+ALL_RESOLUTIONS = LEGACY_RESOLUTIONS | ENGINE_RESOLUTIONS | {
+    RESOLUTION_MOVE_PLANNED_TO_BOUNDARY,
+}
 
 # Baris diparkir ke rentang week_number di luar jangkauan sebelum ditata ulang,
 # supaya UNIQUE (pekerjaan, week_number) tidak pernah bentrok di tengah operasi.
@@ -314,12 +317,31 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         project, new_start, new_end, target_field
     )
     old_start, old_end = _persisted_timeline(project)
-    _, _, old_additional_end = _persisted_project_dates(project)
+    _, old_contract_end, old_additional_end = _persisted_project_dates(project)
+    records = PekerjaanProgressWeekly.objects.filter(project=project)
     start_changed = (old_start or None) != new_start
     end_changed = (old_end or None) != new_work_end
     new_week_count = expected_week_count(
         new_start, new_work_end, getattr(project, 'week_end_day', 6)
     )
+    planned_extension_rows = []
+    contract_boundary = expected_week_count(
+        new_start, contract_end, getattr(project, 'week_end_day', 6)
+    )
+    contract_boundary_changed = (
+        target_field == 'tanggal_selesai'
+        and (start_changed or (old_contract_end or None) != contract_end)
+    )
+    if contract_boundary_changed and additional_end and contract_boundary < new_week_count:
+        planned_extension_rows = list(
+            records.filter(
+                planned_proportion__gt=0,
+                week_number__gt=contract_boundary,
+                week_number__lte=new_week_count,
+            )
+            .select_related('pekerjaan')
+            .order_by('week_number', 'pekerjaan_id')
+        )
     change_type = None
     if target_field == 'tanggal_akhir_tambahan':
         if not new_end:
@@ -333,7 +355,6 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
                 old_start, old_end, getattr(project, 'week_end_day', 6)
             )
             change_type = 'tipe_1' if new_week_count == old_week_count else 'tipe_2'
-    records = PekerjaanProgressWeekly.objects.filter(project=project)
     if start_changed:
         affected = records.filter(
             Q(planned_proportion__gt=0)
@@ -387,6 +408,12 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
             if end_changed else actual.none()
         )
         blocking_reason = 'actual_out_of_window' if blocking_qs.exists() else None
+    if (
+        not blocking_reason
+        and planned_extension_rows
+        and (start_requires_policy or planned.count() > 0)
+    ):
+        blocking_reason = 'mixed_planned_extension_and_range_change'
 
     blocking_week_numbers = (
         sorted({
@@ -401,6 +428,9 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
     if blocking_reason:
         allowed_resolutions = []
         recommended_resolution = None
+    elif planned_extension_rows:
+        allowed_resolutions = [RESOLUTION_MOVE_PLANNED_TO_BOUNDARY]
+        recommended_resolution = RESOLUTION_MOVE_PLANNED_TO_BOUNDARY
     elif start_requires_policy:
         allowed_resolutions = [
             RESOLUTION_KEEP_ORDINAL,
@@ -419,7 +449,12 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         recommended_resolution = RESOLUTION_NONE
 
     return {
-        'safe': not start_requires_policy and actual.count() == 0 and planned.count() == 0,
+        'safe': (
+            not start_requires_policy
+            and actual.count() == 0
+            and planned.count() == 0
+            and not planned_extension_rows
+        ),
         'start_changed': start_changed,
         'end_changed': end_changed,
         'start_requires_policy': start_requires_policy,
@@ -428,6 +463,18 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         'allowed_resolutions': allowed_resolutions,
         'recommended_resolution': recommended_resolution,
         'planned_records': planned.count(),
+        'planned_extension_records': len(planned_extension_rows),
+        'planned_extension_rows': [
+            {
+                'pekerjaan_id': row.pekerjaan_id,
+                'kode': row.pekerjaan.snapshot_kode or '',
+                'uraian': row.pekerjaan.snapshot_uraian or '',
+                'week_number': row.week_number,
+                'planned_proportion': str(row.planned_proportion),
+            }
+            for row in planned_extension_rows
+        ],
+        'contract_boundary_week': contract_boundary,
         'actual_records': actual.count(),
         'affected_records': len(values),
         'affected_week_numbers': week_numbers,
@@ -554,6 +601,7 @@ RESOLUTION_LABELS = {
     RESOLUTION_KEEP_ORDINAL: 'Pertahankan urutan minggu',
     RESOLUTION_ACCUMULATE_EDGE: 'Padatkan ke minggu batas',
     RESOLUTION_FOLLOW_DATE: 'Hapus yang di luar jadwal baru',
+    RESOLUTION_MOVE_PLANNED_TO_BOUNDARY: 'Pindahkan rencana ke minggu batas kontrak',
     RESOLUTION_NONE: 'Simpan langsung',
 }
 
@@ -567,6 +615,9 @@ RESOLUTION_HELP = {
     RESOLUTION_FOLLOW_DATE:
         'Progress mengikuti tanggal kalendernya. Yang jatuh di luar jadwal baru '
         'dibuang; yang di dalam tidak tersentuh.',
+    RESOLUTION_MOVE_PLANNED_TO_BOUNDARY:
+        'Pindahkan planned dari minggu yang kini melewati kontrak ke minggu batas. '
+        'Realisasi dan biaya aktual tetap di minggu semula.',
     RESOLUTION_NONE:
         'Tidak ada rencana progress yang terdampak; jadwal cukup dibangun ulang.',
 }
@@ -602,6 +653,7 @@ def build_resolution_preview(
         before_by_week[row.week_number] += row.planned_proportion or Decimal('0.00')
 
     counts = {}
+    moved_planned = []
     after_by_week = defaultdict(lambda: Decimal('0.00'))
     if resolution in ENGINE_RESOLUTIONS and new_buckets:
         target, counts = plan_timeline_resolution(
@@ -609,6 +661,19 @@ def build_resolution_preview(
         )
         for (_, week_number), cell in target.items():
             after_by_week[week_number] += cell['planned']
+    elif resolution == RESOLUTION_MOVE_PLANNED_TO_BOUNDARY:
+        boundary_week = impact['contract_boundary_week']
+        for week_number, value in before_by_week.items():
+            after_by_week[week_number] = value
+        for row in impact['planned_extension_rows']:
+            planned = Decimal(row['planned_proportion'])
+            after_by_week[row['week_number']] -= planned
+            after_by_week[boundary_week] += planned
+            moved_planned.append({
+                **row,
+                'boundary_week': boundary_week,
+            })
+        counts = {'planned_rows_moved': len(moved_planned)}
     elif resolution == RESOLUTION_NONE:
         # Tidak ada penataan: nilai bertahan pada nomor minggunya.
         for week_number, value in before_by_week.items():
@@ -649,6 +714,7 @@ def build_resolution_preview(
         # ditampilkan eksplisit alih-alih disimpulkan user dari dua angka total.
         'planned_lost': total_before - total_after,
         'counts': counts,
+        'moved_planned': moved_planned,
     }
 
 
@@ -849,6 +915,91 @@ def _align_weekly_row_dates(project, new_start, new_end, week_end_day):
     return len(changed), snapshot
 
 
+def _move_planned_to_contract_boundary(project, contract_week, work_week_count):
+    """Move only selected planned values from new extension weeks to boundary."""
+    source_rows = list(
+        PekerjaanProgressWeekly.objects.filter(
+            project=project,
+            planned_proportion__gt=0,
+            week_number__gt=contract_week,
+            week_number__lte=work_week_count,
+        ).order_by('pekerjaan_id', 'week_number')
+    )
+    if not source_rows:
+        return [], 0
+
+    planned_by_job = defaultdict(lambda: Decimal('0.00'))
+    for row in source_rows:
+        planned_by_job[row.pekerjaan_id] += row.planned_proportion or Decimal('0.00')
+    job_ids = list(planned_by_job)
+    boundary_rows = {
+        row.pekerjaan_id: row
+        for row in PekerjaanProgressWeekly.objects.filter(
+            project=project,
+            pekerjaan_id__in=job_ids,
+            week_number=contract_week,
+        )
+    }
+    for pekerjaan_id, planned in planned_by_job.items():
+        boundary_row = boundary_rows.get(pekerjaan_id)
+        current = boundary_row.planned_proportion if boundary_row else Decimal('0.00')
+        if current + planned > _PERCENT_MAX + _PERCENT_TOLERANCE:
+            raise TimelineChangeError(
+                f'Rencana pekerjaan {pekerjaan_id} di minggu batas akan melebihi 100%.',
+                {
+                    'safe': False,
+                    'reason': 'planned_boundary_limit_exceeded',
+                    'pekerjaan_id': pekerjaan_id,
+                    'boundary_week': contract_week,
+                },
+            )
+
+    rows_before = source_rows + list(boundary_rows.values())
+    snapshot = _snapshot_rows(rows_before)
+    for row in source_rows:
+        row.planned_proportion = Decimal('0.00')
+    PekerjaanProgressWeekly.objects.bulk_update(
+        source_rows, ['planned_proportion'], batch_size=500
+    )
+
+    week_end_day = project.week_end_day if project.week_end_day is not None else 6
+    boundary_dates = {
+        number: (start, end)
+        for number, start, end in build_week_buckets(
+            project.tanggal_mulai, work_period_end(project), week_end_day
+        )
+    }.get(contract_week)
+    if boundary_dates is None:
+        raise TimelineChangeError(
+            'Minggu batas kontrak tidak tersedia dalam rentang jadwal.',
+            {'safe': False, 'reason': 'contract_boundary_outside_schedule'},
+        )
+
+    missing_boundaries = []
+    for pekerjaan_id, planned in planned_by_job.items():
+        boundary_row = boundary_rows.get(pekerjaan_id)
+        if boundary_row:
+            boundary_row.planned_proportion = (
+                boundary_row.planned_proportion or Decimal('0.00')
+            ) + planned
+            boundary_row.save(update_fields=['planned_proportion', 'updated_at'])
+        else:
+            missing_boundaries.append(PekerjaanProgressWeekly(
+                project=project,
+                pekerjaan_id=pekerjaan_id,
+                week_number=contract_week,
+                week_start_date=boundary_dates[0],
+                week_end_date=boundary_dates[1],
+                planned_proportion=planned,
+                actual_proportion=Decimal('0.00'),
+                actual_cost=None,
+                notes='',
+            ))
+    if missing_boundaries:
+        PekerjaanProgressWeekly.objects.bulk_create(missing_boundaries, batch_size=500)
+    return snapshot, len(source_rows)
+
+
 @transaction.atomic
 def apply_project_timeline_change(
     project,
@@ -913,6 +1064,29 @@ def apply_project_timeline_change(
 
     trimmed = []
     resolution_counts = {}
+    requested_resolution = resolution
+    planned_move_snapshot = []
+    planned_moved_count = 0
+    if resolution == RESOLUTION_MOVE_PLANNED_TO_BOUNDARY:
+        if (
+            target_field != 'tanggal_selesai'
+            or impact['start_changed']
+            or impact['end_changed']
+            or not impact['planned_extension_records']
+        ):
+            raise TimelineChangeError(
+                'Pemindahan planned ke minggu batas tidak cocok dengan perubahan timeline ini.',
+                {**impact, 'blocking_reason': 'planned_boundary_move_not_applicable'},
+            )
+        planned_move_snapshot, planned_moved_count = _move_planned_to_contract_boundary(
+            project,
+            impact['contract_boundary_week'],
+            impact['new_week_count'],
+        )
+        resolution_counts = {'planned_moved': planned_moved_count}
+        # Rentang pencatatan tidak berubah; setelah memindahkan planned saja,
+        # selesaikan mutasi proyek melalui jalur no-op timeline yang sama.
+        resolution = RESOLUTION_NONE
 
     if resolution in LEGACY_RESOLUTIONS:
         if impact['start_requires_policy']:
@@ -963,7 +1137,7 @@ def apply_project_timeline_change(
                     actual_cost__isnull=True,
                 )
             )
-            rows_before = _snapshot_rows(empty_outside)
+            rows_before = planned_move_snapshot + _snapshot_rows(empty_outside)
             empty_outside.delete()
     else:
         allowed = impact['allowed_resolutions']
@@ -1041,7 +1215,7 @@ def apply_project_timeline_change(
                     'work_period_end': new_work_end.isoformat(),
                     'target_field': target_field,
                 },
-                'resolution': resolution,
+                'resolution': requested_resolution,
                 'trimmed_count': len(trimmed),
                 'resolution_counts': resolution_counts,
                 'weekly_date_rows_aligned': aligned_row_count,
@@ -1059,8 +1233,9 @@ def apply_project_timeline_change(
 
     return {
         **impact,
-        'resolution': resolution,
+        'resolution': requested_resolution,
         'trimmed_count': len(trimmed),
+        'planned_moved_count': planned_moved_count,
         'resolution_counts': resolution_counts,
         'weekly_date_rows_aligned': aligned_row_count,
         'schedule_revision': project.schedule_revision,

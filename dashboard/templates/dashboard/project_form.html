@@ -50,6 +50,7 @@
           </div>
           <div>
             Rencana progress terdampak: <strong>{{ timeline_impact.planned_records }}</strong> record;
+            rencana di minggu tambahan: <strong>{{ timeline_impact.planned_extension_records|default:0 }}</strong> record;
             realisasi terdampak: <strong>{{ timeline_impact.actual_records }}</strong> record.
           </div>
           {% if timeline_impact.blocking_reason %}
@@ -107,6 +108,27 @@
                 <span class="text-success">(tidak ada yang hilang)</span>
                 {% endif %}
               </div>
+
+              {% if preview.moved_planned %}
+              <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0 small">
+                  <thead class="table-light">
+                    <tr><th>Pekerjaan</th><th>Minggu lama</th><th>Rencana</th><th>Minggu tujuan</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for item in preview.moved_planned %}
+                    <tr>
+                      <td>{{ item.kode }} — {{ item.uraian }}</td>
+                      <td>M{{ item.week_number }}</td>
+                      <td>{{ item.planned_proportion }}%</td>
+                      <td>M{{ item.boundary_week }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+                <div class="small text-muted mt-1">Hanya rencana yang dipindah; realisasi dan biaya aktual tetap pada minggu asal.</div>
+              </div>
+              {% endif %}
 
               <div class="table-responsive mt-2">
                 <table class="table table-sm table-bordered mb-0 small">
@@ -184,7 +206,11 @@
               <div class="col-md-6 mb-3">
                 {{ form.tanggal_selesai.label_tag }} <span class="text-danger">*</span>
                 {{ form.tanggal_selesai }}
-                <small class="form-text text-muted">Wajib diisi sebagai batas akhir project</small>
+                {% if project.tanggal_akhir_tambahan %}
+                <small class="form-text text-muted">Tambahan waktu kerja: s.d. {{ project.tanggal_akhir_tambahan|date:"d M Y" }} · ubah lewat Perpanjang Waktu Kerja di halaman Jadwal (mode Realisasi).</small>
+                {% else %}
+                <small class="form-text text-muted">Wajib diisi sebagai batas akhir project. Tambahan waktu kerja diatur dari halaman Jadwal (mode Realisasi).</small>
+                {% endif %}
               </div>
               <div class="col-md-6 mb-3">
                 {{ form.durasi_hari.label_tag }}
