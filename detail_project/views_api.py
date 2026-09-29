@@ -9203,11 +9203,14 @@ def export_project_full_json(request: HttpRequest, project_id: int):
         if include_progress:
             export_data["stats"]["total_tahap"] = len(tahap_list)
             export_data["stats"]["total_progress"] = len(progress_list)
-            # Calculate total project weeks for import comparison
+            # Statistics must use the same calendar-week boundaries as Jadwal.
             if project.tanggal_mulai and project.tanggal_selesai:
-                from math import ceil
-                days = (project.tanggal_selesai - project.tanggal_mulai).days
-                export_data["stats"]["total_project_weeks"] = ceil(days / 7) if days > 0 else 0
+                from detail_project.timeline_utils import expected_week_count
+                export_data["stats"]["total_project_weeks"] = expected_week_count(
+                    project.tanggal_mulai,
+                    project.tanggal_selesai,
+                    project.week_end_day if project.week_end_day is not None else 6,
+                )
             else:
                 export_data["stats"]["total_project_weeks"] = 0
             # Max week number in progress data
@@ -9590,12 +9593,29 @@ def import_project_from_json(request: HttpRequest):
         
         if import_progress and data.get('progress_weekly'):
             # ========== Smart Week Adjustment ==========
-            # Calculate actual project weeks from new project dates
-            from math import ceil
+            # Use the same calendar buckets as the Jadwal grid. ceil(days / 7)
+            # drops valid weeks when a project starts or ends inside a week.
+            from detail_project.timeline_utils import expected_week_count
+            from detail_project.progress_utils import build_week_buckets
             actual_project_weeks = 0
+            canonical_week_dates = {}
             if new_project.tanggal_mulai and new_project.tanggal_selesai:
-                days = (new_project.tanggal_selesai - new_project.tanggal_mulai).days
-                actual_project_weeks = ceil(days / 7) if days > 0 else 0
+                week_end_day = new_project.week_end_day if new_project.week_end_day is not None else 6
+                actual_project_weeks = expected_week_count(
+                    new_project.tanggal_mulai,
+                    new_project.tanggal_selesai,
+                    week_end_day,
+                )
+                if actual_project_weeks:
+                    canonical_week_dates = {
+                        week_number: (week_start, week_end)
+                        for week_number, week_start, week_end in build_week_buckets(
+                            new_project.tanggal_mulai,
+                            new_project.tanggal_selesai,
+                            week_end_day,
+                            max_weeks=actual_project_weeks,
+                        )
+                    }
             
             # Track stats for response
             imported_weeks = 0
@@ -9610,6 +9630,10 @@ def import_project_from_json(request: HttpRequest):
                     if actual_project_weeks > 0 and week_num > actual_project_weeks:
                         skipped_weeks += 1
                         continue  # Skip this week - it's beyond project scope
+
+                    if week_num not in canonical_week_dates:
+                        skipped_weeks += 1
+                        continue
                     
                     # Get or calculate week dates
                     if pw.get('week_start_date') and pw.get('week_end_date'):
@@ -9617,17 +9641,9 @@ def import_project_from_json(request: HttpRequest):
                         week_start = date.fromisoformat(pw['week_start_date'])
                         week_end = date.fromisoformat(pw['week_end_date'])
                     else:
-                        # Calculate from project start date + week_number
-                        from datetime import timedelta
-                        if new_project.tanggal_mulai:
-                            week_start = new_project.tanggal_mulai + timedelta(days=(week_num - 1) * 7)
-                            week_end = week_start + timedelta(days=6)
-                        else:
-                            # Fallback: use today as base
-                            from datetime import date as date_today
-                            base = date_today.today()
-                            week_start = base + timedelta(days=(week_num - 1) * 7)
-                            week_end = week_start + timedelta(days=6)
+                        # Older backups may not carry week dates; derive them
+                        # from the project's canonical calendar bucket.
+                        week_start, week_end = canonical_week_dates[week_num]
                     
                     PekerjaanProgressWeekly.objects.create(
                         project=new_project,

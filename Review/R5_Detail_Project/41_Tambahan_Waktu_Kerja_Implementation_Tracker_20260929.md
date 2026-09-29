@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 0 BERJALAN** — Gate 0 lulus; langkah 0.1 selesai dan 0.2 terverifikasi. Lihat bukti §3, §4, dan §9 |
+| Status keseluruhan | **TAHAP 0 BERJALAN** — Gate 0, langkah 0.1, dan 0.2 selesai. Lihat bukti §3, §4, dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -65,8 +65,8 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 
 | Langkah | Isi | Status | Commit | Tanggal |
 |---|---|---|---|---|
-| 0.1 | Uji bolak-balik backup/restore/duplikasi | DONE | menunggu commit langkah ini | 2026-09-29 |
-| 0.2 | Restore memakai aturan minggu kanonik (bug B) | WIP | | 2026-09-29 |
+| 0.1 | Uji bolak-balik backup/restore/duplikasi | DONE | `e54679be` | 2026-09-29 |
+| 0.2 | Restore memakai aturan minggu kanonik (bug B) | DONE | `7024dfec` | 2026-09-29 |
 | 0.3 | Satu penyalin data progres (bug A, C) | TODO | | |
 | 0.4 | Satu layanan tulis progres | TODO | | |
 | 1.1 | Skema, helper, penyisiran, field target | TODO | | |
@@ -174,7 +174,7 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | G0-4 | Runner Django PostgreSQL; `detail_project` + `dashboard`; database `test_twk_codex_20260929` | 842 tes: 3 gagal lama, 40 skipped, 6 expected failure | Kegagalan sama dengan tiga guard lama yang sudah didokumentasikan |
 | 2026-09-29 | G0-4 | `npm run test:frontend -- --reporter=dot` | 32 file; 396 lulus, 25 skipped | Run penuh ulang lulus |
 | 2026-09-29 | 0.1 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 3 lulus, 9 expected failure | Menangkap A–C, duplikasi form Dashboard, batas minggu nondefault, statistik export, dan tanggal fallback legacy |
-| 2026-09-29 | 0.2 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 6 lulus, 6 expected failure | Tes aturan minggu kanonik lulus; expected failure tersisa untuk bug A/C |
+| 2026-09-29 | 0.2 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 6 lulus, 6 expected failure | Statistik export, minggu pendek Minggu/Jumat, dan tanggal fallback lulus; expected failure tersisa untuk bug A/C |
 | | | | | |
 
 ---
