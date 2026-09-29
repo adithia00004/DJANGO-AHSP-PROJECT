@@ -45,6 +45,7 @@ from detail_project.timeline_utils import (
     expected_week_count,
     invalidate_schedule_caches,
 )
+from detail_project.progress_write_service import write_progress
 
 # Import helper from original views
 from detail_project.views_api_tahapan import _owner_or_404
@@ -310,41 +311,24 @@ def api_assign_pekerjaan_weekly(request, project_id):
                     week_end_day=effective_week_end_day  # JDW-02: konfigurasi project
                 )
 
-            # Create or update weekly progress (CANONICAL STORAGE)
-            # Use get_or_create + manual update to preserve unrelated fields
-            wp, created = PekerjaanProgressWeekly.objects.get_or_create(
-                pekerjaan=pekerjaan,
-                week_number=week_number,
-                defaults={
-                    'project': project,
+            saved = write_progress(
+                project,
+                [{
+                    'pekerjaan_id': pekerjaan.id,
+                    'week_number': week_number,
                     'week_start_date': week_start,
                     'week_end_date': week_end,
                     'planned_proportion': proportion_decimal if progress_mode == 'planned' else Decimal('0'),
                     'actual_proportion': proportion_decimal if progress_mode == 'actual' else Decimal('0'),
-                    # Phase 2E.1: No more legacy 'proportion' field - use planned/actual explicitly
-                    'actual_cost': actual_cost_decimal if (progress_mode == 'actual' and actual_cost_decimal is not None) else None,
-                    'notes': notes
-                }
-            )
-
-            # If record exists, update only the relevant fields
-            if not created:
-                wp.project = project
-                wp.week_start_date = week_start
-                wp.week_end_date = week_end
-                wp.notes = notes
-
-                # Phase 2E.1: Update the appropriate proportion field based on mode
-                if progress_mode == 'actual':
-                    wp.actual_proportion = proportion_decimal
-                    if clear_actual_cost:
-                        wp.actual_cost = None
-                    elif actual_cost_decimal is not None:
-                        wp.actual_cost = actual_cost_decimal
-                else:  # 'planned' or default
-                    wp.planned_proportion = proportion_decimal
-
-                wp.save()
+                    'actual_cost': actual_cost_decimal,
+                    'has_actual_cost': has_actual_cost if progress_mode == 'actual' else False,
+                    'clear_actual_cost': clear_actual_cost if progress_mode == 'actual' else False,
+                    'notes': notes,
+                }],
+                kind='planned_new' if progress_mode == 'planned' else 'actual',
+            )[0]
+            wp = saved['record']
+            created = saved['created']
 
             if created:
                 created_count += 1

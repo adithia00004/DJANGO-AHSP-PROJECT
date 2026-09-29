@@ -25,6 +25,7 @@ from detail_project.models import (
 )
 from detail_project.progress_utils import build_week_buckets
 from detail_project.services import DeepCopyService
+from detail_project.progress_write_service import write_progress
 
 User = get_user_model()
 
@@ -296,3 +297,83 @@ class NonSundayBoundaryBackupRestoreTests(_TransferFixtureMixin, TestCase):
             self._progress_values(self._rows(restored)),
             self._progress_values(self._rows(self.project)),
         )
+
+
+class ProgressWriteServiceTests(_TransferFixtureMixin, TestCase):
+    def _cell(self, **overrides):
+        start, end = build_week_buckets(START, END, 6)[0][1:]
+        return {
+            "pekerjaan_id": self.p1.id,
+            "week_number": 1,
+            "week_start_date": start,
+            "week_end_date": end,
+            **overrides,
+        }
+
+    def test_planned_write_preserves_actual_and_cost(self):
+        result = write_progress(
+            self.project,
+            [self._cell(planned_proportion=Decimal("25"), notes="")],
+            kind="planned_new",
+        )
+        row = result[0]["record"]
+        self.assertEqual(row.planned_proportion, Decimal("25"))
+        self.assertEqual(row.actual_proportion, Decimal("15"))
+        self.assertEqual(row.actual_cost, Decimal("5000"))
+
+    def test_actual_write_preserves_planned_and_unspecified_cost(self):
+        result = write_progress(
+            self.project,
+            [self._cell(actual_proportion=Decimal("40"), notes="")],
+            kind="actual",
+        )
+        row = result[0]["record"]
+        self.assertEqual(row.planned_proportion, Decimal("20"))
+        self.assertEqual(row.actual_proportion, Decimal("40"))
+        self.assertEqual(row.actual_cost, Decimal("5000"))
+
+    def test_actual_write_can_clear_cost_without_changing_planned(self):
+        result = write_progress(
+            self.project,
+            [self._cell(
+                actual_proportion=Decimal("15"),
+                actual_cost=None,
+                has_actual_cost=True,
+                clear_actual_cost=True,
+                notes="",
+            )],
+            kind="actual",
+        )
+        row = result[0]["record"]
+        self.assertEqual(row.planned_proportion, Decimal("20"))
+        self.assertIsNone(row.actual_cost)
+
+    def test_historical_write_restores_zero_cost_and_notes(self):
+        result = write_progress(
+            self.project,
+            [self._cell(
+                planned_proportion=Decimal("30"),
+                actual_proportion=Decimal("0"),
+                actual_cost=Decimal("0"),
+                notes="historical note",
+            )],
+            kind="historical",
+        )
+        row = result[0]["record"]
+        self.assertEqual(row.actual_cost, Decimal("0"))
+        self.assertEqual(row.notes, "historical note")
+
+    def test_user_move_changes_planned_only(self):
+        result = write_progress(
+            self.project,
+            [self._cell(planned_proportion=Decimal("45"))],
+            kind="user_move",
+        )
+        row = result[0]["record"]
+        self.assertEqual(row.planned_proportion, Decimal("45"))
+        self.assertEqual(row.actual_proportion, Decimal("15"))
+        self.assertEqual(row.actual_cost, Decimal("5000"))
+
+    def test_unknown_write_kind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            write_progress(self.project, [], kind="unsupported")

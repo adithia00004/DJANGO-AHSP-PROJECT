@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 0 BERJALAN** — Gate 0 dan langkah 0.1–0.3 selesai. Langkah 0.4 berikutnya. Lihat bukti §3, §4, dan §9 |
+| Status keseluruhan | **TAHAP 0 SELESAI** — Gate 0 dan langkah 0.1–0.4 selesai; berikutnya Tahap 1.1. Lihat bukti §3, §4, dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -68,7 +68,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 0.1 | Uji bolak-balik backup/restore/duplikasi | DONE | `e54679be` | 2026-09-29 |
 | 0.2 | Restore memakai aturan minggu kanonik (bug B) | DONE | `7024dfec` | 2026-09-29 |
 | 0.3 | Satu penyalin data progres (bug A, C) | DONE | `8a900ffb` | 2026-09-29 |
-| 0.4 | Satu layanan tulis progres | TODO | | |
+| 0.4 | Satu layanan tulis progres | DONE | menunggu commit langkah ini | 2026-09-29 |
 | 1.1 | Skema, helper, penyisiran, field target | TODO | | |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | TODO | | |
 | 1.3 | Aturan tulis rencana | TODO | | |
@@ -176,6 +176,8 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | 0.1 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 3 lulus, 9 expected failure | Menangkap A–C, duplikasi form Dashboard, batas minggu nondefault, statistik export, dan tanggal fallback legacy |
 | 2026-09-29 | 0.2 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 6 lulus, 6 expected failure | Statistik export, minggu pendek Minggu/Jumat, dan tanggal fallback lulus; expected failure tersisa untuk bug A/C |
 | 2026-09-29 | 0.3 | Runner Django PostgreSQL: round-trip transfer, pemisahan format export JSON, dan smoke test Dashboard | 50 tes lulus | Mencakup biaya/catatan, duplikasi service/API/form, tanggal mulai baru, dan minggu yang tidak muat |
+| 2026-09-29 | 0.4 | Lima suite timeline/dashboard dan tes transfer pada PostgreSQL | 73 tes lulus | Termasuk uji jenis tulis planned_new, actual, historical, user_move; planned/realisasi/biaya tetap terpisah |
+| 2026-09-29 | 0.4 | Round-trip transfer, pemisahan export JSON, dan smoke test Dashboard | 56 tes lulus | Backup/restore, salin jadwal, duplikasi Dashboard dan API lulus setelah memakai layanan tulis tunggal |
 | | | | | |
 
 ---

@@ -5,6 +5,7 @@ from decimal import Decimal
 from detail_project.models import PekerjaanProgressWeekly
 from detail_project.progress_utils import build_week_buckets
 from detail_project.timeline_utils import expected_week_count
+from detail_project.progress_write_service import write_progress
 
 
 def serialize_weekly_rows(project, pekerjaan_ref_by_id):
@@ -52,19 +53,18 @@ def _decimal(value, default="0"):
     return Decimal(str(value))
 
 
-def _weekly_row(*, project, pekerjaan_id, week_number, week_start, week_end,
-                planned, actual, actual_cost, notes):
-    return PekerjaanProgressWeekly(
-        project=project,
-        pekerjaan_id=pekerjaan_id,
-        week_number=week_number,
-        week_start_date=week_start,
-        week_end_date=week_end,
-        planned_proportion=planned,
-        actual_proportion=actual,
-        actual_cost=actual_cost,
-        notes=notes or "",
-    )
+def _weekly_cell(*, pekerjaan_id, week_number, week_start, week_end,
+                 planned, actual, actual_cost, notes):
+    return {
+        "pekerjaan_id": pekerjaan_id,
+        "week_number": week_number,
+        "week_start_date": week_start,
+        "week_end_date": week_end,
+        "planned_proportion": planned,
+        "actual_proportion": actual,
+        "actual_cost": actual_cost,
+        "notes": notes or "",
+    }
 
 
 def restore_weekly_rows(project, rows, pekerjaan_map):
@@ -105,8 +105,7 @@ def restore_weekly_rows(project, rows, pekerjaan_map):
 
         raw_cost = data.get("actual_cost")
         actual_cost = None if raw_cost in (None, "") else _decimal(raw_cost)
-        pending.append(_weekly_row(
-            project=project,
+        pending.append(_weekly_cell(
             pekerjaan_id=pekerjaan_id,
             week_number=week_number,
             week_start=week_start,
@@ -117,8 +116,10 @@ def restore_weekly_rows(project, rows, pekerjaan_map):
             notes=data.get("notes", ""),
         ))
     if pending:
-        PekerjaanProgressWeekly.objects.bulk_create(pending, batch_size=500)
-    return {"imported": len(pending), "skipped": skipped}
+        written = write_progress(project, pending, kind="historical")
+    else:
+        written = []
+    return {"imported": len(written), "skipped": skipped}
 
 
 def copy_weekly_rows(source, target, pekerjaan_map):
@@ -149,8 +150,7 @@ def copy_weekly_rows(source, target, pekerjaan_map):
                 "reason": "week_outside_target_timeline",
             })
             continue
-        pending.append(_weekly_row(
-            project=target,
+        pending.append(_weekly_cell(
             pekerjaan_id=pekerjaan_id,
             week_number=row.week_number,
             week_start=target_bucket[0],
@@ -161,9 +161,11 @@ def copy_weekly_rows(source, target, pekerjaan_map):
             notes=row.notes,
         ))
     if pending:
-        PekerjaanProgressWeekly.objects.bulk_create(pending, batch_size=500)
+        written = write_progress(target, pending, kind="historical")
+    else:
+        written = []
     return {
-        "copied": len(pending),
+        "copied": len(written),
         "skipped": len(skipped_rows),
         "skipped_rows": skipped_rows,
     }
