@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 1 BERJALAN** — Langkah 1.1–1.5 selesai; berikutnya 1.6 (hari batas minggu). Lihat bukti §3–§5 dan §9 |
+| Status keseluruhan | **TAHAP 1 BERJALAN** — Langkah 1.1–1.6 selesai; berikutnya 1.7 (frontend). Lihat bukti §3–§5 dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -74,7 +74,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 1.3 | Aturan tulis rencana | DONE | `d615ce08` | 2026-09-29 |
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | DONE | `d64494ac` | 2026-09-29 |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | DONE | `33cd8aa7` | 2026-09-29 |
-| 1.6 | Ubah hari batas minggu | TODO | | |
+| 1.6 | Ubah hari batas minggu | DONE | `e1482ce6` | 2026-09-29 |
 | 1.7 | Frontend (tombol, dialog, grid, Kurva S/Gantt, build) | TODO | | |
 | UAT | Checklist §6 | TODO | | |
 
@@ -113,6 +113,16 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 | `detail_project/views.py` + template Jadwal | Rentang pencatatan | `data-project-end` disediakan dari helper, bukan tanggal kontrak langsung | Tes UI setelah 1.7 |
 | Kunci rencana, penanda, garis | **Batas rencana** (`tanggal_selesai` via helper) | Belum dipasang; sesuai langkah 1.3/1.7 | 1.3/1.7 |
 | `dashboard/*` status, filter, form | **Tidak diubah** sebagai acuan; `ProjectForm` mengecualikan field tambahan | Status & filter tetap memakai akhir kontrak | Tes field/form |
+
+### Langkah 1.6 — Ubah hari batas minggu — DONE 2026-09-29
+
+- Isi yang dikerjakan: kedua API batas minggu meminta pilihan eksplisit sebelum memindahkan rencana yang baru menjadi minggu tambahan; pilihan memindahkan hanya planned, mempertahankan actual/biaya dan rencana historis di minggu tambahan. Tanggal baris mingguan diselaraskan ke bucket baru. Perubahan ditolak bila mengeluarkan baris progres dari seluruh rentang kerja; regenerate gagal me-rollback seluruh perubahan.
+- File diubah: `timeline_utils.py`, `views_api_tahapan_v2.py`, `jadwal_kegiatan_app.js`, `tests_additional_plan_guard.py`, `jadwal_batch_b.test.js`.
+- Uji baru / diubah: pratinjau, pilihan pindah, minggu historis, actual/biaya, rentang yang menyusut, no-op tanpa rencana, rollback regenerate.
+- Hasil uji (perintah + angka): PostgreSQL 21 tes lulus; Vitest `jadwal_batch_b.test.js` 9 tes lulus; `npm run build` berhasil.
+- Commit: `e1482ce6`.
+- Temuan di luar rencana (→ §8): mengganti hari batas dapat mengurangi jumlah bucket masa kerja dan menyembunyikan baris progres paling akhir; perubahan kini ditolak tanpa menghapus data (D-12).
+- Catatan untuk langkah berikutnya: implementasikan tombol/dialog, penanda grid, kunci rencana, Kurva S/Gantt, dan build final di 1.7.
 
 ---
 
@@ -154,6 +164,7 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 | 2026-09-29 | D-9 | G0-1: WIP owner dibiarkan; branch kerja dari HEAD `e0a4cb71` | Owner | Gate 0 |
 | 2026-09-29 | D-10 | G0-5: duplikasi dengan tanggal mulai baru mempertahankan nomor minggu; luapan tidak disalin & dilaporkan | Owner | Langkah 0.3 |
 | 2026-09-29 | D-11 | Saat tanggal timeline duplikasi berubah, durasi tambahan (jumlah hari dari akhir kontrak ke akhir tambahan) dipertahankan dari akhir kontrak hasil salinan | Implementasi 1.2 | W-1b; uji duplikasi dengan tanggal baru |
+| 2026-09-29 | D-12 | Perubahan hari batas yang mengurangi jumlah minggu dan akan menyembunyikan baris progres di luar rentang baru ditolak; tidak ada baris yang dihapus | Implementasi 1.6 | Invariant I-3; 409 pada kedua API; pengguna perlu menyesuaikan timeline terlebih dahulu |
 
 ---
 
@@ -165,6 +176,7 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | Tanggal | Langkah | Temuan | Bukti | Keputusan |
 |---|---|---|---|---|
 | 2026-09-29 | G0-4 | Percobaan pertama memakai database uji bawaan gagal karena database itu tidak ada; hasil dibuang dan baseline diulang dengan nama database khusus | Log `/tmp/twk-baseline-isolated-20260929.log` di container | Baseline terisolasi selesai; database aplikasi tidak disentuh |
+| 2026-09-29 | 1.6 | Perubahan hari batas dapat mengurangi jumlah bucket dan membuat baris progres akhir tidak lagi punya kolom | Tes `test_week_boundary_that_would_hide_progress_outside_new_work_range_is_blocked` | D-12: tolak perubahan dan pertahankan data; kebijakan ini menghindari nilai progres tersembunyi |
 
 ---
 
@@ -188,6 +200,9 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | 1.4 | Resolver timeline, target-field API, field model, dan dialog lama | 50 tes lulus | Tipe perpanjangan/pengurangan, hapus tambahan, penjagaan minggu terbuang, penyelarasan tanggal baris, dan snapshot audit |
 | 2026-09-29 | 1.5 | Dashboard Edit Project, Edit Massal, K-6 planned-only move, timeline guard | 66 tes lulus | Preview menahan penyimpanan; planned masuk ke batas; actual dan biaya sumber/tujuan tidak berubah; proyek mass edit yang butuh keputusan dilewati |
 | 2026-09-29 | 1.5 | Uji tampilan tanggal tambahan dan ubah akhir kontrak melewati tambahan | 17 tes lulus | Tanggal tambahan hanya ditampilkan; form tidak menulis ulang field tersembunyi yang dikosongkan oleh layanan |
+| 2026-09-29 | 1.6 | Uji API batas minggu, rencana terdampak, progres di luar rentang, rollback regenerate | 21 tes lulus | PostgreSQL terisolasi; mencakup kedua API, planned-only move, rencana historis, actual/biaya, dan gagal-regenerate tanpa perubahan parsial |
+| 2026-09-29 | 1.6 | Uji frontend `jadwal_batch_b.test.js` | 9 tes lulus | Dialog pilihan eksplisit dan penolakan aman diperiksa |
+| 2026-09-29 | 1.6 | `npm run build` | Berhasil | Vite menampilkan peringatan bundle Jadwal >500 kB; bundle final dikerjakan bersama tahap 1.7 |
 | | | | | |
 
 ---
