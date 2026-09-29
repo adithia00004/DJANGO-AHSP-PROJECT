@@ -1,17 +1,9 @@
 """Langkah 0.1 (doc 40/41) — jaring pengaman transfer data progres.
 
-Backup JSON -> restore dan duplikasi proyek harus mempertahankan SELURUH baris
+Backup JSON -> restore dan duplikasi proyek harus mempertahankan seluruh baris
 `PekerjaanProgressWeekly` (rencana, realisasi, biaya aktual, catatan, nomor &
-tanggal minggu) beserta metadata timeline proyek.
-
-Uji yang mereproduksi temuan audit backend (docs/REVIEW_BACKEND_JADWAL_
-KETERLAMBATAN_20260929.md) ditandai ``expectedFailure``:
-
-- A: duplikasi tidak menyalin data mingguan & tanggal selesai (langkah 0.3);
-- B: restore membuang minggu terakhir yang sah karena ``ceil(hari/7)`` (langkah 0.2);
-- C: biaya aktual & catatan hilang saat backup-restore (langkah 0.3).
-
-Penanda dicabut di langkah yang memperbaikinya.
+tanggal minggu) beserta metadata timeline proyek. Tes ini menjadi jaring
+pengaman bolak-balik untuk langkah 0.1–0.3.
 """
 import json
 import unittest
@@ -29,6 +21,7 @@ from detail_project.models import (
     Pekerjaan,
     PekerjaanProgressWeekly,
     SubKlasifikasi,
+    TahapPelaksanaan,
 )
 from detail_project.progress_utils import build_week_buckets
 from detail_project.services import DeepCopyService
@@ -88,6 +81,19 @@ class _TransferFixtureMixin:
         row(self.p1, 2, "80", "30", None, "")
         row(self.p2, 2, "90", "10", None, "")
 
+        TahapPelaksanaan.objects.bulk_create([
+            TahapPelaksanaan(
+                project=self.project,
+                nama=f"Week {week}",
+                urutan=week - 1,
+                tanggal_mulai=buckets[week][0],
+                tanggal_selesai=buckets[week][1],
+                is_auto_generated=True,
+                generation_mode="weekly",
+            )
+            for week in buckets
+        ])
+
         self.client.force_login(self.owner)
 
     @staticmethod
@@ -143,7 +149,6 @@ class BackupRestoreRoundtripTests(_TransferFixtureMixin, TestCase):
             (START, END, 0, 6),
         )
 
-    @unittest.expectedFailure  # Temuan B — diperbaiki di langkah 0.2
     def test_restore_keeps_last_short_week(self):
         restored = self._backup_restore()
         self.assertEqual(
@@ -151,12 +156,10 @@ class BackupRestoreRoundtripTests(_TransferFixtureMixin, TestCase):
             self._progress_values(self._rows(self.project)),
         )
 
-    @unittest.expectedFailure  # Temuan B — diperbaiki di langkah 0.2
     def test_export_stats_use_canonical_week_count(self):
         payload = self._backup_payload()
         self.assertEqual(payload["stats"]["total_project_weeks"], 2)
 
-    @unittest.expectedFailure  # Temuan B — diperbaiki di langkah 0.2
     def test_restore_legacy_rows_without_week_dates_uses_canonical_buckets(self):
         payload = self._backup_payload()
         for row in payload["progress_weekly"]:
@@ -170,7 +173,6 @@ class BackupRestoreRoundtripTests(_TransferFixtureMixin, TestCase):
             {key: value[:2] for key, value in source.items()},
         )
 
-    @unittest.expectedFailure  # Temuan C — diperbaiki di langkah 0.3
     def test_restore_keeps_actual_cost_and_notes(self):
         restored = self._backup_restore()
         rows = self._rows(restored)
@@ -178,7 +180,6 @@ class BackupRestoreRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(rows[("P-001", 1)][5], "catatan lapangan")
         self.assertEqual(rows[("P-002", 1)][4], Decimal("0"))  # 0, bukan kosong
 
-    @unittest.expectedFailure  # Temuan B + C — keduanya harus lulus di akhir 0.3
     def test_restore_keeps_every_weekly_row_exactly(self):
         restored = self._backup_restore()
         self.assertEqual(self._rows(restored), self._rows(self.project))
@@ -190,12 +191,10 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
             new_owner=self.owner, new_name="Proyek Transfer (salinan)", **kwargs,
         )
 
-    @unittest.expectedFailure  # Temuan A — diperbaiki di langkah 0.3
     def test_service_copy_copies_every_weekly_row(self):
         copied = self._service_copy(copy_jadwal=True)
         self.assertEqual(self._rows(copied), self._rows(self.project))
 
-    @unittest.expectedFailure  # Temuan A — diperbaiki di langkah 0.3
     def test_service_copy_copies_timeline_metadata(self):
         copied = self._service_copy(copy_jadwal=True)
         self.assertEqual(
@@ -207,7 +206,6 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         copied = self._service_copy(copy_jadwal=False)
         self.assertEqual(self._rows(copied), {})
 
-    @unittest.expectedFailure  # Temuan A — jalur API memakai service yang sama
     def test_api_deep_copy_copies_every_weekly_row(self):
         response = self.client.post(
             reverse("detail_project:api_deep_copy_project", args=[self.project.id]),
@@ -218,7 +216,6 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         copied = Project.objects.get(pk=json.loads(response.content)["new_project"]["id"])
         self.assertEqual(self._rows(copied), self._rows(self.project))
 
-    @unittest.expectedFailure  # Temuan A — jalur form juga memakai DeepCopyService
     def test_dashboard_form_copy_copies_every_weekly_row(self):
         response = self.client.post(
             reverse("dashboard:project_duplicate", kwargs={"pk": self.project.pk}),
@@ -236,6 +233,42 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 302, response.content[:500])
         copied = Project.objects.get(owner=self.owner, nama="Proyek Transfer (form)")
         self.assertEqual(self._rows(copied), self._rows(self.project))
+
+    def test_copy_with_new_start_keeps_week_ordinals_and_rebuilds_dates(self):
+        new_start = date(2026, 9, 20)
+        new_end = date(2026, 9, 27)
+        copied = self._service_copy(
+            new_tanggal_mulai=new_start,
+            new_tanggal_selesai=new_end,
+        )
+        source_rows = self._rows(self.project)
+        copied_rows = self._rows(copied)
+        self.assertEqual(set(copied_rows), set(source_rows))
+        self.assertEqual(copied_rows[("P-001", 1)][:2], (new_start, new_start))
+        self.assertEqual(copied_rows[("P-001", 2)][:2], (date(2026, 9, 21), new_end))
+        self.assertEqual(copied_rows[("P-001", 2)][2:], source_rows[("P-001", 2)][2:])
+
+    def test_shorter_api_copy_reports_progress_weeks_that_do_not_fit(self):
+        response = self.client.post(
+            reverse("detail_project:api_deep_copy_project", args=[self.project.id]),
+            data=json.dumps({
+                "new_name": "Proyek Transfer (rentang pendek)",
+                "new_tanggal_mulai": START.isoformat(),
+                "new_tanggal_selesai": START.isoformat(),
+                "copy_jadwal": True,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content[:500])
+        payload = json.loads(response.content)
+        copied = Project.objects.get(pk=payload["new_project"]["id"])
+        self.assertEqual(set(self._rows(copied)), {("P-001", 1), ("P-002", 1)})
+        self.assertEqual(payload["skipped_items"]["jadwal"], 2)
+        self.assertEqual(payload["warnings"][0]["details"]["weeks_outside_target_timeline"], 2)
+        self.assertEqual(
+            copied.tahapan.filter(is_auto_generated=True, generation_mode="weekly").count(),
+            1,
+        )
 
 
 class NonSundayBoundaryBackupRestoreTests(_TransferFixtureMixin, TestCase):
@@ -257,7 +290,6 @@ class NonSundayBoundaryBackupRestoreTests(_TransferFixtureMixin, TestCase):
             row.week_start_date, row.week_end_date = buckets[row.week_number]
             row.save(update_fields=["week_start_date", "week_end_date", "updated_at"])
 
-    @unittest.expectedFailure  # Temuan B — diperbaiki di langkah 0.2
     def test_restore_keeps_last_week_with_non_sunday_boundary(self):
         restored = self._backup_restore()
         self.assertEqual(

@@ -775,6 +775,7 @@ def project_duplicate(request, pk):
                     new_owner=request.user,
                     new_name=form.cleaned_data['nama'],
                     new_tanggal_mulai=form.cleaned_data.get('tanggal_mulai'),
+                    new_tanggal_selesai=form.cleaned_data.get('tanggal_selesai'),
                     copy_jadwal=True,
                 )
 

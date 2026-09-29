@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 0 BERJALAN** — Gate 0, langkah 0.1, dan 0.2 selesai. Lihat bukti §3, §4, dan §9 |
+| Status keseluruhan | **TAHAP 0 BERJALAN** — Gate 0 dan langkah 0.1–0.3 selesai. Langkah 0.4 berikutnya. Lihat bukti §3, §4, dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -67,7 +67,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 |---|---|---|---|---|
 | 0.1 | Uji bolak-balik backup/restore/duplikasi | DONE | `e54679be` | 2026-09-29 |
 | 0.2 | Restore memakai aturan minggu kanonik (bug B) | DONE | `7024dfec` | 2026-09-29 |
-| 0.3 | Satu penyalin data progres (bug A, C) | TODO | | |
+| 0.3 | Satu penyalin data progres (bug A, C) | DONE | `ebc534f7` | 2026-09-29 |
 | 0.4 | Satu layanan tulis progres | TODO | | |
 | 1.1 | Skema, helper, penyisiran, field target | TODO | | |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | TODO | | |
@@ -175,6 +175,7 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | G0-4 | `npm run test:frontend -- --reporter=dot` | 32 file; 396 lulus, 25 skipped | Run penuh ulang lulus |
 | 2026-09-29 | 0.1 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 3 lulus, 9 expected failure | Menangkap A–C, duplikasi form Dashboard, batas minggu nondefault, statistik export, dan tanggal fallback legacy |
 | 2026-09-29 | 0.2 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 6 lulus, 6 expected failure | Statistik export, minggu pendek Minggu/Jumat, dan tanggal fallback lulus; expected failure tersisa untuk bug A/C |
+| 2026-09-29 | 0.3 | Runner Django PostgreSQL: round-trip transfer, pemisahan format export JSON, dan smoke test Dashboard | 50 tes lulus | Mencakup biaya/catatan, duplikasi service/API/form, tanggal mulai baru, dan minggu yang tidak muat |
 | | | | | |
 
 ---
@@ -190,7 +191,7 @@ Diperiksa ulang di setiap langkah; pelanggaran = langkah tidak boleh `DONE`.
 | I-3 | Realisasi & biaya aktual tidak pernah dipindah atau dihapus diam-diam |
 | I-4 | Rencana hanya dipindah atas pilihan user; pembentukan ulang tidak memindahkan nilai |
 | I-5 | Rentang pencatatan dan batas rencana hanya dihitung lewat helper `timeline_utils` |
-| I-6 | Backup → restore → duplikasi mempertahankan seluruh baris progres dan tanggal proyek |
+| I-6 | Backup → restore mempertahankan seluruh baris progres; duplikasi menyalin semua baris yang muat pada timeline tujuan dan melaporkan baris yang tidak muat |
 | I-7 | Kegagalan suite tidak melebihi baseline (§3) |
 
 ---

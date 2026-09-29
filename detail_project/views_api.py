@@ -6653,6 +6653,7 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
     {
         "new_name": "Project Copy Name",
         "new_tanggal_mulai": "2025-06-01" (optional),
+        "new_tanggal_selesai": "2025-12-31" (optional),
         "copy_jadwal": true (optional, default: true)
     }
 
@@ -6757,6 +6758,21 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
                 "details": {"date_value": payload["new_tanggal_mulai"]}
             }, status=400)
 
+    new_tanggal_selesai = None
+    if payload.get("new_tanggal_selesai"):
+        try:
+            new_tanggal_selesai = datetime.strptime(
+                payload["new_tanggal_selesai"], "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            return JsonResponse({
+                "ok": False,
+                "error_code": 1002,
+                "error": "Format tanggal tidak valid. Gunakan format YYYY-MM-DD.",
+                "error_type": "INVALID_DATE_FORMAT",
+                "details": {"date_value": payload["new_tanggal_selesai"]},
+            }, status=400)
+
     copy_jadwal = payload.get("copy_jadwal", True)
     if not isinstance(copy_jadwal, bool):
         return JsonResponse({
@@ -6774,6 +6790,7 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
             new_owner=request.user,
             new_name=new_name,
             new_tanggal_mulai=new_tanggal_mulai,
+            new_tanggal_selesai=new_tanggal_selesai,
             copy_jadwal=copy_jadwal,
         )
 
@@ -8825,16 +8842,8 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
                     "bobot": str(pt.bobot or 0),
                 })
             
-            progress_list = []
-            for pw in PekerjaanProgressWeekly.objects.filter(project=project):
-                progress_list.append({
-                    "_pekerjaan_ref": pekerjaan_map.get(pw.pekerjaan_id),
-                    "week_number": pw.week_number,
-                    "week_start_date": pw.week_start_date.isoformat() if pw.week_start_date else None,
-                    "week_end_date": pw.week_end_date.isoformat() if pw.week_end_date else None,
-                    "planned_proportion": str(pw.planned_proportion or 0),
-                    "actual_proportion": str(pw.actual_proportion or 0),
-                })
+            from detail_project.progress_transfer import serialize_weekly_rows
+            progress_list = serialize_weekly_rows(project, pekerjaan_map)
             
             export_data["jadwal"] = {
                 "tahapan": tahapan_list,
@@ -9176,16 +9185,8 @@ def export_project_full_json(request: HttpRequest, project_id: int):
                 })
             
             # PekerjaanProgressWeekly
-            progress_list = []
-            for pw in PekerjaanProgressWeekly.objects.filter(project=project):
-                progress_list.append({
-                    "_pekerjaan_ref": pekerjaan_map.get(pw.pekerjaan_id),
-                    "week_number": pw.week_number,
-                    "week_start_date": pw.week_start_date.isoformat() if pw.week_start_date else None,
-                    "week_end_date": pw.week_end_date.isoformat() if pw.week_end_date else None,
-                    "planned_proportion": str(getattr(pw, 'planned_proportion', 0) or 0),
-                    "actual_proportion": str(getattr(pw, 'actual_proportion', 0) or 0),
-                })
+            from detail_project.progress_transfer import serialize_weekly_rows
+            progress_list = serialize_weekly_rows(project, pekerjaan_map)
             
             export_data["tahap_pelaksanaan"] = tahap_list
             export_data["pekerjaan_tahapan"] = assignment_list
@@ -9242,9 +9243,6 @@ def import_project_from_json(request: HttpRequest):
     Uses _export_id references for ID remapping.
     """
     from dashboard.models import Project
-    from .models import (
-        TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
-    )
     from decimal import Decimal
     from datetime import date
     
@@ -9584,81 +9582,27 @@ def import_project_from_json(request: HttpRequest):
                 rounding_base=int(pp.get('rounding_base', 10000)),
             )
         
-        # ========== Optional: Import Progress Data ==========
-        # NOTE: We SKIP importing TahapPelaksanaan and PekerjaanTahapan
-        # because they are DERIVED DATA that will be auto-regenerated from
-        # PekerjaanProgressWeekly (canonical storage) when user opens the
-        # Jadwal Pekerjaan page. This avoids duplicate key conflicts.
-        # The exported data still contains these for reference/debugging.
-        
+        # ========== Optional: Import canonical progress data ==========
         if import_progress and data.get('progress_weekly'):
-            # ========== Smart Week Adjustment ==========
-            # Use the same calendar buckets as the Jadwal grid. ceil(days / 7)
-            # drops valid weeks when a project starts or ends inside a week.
-            from detail_project.timeline_utils import expected_week_count
-            from detail_project.progress_utils import build_week_buckets
-            actual_project_weeks = 0
-            canonical_week_dates = {}
-            if new_project.tanggal_mulai and new_project.tanggal_selesai:
-                week_end_day = new_project.week_end_day if new_project.week_end_day is not None else 6
-                actual_project_weeks = expected_week_count(
-                    new_project.tanggal_mulai,
-                    new_project.tanggal_selesai,
-                    week_end_day,
-                )
-                if actual_project_weeks:
-                    canonical_week_dates = {
-                        week_number: (week_start, week_end)
-                        for week_number, week_start, week_end in build_week_buckets(
-                            new_project.tanggal_mulai,
-                            new_project.tanggal_selesai,
-                            week_end_day,
-                            max_weeks=actual_project_weeks,
-                        )
-                    }
-            
-            # Track stats for response
-            imported_weeks = 0
-            skipped_weeks = 0
-            
-            for pw in data.get('progress_weekly', []):
-                pkj_id = pekerjaan_map.get(pw['_pekerjaan_ref'])
-                week_num = pw['week_number']
-                
-                if pkj_id:
-                    # Skip weeks that don't fit in the new project duration
-                    if actual_project_weeks > 0 and week_num > actual_project_weeks:
-                        skipped_weeks += 1
-                        continue  # Skip this week - it's beyond project scope
+            from detail_project.progress_transfer import restore_weekly_rows
+            from detail_project.progress_utils import sync_weekly_to_tahapan
 
-                    if week_num not in canonical_week_dates:
-                        skipped_weeks += 1
-                        continue
-                    
-                    # Get or calculate week dates
-                    if pw.get('week_start_date') and pw.get('week_end_date'):
-                        # Use dates from export
-                        week_start = date.fromisoformat(pw['week_start_date'])
-                        week_end = date.fromisoformat(pw['week_end_date'])
-                    else:
-                        # Older backups may not carry week dates; derive them
-                        # from the project's canonical calendar bucket.
-                        week_start, week_end = canonical_week_dates[week_num]
-                    
-                    PekerjaanProgressWeekly.objects.create(
-                        project=new_project,
-                        pekerjaan_id=pkj_id,
-                        week_number=week_num,
-                        week_start_date=week_start,
-                        week_end_date=week_end,
-                        planned_proportion=Decimal(pw.get('planned_proportion', '0')),
-                        actual_proportion=Decimal(pw.get('actual_proportion', '0')),
-                    )
-                    imported_weeks += 1
-            
-            # Log adjustment info
-            if skipped_weeks > 0:
-                logger.info(f"Import jadwal: {imported_weeks} progress records imported, {skipped_weeks} skipped (beyond week {actual_project_weeks})")
+            transfer = restore_weekly_rows(
+                new_project,
+                data.get('progress_weekly', []),
+                pekerjaan_map,
+            )
+            # TahapPelaksanaan is the projection, never the progress source.
+            sync_weekly_to_tahapan(
+                new_project.id,
+                mode='weekly',
+                week_end_day=new_project.week_end_day if new_project.week_end_day is not None else 6,
+            )
+            if transfer['skipped']:
+                logger.info(
+                    "Import jadwal: %s progress rows imported, %s skipped outside canonical timeline",
+                    transfer['imported'], transfer['skipped'],
+                )
         
         # Build canonical expanded storage after every raw detail has been
         # imported. The previous call used expand_bundle_to_components with a

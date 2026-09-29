@@ -3972,6 +3972,7 @@ class DeepCopyService:
             'volume_formula': [],
             'template_ahsp_koef_formula': [],
             'ahsp_template': [],
+            'jadwal': [],
         }
 
         # ID mapping dictionaries for FK remapping
@@ -4026,6 +4027,7 @@ class DeepCopyService:
         new_owner,
         new_name,
         new_tanggal_mulai=None,
+        new_tanggal_selesai=None,
         copy_jadwal=True
     ):
         """
@@ -4035,6 +4037,7 @@ class DeepCopyService:
             new_owner: User who will own the copied project
             new_name: Name for the new project
             new_tanggal_mulai: Start date for new project (optional)
+            new_tanggal_selesai: End date for new project (optional)
             copy_jadwal: Whether to copy schedule data (default: True)
 
         Returns:
@@ -4085,6 +4088,14 @@ class DeepCopyService:
                     message=f"Invalid date range: {new_tanggal_mulai}",
                     details={'date': str(new_tanggal_mulai), 'valid_range': '1900-2100'}
                 )
+        if new_tanggal_selesai and (
+            new_tanggal_selesai.year > 2100 or new_tanggal_selesai.year < 1900
+        ):
+            raise DeepCopyValidationError(
+                code=1003,
+                message=f"Invalid date range: {new_tanggal_selesai}",
+                details={'date': str(new_tanggal_selesai), 'valid_range': '1900-2100'},
+            )
 
         # ===== BUSINESS RULE VALIDATION =====
 
@@ -4116,7 +4127,9 @@ class DeepCopyService:
 
         try:
             # Step 1: Copy Project
-            new_project = self._copy_project(new_owner, new_name, new_tanggal_mulai)
+            new_project = self._copy_project(
+                new_owner, new_name, new_tanggal_mulai, new_tanggal_selesai
+            )
 
             # Step 2: Copy ProjectPricing
             self._copy_project_pricing(new_project)
@@ -4349,7 +4362,8 @@ class DeepCopyService:
         self,
         new_owner,
         new_name,
-        new_tanggal_mulai
+        new_tanggal_mulai,
+        new_tanggal_selesai=None,
     ):
         """
         Step 1: Copy the Project instance.
@@ -4365,6 +4379,27 @@ class DeepCopyService:
         from dashboard.models import Project
 
         old_id = self.source.id
+        target_start = new_tanggal_mulai or self.source.tanggal_mulai
+        target_end = new_tanggal_selesai or self.source.tanggal_selesai
+        if (
+            new_tanggal_mulai
+            and not new_tanggal_selesai
+            and self.source.tanggal_mulai
+            and self.source.tanggal_selesai
+        ):
+            # API callers that only choose a new start keep the source duration.
+            target_end = new_tanggal_mulai + (
+                self.source.tanggal_selesai - self.source.tanggal_mulai
+            )
+        if target_start and target_end and target_end < target_start:
+            raise DeepCopyValidationError(
+                code=1003,
+                message="Tanggal selesai duplikat tidak boleh sebelum tanggal mulai.",
+                details={
+                    'tanggal_mulai': str(target_start),
+                    'tanggal_selesai': str(target_end),
+                },
+            )
 
         # Create new project instance with required fields
         new_project = Project(
@@ -4374,12 +4409,17 @@ class DeepCopyService:
             lokasi_project=self.source.lokasi_project,
             nama_client=self.source.nama_client,
             anggaran_owner=self.source.anggaran_owner,
-            tanggal_mulai=new_tanggal_mulai or self.source.tanggal_mulai,
+            tanggal_mulai=target_start,
+            tanggal_selesai=target_end,
+            week_start_day=self.source.week_start_day,
+            week_end_day=self.source.week_end_day,
             is_active=self.source.is_active,
         )
 
         # Copy optional fields if they exist
-        if hasattr(self.source, 'durasi_hari') and self.source.durasi_hari:
+        if target_start and target_end:
+            new_project.durasi_hari = (target_end - target_start).days + 1
+        elif hasattr(self.source, 'durasi_hari') and self.source.durasi_hari:
             new_project.durasi_hari = self.source.durasi_hari
         if hasattr(self.source, 'deskripsi') and self.source.deskripsi:
             new_project.deskripsi = self.source.deskripsi
@@ -5096,12 +5136,34 @@ class DeepCopyService:
         Args:
             new_project: The newly created project
         """
-        tahapan_list = TahapPelaksanaan.objects.filter(project=self.source)
+        tahapan_list = list(TahapPelaksanaan.objects.filter(project=self.source))
+        generated_modes = {
+            tahap.generation_mode
+            for tahap in tahapan_list
+            if tahap.is_auto_generated and tahap.generation_mode in {'daily', 'weekly', 'monthly'}
+        }
+        active_generated_mode = max(
+            generated_modes,
+            key=lambda mode: sum(
+                1 for tahap in tahapan_list
+                if tahap.is_auto_generated and tahap.generation_mode == mode
+            ),
+            default=None,
+        )
 
-        # Prepare instances for bulk creation
+        # Preserve user-defined stages; generated stages are rebuilt from the
+        # target project's dates below so shorter/longer copies have the right
+        # number of periods and do not retain source-calendar dates.
         items_to_create = []
+        day_shift = timedelta(0)
+        if self.source.tanggal_mulai and new_project.tanggal_mulai:
+            day_shift = new_project.tanggal_mulai - self.source.tanggal_mulai
 
         for old_tahapan in tahapan_list:
+            if old_tahapan.is_auto_generated and old_tahapan.generation_mode in {
+                'daily', 'weekly', 'monthly'
+            }:
+                continue
             new_tahapan = TahapPelaksanaan(
                 project=new_project,
                 nama=old_tahapan.nama,
@@ -5111,9 +5173,15 @@ class DeepCopyService:
             if hasattr(old_tahapan, 'deskripsi') and old_tahapan.deskripsi:
                 new_tahapan.deskripsi = old_tahapan.deskripsi
             if hasattr(old_tahapan, 'tanggal_mulai'):
-                new_tahapan.tanggal_mulai = old_tahapan.tanggal_mulai
+                new_tahapan.tanggal_mulai = (
+                    old_tahapan.tanggal_mulai + day_shift
+                    if old_tahapan.tanggal_mulai else None
+                )
             if hasattr(old_tahapan, 'tanggal_selesai'):
-                new_tahapan.tanggal_selesai = old_tahapan.tanggal_selesai
+                new_tahapan.tanggal_selesai = (
+                    old_tahapan.tanggal_selesai + day_shift
+                    if old_tahapan.tanggal_selesai else None
+                )
             if hasattr(old_tahapan, 'is_auto_generated'):
                 new_tahapan.is_auto_generated = old_tahapan.is_auto_generated
             if hasattr(old_tahapan, 'generation_mode') and old_tahapan.generation_mode:
@@ -5129,53 +5197,79 @@ class DeepCopyService:
             batch_size=500
         )
 
-        self.stats['tahapan_copied'] = len(created)
+        generated = []
+        if active_generated_mode:
+            from detail_project.views_api_tahapan import (
+                _generate_daily_tahapan,
+                _generate_monthly_tahapan,
+                _generate_weekly_tahapan,
+            )
+            if active_generated_mode == 'daily':
+                generated = _generate_daily_tahapan(new_project)
+            elif active_generated_mode == 'monthly':
+                generated = _generate_monthly_tahapan(new_project)
+            else:
+                generated = _generate_weekly_tahapan(
+                    new_project,
+                    new_project.week_start_day if new_project.week_start_day is not None else 0,
+                    new_project.week_end_day if new_project.week_end_day is not None else 6,
+                )
+            if generated:
+                TahapPelaksanaan.objects.bulk_create(generated, batch_size=500)
+
+        self.stats['tahapan_copied'] = len(created) + len(generated)
 
     def _copy_jadwal_pekerjaan(self, new_project):
         """
-        Step 12: Copy PekerjaanTahapan instances (Optimized with bulk_create).
-
-        Performance: O(1) queries instead of O(n) queries.
+        Copy canonical weekly progress, then rebuild its derived projection.
 
         Args:
             new_project: The newly created project
         """
-        # Filter by tahapan__project since PekerjaanTahapan doesn't have project field
-        jadwal_list = PekerjaanTahapan.objects.filter(tahapan__project=self.source)
-
-        # Prepare instances for bulk creation
-        items_to_create = []
-
-        for old_jadwal in jadwal_list:
-            old_id = old_jadwal.id
-            old_pekerjaan_id = old_jadwal.pekerjaan_id
-            old_tahapan_id = old_jadwal.tahapan_id
-
-            # Remap FKs
-            new_pekerjaan_id = self.mappings['pekerjaan'].get(old_pekerjaan_id)
-            new_tahapan_id = self.mappings['tahapan'].get(old_tahapan_id)
-
-            if new_pekerjaan_id and new_tahapan_id:
-                new_jadwal = PekerjaanTahapan(
-                    pekerjaan_id=new_pekerjaan_id,
-                    tahapan_id=new_tahapan_id,
-                    proporsi_volume=old_jadwal.proporsi_volume,
-                )
-                # Copy optional fields if they exist
-                if hasattr(old_jadwal, 'catatan') and old_jadwal.catatan:
-                    new_jadwal.catatan = old_jadwal.catatan
-
-                items_to_create.append((old_id, new_jadwal))
-
-        # Bulk create all at once
-        created = self._bulk_create_with_mapping(
-            PekerjaanTahapan,
-            items_to_create,
-            'jadwal',
-            batch_size=500
+        from detail_project.progress_transfer import copy_weekly_rows
+        from detail_project.progress_utils import sync_weekly_to_tahapan
+        generated_mode = (
+            TahapPelaksanaan.objects.filter(
+                project=new_project,
+                is_auto_generated=True,
+                generation_mode__in=['daily', 'weekly', 'monthly'],
+            )
+            .values_list('generation_mode', flat=True)
+            .first()
+            or 'weekly'
         )
 
-        self.stats['jadwal_copied'] = len(created)
+        result = copy_weekly_rows(
+            self.source,
+            new_project,
+            self.mappings['pekerjaan'],
+        )
+        self.stats['jadwal_copied'] = result['copied']
+        if result['skipped']:
+            skipped = result['skipped']
+            self.skipped_items['jadwal'].extend(result['skipped_rows'])
+            outside_timeline = sum(
+                row['reason'] == 'week_outside_target_timeline'
+                for row in result['skipped_rows']
+            )
+            self.warnings.append({
+                'code': 3006,
+                'message': (
+                    f"{skipped} baris progres mingguan tidak disalin; "
+                    f"{outside_timeline} minggu tidak muat pada rentang proyek duplikat."
+                ),
+                'details': {
+                    'skipped_weekly_rows': skipped,
+                    'weeks_outside_target_timeline': outside_timeline,
+                    'unmapped_pekerjaan': skipped - outside_timeline,
+                },
+            })
+
+        sync_weekly_to_tahapan(
+            new_project.id,
+            mode=generated_mode,
+            week_end_day=new_project.week_end_day if new_project.week_end_day is not None else 6,
+        )
 
     # =========================================================================
     # PERFORMANCE OPTIMIZATION HELPERS (FASE 4.1)
