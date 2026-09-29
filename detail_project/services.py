@@ -4392,6 +4392,12 @@ class DeepCopyService:
             target_end = new_tanggal_mulai + (
                 self.source.tanggal_selesai - self.source.tanggal_mulai
             )
+        target_additional_end = None
+        source_additional_end = getattr(self.source, 'tanggal_akhir_tambahan', None)
+        if source_additional_end and target_end and self.source.tanggal_selesai:
+            extension_days = (source_additional_end - self.source.tanggal_selesai).days
+            if extension_days > 0:
+                target_additional_end = target_end + timedelta(days=extension_days)
         if target_start and target_end and target_end < target_start:
             raise DeepCopyValidationError(
                 code=1003,
@@ -4412,6 +4418,7 @@ class DeepCopyService:
             anggaran_owner=self.source.anggaran_owner,
             tanggal_mulai=target_start,
             tanggal_selesai=target_end,
+            tanggal_akhir_tambahan=target_additional_end,
             week_start_day=self.source.week_start_day,
             week_end_day=self.source.week_end_day,
             is_active=self.source.is_active,

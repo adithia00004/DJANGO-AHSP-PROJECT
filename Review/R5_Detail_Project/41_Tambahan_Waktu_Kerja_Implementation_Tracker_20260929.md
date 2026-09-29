@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 1 BERJALAN** — Tahap 0 selesai; penyisiran 1.1 sedang diverifikasi sebelum commit. Lihat bukti §3–§5 dan §9 |
+| Status keseluruhan | **TAHAP 1 BERJALAN** — Tahap 0 dan langkah 1.1–1.2 selesai; berikutnya 1.3. Lihat bukti §3–§5 dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -70,7 +70,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 0.3 | Satu penyalin data progres (bug A, C) | DONE | `8a900ffb` | 2026-09-29 |
 | 0.4 | Satu layanan tulis progres | DONE | `d004a9c1` | 2026-09-29 |
 | 1.1 | Skema, helper, penyisiran, field target | DONE | `606e5668` | 2026-09-29 |
-| 1.2 | Tambahan ikut backup/restore/duplikasi | TODO | | |
+| 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | menunggu commit langkah ini | 2026-09-29 |
 | 1.3 | Aturan tulis rencana | TODO | | |
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | TODO | | |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | TODO | | |
@@ -153,6 +153,7 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 | 2026-09-29 | D-8 | Konsolidasi pinggiran (Tahap 0) sebelum fitur | Owner | Doc 40 §3 |
 | 2026-09-29 | D-9 | G0-1: WIP owner dibiarkan; branch kerja dari HEAD `e0a4cb71` | Owner | Gate 0 |
 | 2026-09-29 | D-10 | G0-5: duplikasi dengan tanggal mulai baru mempertahankan nomor minggu; luapan tidak disalin & dilaporkan | Owner | Langkah 0.3 |
+| 2026-09-29 | D-11 | Saat tanggal timeline duplikasi berubah, durasi tambahan (jumlah hari dari akhir kontrak ke akhir tambahan) dipertahankan dari akhir kontrak hasil salinan | Implementasi 1.2 | W-1b; uji duplikasi dengan tanggal baru |
 
 ---
 
@@ -180,6 +181,7 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | 0.4 | Round-trip transfer, pemisahan export JSON, dan smoke test Dashboard | 56 tes lulus | Backup/restore, salin jadwal, duplikasi Dashboard dan API lulus setelah memakai layanan tulis tunggal |
 | 2026-09-29 | 1.1 | Migrasi Dashboard 0017; 8 modul helper/timeline di PostgreSQL | 65 tes lulus | Field, constraint tanggal, revisi jadwal, Dashboard form, API target-field, helper dan regresi timeline |
 | 2026-09-29 | 1.1 | `python manage.py makemigrations dashboard --check --dry-run` | Tidak ada perubahan model yang belum dimigrasikan | Migrasi 0017 sesuai model |
+| 2026-09-29 | 1.2 | Round-trip progres, export JSON, dashboard smoke di PostgreSQL | 62 tes lulus | Tambahan waktu pulih dari backup dan duplikasi service/API/form; backup legacy tanpa field menghasilkan tambahan kosong |
 | | | | | |
 
 ---

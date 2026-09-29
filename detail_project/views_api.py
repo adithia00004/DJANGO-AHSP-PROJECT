@@ -6823,6 +6823,10 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
                 "nama_client": new_project.nama_client,
                 "tanggal_mulai": new_project.tanggal_mulai.isoformat() if new_project.tanggal_mulai else None,
                 "tanggal_selesai": new_project.tanggal_selesai.isoformat() if hasattr(new_project, 'tanggal_selesai') and new_project.tanggal_selesai else None,
+                "tanggal_akhir_tambahan": (
+                    new_project.tanggal_akhir_tambahan.isoformat()
+                    if new_project.tanggal_akhir_tambahan else None
+                ),
                 "durasi_hari": new_project.durasi_hari if hasattr(new_project, 'durasi_hari') else None,
                 "is_active": new_project.is_active,
             },
@@ -8783,6 +8787,10 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
             "anggaran_owner": str(project.anggaran_owner or 0),
             "tanggal_mulai": project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
             "tanggal_selesai": project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+            "tanggal_akhir_tambahan": (
+                project.tanggal_akhir_tambahan.isoformat()
+                if project.tanggal_akhir_tambahan else None
+            ),
             "durasi_hari": project.durasi_hari,
             "ket_project1": project.ket_project1 or "",
             "ket_project2": project.ket_project2 or "",
@@ -8963,6 +8971,10 @@ def export_project_full_json(request: HttpRequest, project_id: int):
             "anggaran_owner": str(project.anggaran_owner or 0),
             "tanggal_mulai": project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
             "tanggal_selesai": project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+            "tanggal_akhir_tambahan": (
+                project.tanggal_akhir_tambahan.isoformat()
+                if project.tanggal_akhir_tambahan else None
+            ),
             "durasi_hari": project.durasi_hari,
             "ket_project1": project.ket_project1 or "",
             "ket_project2": project.ket_project2 or "",
@@ -9303,6 +9315,24 @@ def import_project_from_json(request: HttpRequest):
                 'message': 'Backup project wajib memuat tanggal_mulai dan tanggal_selesai.',
                 'code': 'incomplete_timeline',
             }, status=400)
+
+        additional_end = None
+        if proj_data.get('tanggal_akhir_tambahan'):
+            try:
+                additional_end = date.fromisoformat(proj_data['tanggal_akhir_tambahan'])
+            except (TypeError, ValueError):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'tanggal_akhir_tambahan pada backup tidak valid.',
+                    'code': 'invalid_additional_work_end',
+                }, status=400)
+            contract_end = date.fromisoformat(proj_data['tanggal_selesai'])
+            if additional_end <= contract_end:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'tanggal_akhir_tambahan harus setelah tanggal_selesai.',
+                    'code': 'invalid_additional_work_end',
+                }, status=400)
         
         new_project = Project(
             owner=request.user,
@@ -9331,6 +9361,7 @@ def import_project_from_json(request: HttpRequest):
             new_project.tanggal_mulai = date.fromisoformat(proj_data['tanggal_mulai'])
         if proj_data.get('tanggal_selesai'):
             new_project.tanggal_selesai = date.fromisoformat(proj_data['tanggal_selesai'])
+        new_project.tanggal_akhir_tambahan = additional_end
         if proj_data.get('durasi_hari'):
             new_project.durasi_hari = proj_data['durasi_hari']
         

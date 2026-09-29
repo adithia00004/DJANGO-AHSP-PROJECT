@@ -150,6 +150,20 @@ class BackupRestoreRoundtripTests(_TransferFixtureMixin, TestCase):
             (START, END, 0, 6),
         )
 
+    def test_backup_restore_keeps_additional_end(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        payload = self._backup_payload()
+        self.assertEqual(payload["project"]["tanggal_akhir_tambahan"], "2026-09-20")
+        restored = self._restore_payload(payload)
+        self.assertEqual(restored.tanggal_akhir_tambahan, date(2026, 9, 20))
+
+    def test_legacy_backup_without_additional_end_restores_without_extension(self):
+        payload = self._backup_payload()
+        payload["project"].pop("tanggal_akhir_tambahan", None)
+        restored = self._restore_payload(payload)
+        self.assertIsNone(restored.tanggal_akhir_tambahan)
+
     def test_restore_keeps_last_short_week(self):
         restored = self._backup_restore()
         self.assertEqual(
@@ -197,10 +211,15 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(self._rows(copied), self._rows(self.project))
 
     def test_service_copy_copies_timeline_metadata(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
         copied = self._service_copy(copy_jadwal=True)
         self.assertEqual(
-            (copied.tanggal_mulai, copied.tanggal_selesai, copied.week_start_day, copied.week_end_day),
-            (START, END, 0, 6),
+            (
+                copied.tanggal_mulai, copied.tanggal_selesai,
+                copied.tanggal_akhir_tambahan, copied.week_start_day, copied.week_end_day,
+            ),
+            (START, END, date(2026, 9, 20), 0, 6),
         )
 
     def test_service_copy_without_jadwal_copies_no_weekly_rows(self):
@@ -208,16 +227,22 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(self._rows(copied), {})
 
     def test_api_deep_copy_copies_every_weekly_row(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
         response = self.client.post(
             reverse("detail_project:api_deep_copy_project", args=[self.project.id]),
             data=json.dumps({"new_name": "Proyek Transfer (API)", "copy_jadwal": True}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201, response.content[:500])
-        copied = Project.objects.get(pk=json.loads(response.content)["new_project"]["id"])
+        payload = json.loads(response.content)
+        copied = Project.objects.get(pk=payload["new_project"]["id"])
         self.assertEqual(self._rows(copied), self._rows(self.project))
+        self.assertEqual(payload["new_project"]["tanggal_akhir_tambahan"], "2026-09-20")
 
     def test_dashboard_form_copy_copies_every_weekly_row(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
         response = self.client.post(
             reverse("dashboard:project_duplicate", kwargs={"pk": self.project.pk}),
             {
@@ -234,8 +259,11 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 302, response.content[:500])
         copied = Project.objects.get(owner=self.owner, nama="Proyek Transfer (form)")
         self.assertEqual(self._rows(copied), self._rows(self.project))
+        self.assertEqual(copied.tanggal_akhir_tambahan, date(2026, 9, 20))
 
     def test_copy_with_new_start_keeps_week_ordinals_and_rebuilds_dates(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
         new_start = date(2026, 9, 20)
         new_end = date(2026, 9, 27)
         copied = self._service_copy(
@@ -248,6 +276,7 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(copied_rows[("P-001", 1)][:2], (new_start, new_start))
         self.assertEqual(copied_rows[("P-001", 2)][:2], (date(2026, 9, 21), new_end))
         self.assertEqual(copied_rows[("P-001", 2)][2:], source_rows[("P-001", 2)][2:])
+        self.assertEqual(copied.tanggal_akhir_tambahan, date(2026, 10, 4))
 
     def test_shorter_api_copy_reports_progress_weeks_that_do_not_fit(self):
         response = self.client.post(
