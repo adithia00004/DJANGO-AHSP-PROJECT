@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **BELUM DIMULAI** — menunggu Gate 0 |
+| Status keseluruhan | **TAHAP 0 BERJALAN** — Gate 0 lulus; langkah 0.1 selesai dan 0.2 terverifikasi. Lihat bukti §3, §4, dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -34,11 +34,11 @@ di luar audit, keputusan owner berubah, atau baseline menghasilkan kegagalan bar
 
 | # | Isi | Keputusan / hasil | Status | Tanggal |
 |---|---|---|---|---|
-| G0-1 | Rapikan git: WIP owner (`dashboard/*`, `views_api.py`, `timeline_repair.js`, template Jadwal, `tests_list_pekerjaan_grow_tree.py`) dan tiga branch bertumpuk | *Menunggu owner* | TODO | |
-| G0-2 | Commit dokumen: rancangan v9, audit backend, doc 40, doc 41 | | TODO | |
-| G0-3 | Buat branch `feat/tambahan-waktu-kerja` | | TODO | |
-| G0-4 | Rekam baseline (§3) | | TODO | |
-| G0-5 | Kebijakan duplikasi dengan tanggal mulai baru (W-1b): (a) pertahankan nomor minggu & hitung ulang tanggal dari tanggal mulai baru, luapan dibuang bila durasi memendek — **usulan**; (b) salin hanya bila tanggal mulai sama, selain itu jadwal tidak disalin; (c) lainnya | *Menunggu owner* | TODO | |
+| G0-1 | Rapikan git: WIP owner (`dashboard/*`, `views_api.py`, `timeline_repair.js`, template Jadwal, `tests_list_pekerjaan_grow_tree.py`) dan tiga branch bertumpuk | **Owner:** WIP dibiarkan di working tree tanpa disentuh; branch kerja dibuat dari HEAD saat itu (membawa tumpukan laporan & edit massal); commit langkah hanya memuat hunk miliknya. Merge tumpukan ke `main` diputuskan terpisah | DONE | 2026-09-29 |
+| G0-2 | Commit dokumen: rancangan v9, audit backend, doc 40, doc 41 | Commit `fc023d93` | DONE | 2026-09-29 |
+| G0-3 | Buat branch `feat/tambahan-waktu-kerja` | Dari `e0a4cb71` (`feat/edit-massal-discoverability`) | DONE | 2026-09-29 |
+| G0-4 | Rekam baseline (§3) | `detail_project` + `dashboard`: 842 tes, 3 kegagalan lama yang diketahui, 40 skipped, 6 expected failure dari tes 0.1; frontend: 396 lulus, 25 skipped | DONE | 2026-09-29 |
+| G0-5 | Kebijakan duplikasi dengan tanggal mulai baru (W-1b) | **Owner: (a) pertahankan nomor minggu** — minggu ke-N tetap minggu ke-N, tanggal minggu dihitung ulang dari tanggal mulai baru; bila durasi baru lebih pendek, minggu yang tidak muat tidak disalin dan dilaporkan | DONE | 2026-09-29 |
 
 **Aturan:** langkah 0.1 boleh dimulai setelah G0-1 s.d. G0-4 lulus. G0-5 harus
 diputuskan sebelum langkah 0.3.
@@ -49,11 +49,10 @@ diputuskan sebelum langkah 0.3.
 
 | Suite | Perintah | Hasil | Catatan |
 |---|---|---|---|
-| `detail_project` penuh (serial) | `python manage.py test detail_project --noinput` | | Kegagalan lama yang diketahui: 3 |
-| `dashboard` penuh | `python manage.py test dashboard --noinput` | | |
-| Uji timeline | `tests_timeline_crud_hardening`, `tests_timeline_resolution_engine`, `tests_timeline_contract_freeze`, `tests_timeline_mass_edit_safety`, `dashboard.tests_timeline_dialog` | | Audit: 42 lulus (SQLite) |
-| Uji export | `tests_export_*`, `tests_wp_export_parity`, `tests_jadwal_monthly_report` | | |
-| Uji JS | `npm test` (bila tersedia) | | |
+| `detail_project` + `dashboard` penuh (serial) | Runner Django pada PostgreSQL, database uji terisolasi `test_twk_codex_20260929` | **842 total; 3 gagal, 40 skipped, 6 expected failure** | Tiga kegagalan sama dengan daftar baseline lama di bawah; enam expected failure adalah tes transfer 0.1 |
+| Uji timeline terarah | 5 modul timeline/dashboard | **53 lulus** | PostgreSQL; dijalankan bersama tes awal 0.1 sebelum penambahan dua kasus tambahan |
+| Uji transfer 0.1 (sebelum langkah 0.2) | `detail_project.tests_progress_transfer_roundtrip` | **12 total; 3 lulus, 9 expected failure** | PostgreSQL; expected failure menandai bug A–C yang belum dikerjakan |
+| Uji frontend | `npm run test:frontend -- --reporter=dot` | **32 file lulus; 396 lulus, 25 skipped** | Satu tes sempat timeout pada proses awal, lulus saat diulang sendiri dan pada run penuh berikutnya |
 
 Kegagalan lama yang diketahui (tidak boleh bertambah):
 1. `tests_wp_b4_readiness.ReadinessContractTests.test_query_budget_constant_no_n_plus_1`
@@ -66,8 +65,8 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 
 | Langkah | Isi | Status | Commit | Tanggal |
 |---|---|---|---|---|
-| 0.1 | Uji bolak-balik backup/restore/duplikasi | TODO | | |
-| 0.2 | Restore memakai aturan minggu kanonik (bug B) | TODO | | |
+| 0.1 | Uji bolak-balik backup/restore/duplikasi | DONE | menunggu commit langkah ini | 2026-09-29 |
+| 0.2 | Restore memakai aturan minggu kanonik (bug B) | WIP | | 2026-09-29 |
 | 0.3 | Satu penyalin data progres (bug A, C) | TODO | | |
 | 0.4 | Satu layanan tulis progres | TODO | | |
 | 1.1 | Skema, helper, penyisiran, field target | TODO | | |
@@ -152,6 +151,8 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 | 2026-09-29 | D-6 | Rencana terdampak saat akhir waktu kerja dimajukan: dialog Edit Project (pindahkan rencana saja / batalkan); Edit Massal lewati & laporkan | Owner + review | Rancangan 3.6 |
 | 2026-09-29 | D-7 | Export dibahas setelah fase ini; teks tanggal di export tidak sekarang | Owner | Rancangan 9 |
 | 2026-09-29 | D-8 | Konsolidasi pinggiran (Tahap 0) sebelum fitur | Owner | Doc 40 §3 |
+| 2026-09-29 | D-9 | G0-1: WIP owner dibiarkan; branch kerja dari HEAD `e0a4cb71` | Owner | Gate 0 |
+| 2026-09-29 | D-10 | G0-5: duplikasi dengan tanggal mulai baru mempertahankan nomor minggu; luapan tidak disalin & dilaporkan | Owner | Langkah 0.3 |
 
 ---
 
@@ -162,7 +163,7 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 
 | Tanggal | Langkah | Temuan | Bukti | Keputusan |
 |---|---|---|---|---|
-| | | | | |
+| 2026-09-29 | G0-4 | Percobaan pertama memakai database uji bawaan gagal karena database itu tidak ada; hasil dibuang dan baseline diulang dengan nama database khusus | Log `/tmp/twk-baseline-isolated-20260929.log` di container | Baseline terisolasi selesai; database aplikasi tidak disentuh |
 
 ---
 
@@ -170,6 +171,10 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 
 | Tanggal | Langkah | Perintah | Hasil | Catatan |
 |---|---|---|---|---|
+| 2026-09-29 | G0-4 | Runner Django PostgreSQL; `detail_project` + `dashboard`; database `test_twk_codex_20260929` | 842 tes: 3 gagal lama, 40 skipped, 6 expected failure | Kegagalan sama dengan tiga guard lama yang sudah didokumentasikan |
+| 2026-09-29 | G0-4 | `npm run test:frontend -- --reporter=dot` | 32 file; 396 lulus, 25 skipped | Run penuh ulang lulus |
+| 2026-09-29 | 0.1 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 3 lulus, 9 expected failure | Menangkap A–C, duplikasi form Dashboard, batas minggu nondefault, statistik export, dan tanggal fallback legacy |
+| 2026-09-29 | 0.2 | `detail_project.tests_progress_transfer_roundtrip` pada PostgreSQL terisolasi | 12 tes: 6 lulus, 6 expected failure | Tes aturan minggu kanonik lulus; expected failure tersisa untuk bug A/C |
 | | | | | |
 
 ---
