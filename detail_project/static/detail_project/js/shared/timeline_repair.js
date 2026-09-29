@@ -34,6 +34,24 @@
     return Number.isFinite(value) ? value : null;
   }
 
+  function timelinePayload(host, revision) {
+    const additionalEnd = host.getAttribute('data-project-additional-end');
+    const contractEnd =
+      host.getAttribute('data-project-contract-end') || host.getAttribute('data-project-end');
+    const payload = {
+      tanggal_mulai: host.getAttribute('data-project-start'),
+      schedule_revision: revision,
+    };
+    if (additionalEnd) {
+      payload.target_field = 'tanggal_akhir_tambahan';
+      payload.tanggal_akhir_tambahan = additionalEnd;
+    } else {
+      payload.target_field = 'tanggal_selesai';
+      payload.tanggal_selesai = contractEnd;
+    }
+    return payload;
+  }
+
   function post(url, payload) {
     return fetch(url, {
       method: 'POST',
@@ -234,11 +252,7 @@
   function preview(host, button) {
     const revision = scheduleRevision();
     button.disabled = true;
-    post(host.getAttribute('data-preview-url'), {
-      tanggal_mulai: host.getAttribute('data-project-start'),
-      tanggal_selesai: host.getAttribute('data-project-end'),
-      schedule_revision: revision,
-    }).then(({ ok, data }) => {
+    post(host.getAttribute('data-preview-url'), timelinePayload(host, revision)).then(({ ok, data }) => {
       button.disabled = false;
       if (!ok || !data || !data.ok) {
         notify((data && data.error) || 'Gagal menganalisis struktur waktu.', 'danger');
@@ -263,10 +277,8 @@
 
     button.disabled = true;
     post(host.getAttribute('data-commit-url'), {
-      tanggal_mulai: host.getAttribute('data-project-start'),
-      tanggal_selesai: host.getAttribute('data-project-end'),
+      ...timelinePayload(host, revision),
       resolution: chosen.resolution,
-      schedule_revision: revision,
     }).then(({ ok, data }) => {
       if (!ok || !data || !data.ok) {
         button.disabled = false;

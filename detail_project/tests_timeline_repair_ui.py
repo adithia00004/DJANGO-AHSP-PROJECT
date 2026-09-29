@@ -76,6 +76,12 @@ class TimelineRepairSourceGuardTests(TestCase):
         self.assertNotIn('.innerHTML', source)
         self.assertIn('textContent', source)
 
+    def test_repair_payload_keeps_contract_and_additional_end_separate(self):
+        source = REPAIR_JS.read_text(encoding='utf-8')
+        self.assertIn("data-project-additional-end", source)
+        self.assertIn("payload.target_field = 'tanggal_akhir_tambahan'", source)
+        self.assertIn("payload.target_field = 'tanggal_selesai'", source)
+
     def test_readiness_autoload_publishes_the_signal(self):
         source = AUTOLOAD_JS.read_text(encoding='utf-8')
         self.assertIn("'readiness:loaded'", source)
@@ -148,6 +154,23 @@ class TimelineRepairFlowTests(TestCase):
             'tanggal_selesai': self.project.tanggal_selesai.isoformat(),
             'schedule_revision': self.project.schedule_revision,
         }
+
+    def _current_timeline_payload(self):
+        payload = {
+            'tanggal_mulai': self.project.tanggal_mulai.isoformat(),
+            'schedule_revision': self.project.schedule_revision,
+        }
+        if self.project.tanggal_akhir_tambahan:
+            payload.update({
+                'target_field': 'tanggal_akhir_tambahan',
+                'tanggal_akhir_tambahan': self.project.tanggal_akhir_tambahan.isoformat(),
+            })
+        else:
+            payload.update({
+                'target_field': 'tanggal_selesai',
+                'tanggal_selesai': self.project.tanggal_selesai.isoformat(),
+            })
+        return payload
 
     # -------------------------------------------------------------------- alur
 
@@ -276,3 +299,45 @@ class TimelineRepairFlowTests(TestCase):
             PekerjaanProgressWeekly.objects.get(week_number=12).planned_proportion,
             Decimal('40.00'),
         )
+
+    def test_repair_of_stale_rows_with_additional_period_keeps_contract_end(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 3, 31)
+        self.project.save(update_fields=['tanggal_akhir_tambahan', 'updated_at'])
+        last_week, _, _ = build_week_buckets(
+            self.project.tanggal_mulai,
+            self.project.tanggal_akhir_tambahan,
+            self.project.week_end_day,
+        )[-1]
+        PekerjaanProgressWeekly.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            week_number=last_week + 1,
+            week_start_date=date(2026, 4, 1),
+            week_end_date=date(2026, 4, 7),
+            planned_proportion=Decimal('40'),
+            actual_proportion=Decimal('0'),
+        )
+        self.assertTrue(compute_project_readiness(self.project)['timeline_stale'])
+
+        preview = self._post(
+            'detail_project:api_preview_project_timeline',
+            self._current_timeline_payload(),
+        )
+        self.assertEqual(preview.status_code, 200, preview.content)
+        preview_body = preview.json()
+        self.assertEqual(preview_body['impact']['target_field'], 'tanggal_akhir_tambahan')
+        self.assertEqual(
+            [item['resolution'] for item in preview_body['previews']],
+            ['follow_date'],
+        )
+
+        commit_payload = self._current_timeline_payload()
+        commit_payload['resolution'] = 'follow_date'
+        commit = self._post(
+            'detail_project:api_commit_project_timeline', commit_payload
+        )
+        self.assertEqual(commit.status_code, 200, commit.content)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.tanggal_selesai, date(2026, 2, 28))
+        self.assertEqual(self.project.tanggal_akhir_tambahan, date(2026, 3, 31))
+        self.assertFalse(compute_project_readiness(self.project)['timeline_stale'])

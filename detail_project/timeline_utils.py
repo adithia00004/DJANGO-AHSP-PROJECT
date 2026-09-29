@@ -350,7 +350,7 @@ def _proposed_project_dates(project, new_start, new_end, target_field):
             'Target perubahan timeline tidak valid.',
             {'safe': False, 'reason': 'invalid_target_field', 'target_field': target_field},
         )
-    _, current_contract_end, current_additional_end = _persisted_project_dates(project)
+    persisted_start, current_contract_end, current_additional_end = _persisted_project_dates(project)
 
     if target_field == 'tanggal_selesai':
         if not new_end:
@@ -365,6 +365,17 @@ def _proposed_project_dates(project, new_start, new_end, target_field):
             else None
         )
     else:
+        if new_start != persisted_start:
+            raise TimelineChangeError(
+                'Perubahan tambahan waktu kerja tidak boleh mengubah tanggal mulai proyek.',
+                {
+                    'safe': False,
+                    'reason': 'additional_timeline_start_changed',
+                    'persisted_start': persisted_start.isoformat() if persisted_start else None,
+                    'requested_start': new_start.isoformat() if new_start else None,
+                    'target_field': target_field,
+                },
+            )
         contract_end = current_contract_end
         additional_end = new_end
         if additional_end and (not contract_end or additional_end <= contract_end):
@@ -450,7 +461,14 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         # new end are at risk.
         affected = records.filter(week_number__gt=new_week_count)
     else:
-        affected = records.none()
+        # A user can open the guided repair dialog precisely because stored
+        # weekly dates have drifted beyond the current project window. Even
+        # when the requested dates match the project, inspect those stale rows
+        # so preview/commit can offer the normal repair choices.
+        affected = records.filter(
+            Q(week_start_date__lt=new_start)
+            | Q(week_end_date__gt=new_work_end)
+        )
     planned = affected.filter(planned_proportion__gt=0)
     actual = affected.filter(
         Q(actual_proportion__gt=0) | Q(actual_cost__isnull=False)
@@ -481,15 +499,17 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
     #   * tanggal mulai bergeser -> seluruh batas minggu dihitung ulang, jadi
     #     realisasi di mana pun ikut berpindah tanggal;
     #   * tanggal selesai saja   -> hanya baris di luar jendela baru terancam;
+    #   * repair tanpa edit tanggal -> actual stale di minggu yang tidak muat
+    #     tetap diblokir, sementara actual pada bucket yang masih muat dijaga;
     #   * ujung diperpanjang     -> tidak ada baris yang berubah, selalu aman.
     if start_changed:
         blocking_qs = records.filter(_actual_filter())
         blocking_reason = 'actual_present_start_shift' if blocking_qs.exists() else None
     else:
-        blocking_qs = (
-            actual.filter(week_number__gt=new_week_count)
-            if end_changed else actual.none()
-        )
+        # Protect actual values both when a proposed end shortens the range and
+        # when the guided repair is asked to fix an already-stale unchanged
+        # range. In both cases only whole weeks beyond the new window are lost.
+        blocking_qs = actual.filter(week_number__gt=new_week_count)
         blocking_reason = 'actual_out_of_window' if blocking_qs.exists() else None
     if (
         not blocking_reason
@@ -527,11 +547,23 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         ]
         recommended_resolution = RESOLUTION_KEEP_ORDINAL
     elif planned.exists():
-        allowed_resolutions = [
-            RESOLUTION_ACCUMULATE_EDGE,
-            RESOLUTION_FOLLOW_DATE,
-        ]
-        recommended_resolution = RESOLUTION_ACCUMULATE_EDGE
+        if (
+            target_field == 'tanggal_akhir_tambahan'
+            and additional_end
+            and contract_boundary < new_week_count
+        ):
+            # The final work-period week is still an extension week. The
+            # accumulate-edge strategy would move planned into a prohibited
+            # week and be rejected by _guard_target, so offer only the safe
+            # option while that additional period remains active.
+            allowed_resolutions = [RESOLUTION_FOLLOW_DATE]
+            recommended_resolution = RESOLUTION_FOLLOW_DATE
+        else:
+            allowed_resolutions = [
+                RESOLUTION_ACCUMULATE_EDGE,
+                RESOLUTION_FOLLOW_DATE,
+            ]
+            recommended_resolution = RESOLUTION_ACCUMULATE_EDGE
     else:
         allowed_resolutions = [RESOLUTION_NONE]
         recommended_resolution = RESOLUTION_NONE

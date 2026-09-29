@@ -23,6 +23,7 @@ from detail_project.readiness import compute_project_readiness
 from detail_project.timeline_utils import (
     TimelineChangeError,
     _guard_target,
+    analyze_project_timeline_change,
     analyze_week_boundary_contract_impact,
 )
 
@@ -258,6 +259,68 @@ class AdditionalWorkPlanGuardTests(TestCase):
         self.assertEqual(row.notes, "catatan akhir masa kerja")
         self.project.refresh_from_db()
         self.assertEqual(self.project.tanggal_akhir_tambahan, date(2026, 9, 20))
+
+    def test_additional_timeline_api_rejects_a_changed_project_start(self):
+        self.client.force_login(self.owner)
+        preview_url = reverse(
+            "detail_project:api_preview_project_timeline",
+            kwargs={"project_id": self.project.pk},
+        )
+        commit_url = reverse(
+            "detail_project:api_commit_project_timeline",
+            kwargs={"project_id": self.project.pk},
+        )
+        base_payload = {
+            "tanggal_mulai": "2026-09-05",
+            "target_field": "tanggal_akhir_tambahan",
+            "tanggal_akhir_tambahan": "2026-09-25",
+            "schedule_revision": self.project.schedule_revision,
+        }
+
+        for url, extra in ((preview_url, {}), (commit_url, {"resolution": "none"})):
+            response = self.client.post(
+                url,
+                data=json.dumps({**base_payload, **extra}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400, response.content)
+            self.assertEqual(
+                response.json()["impact"]["reason"],
+                "additional_timeline_start_changed",
+            )
+
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.tanggal_mulai, date(2026, 9, 6))
+        self.assertEqual(self.project.tanggal_selesai, date(2026, 9, 7))
+        self.assertEqual(self.project.tanggal_akhir_tambahan, date(2026, 9, 20))
+
+    def test_shortening_with_remaining_extension_does_not_offer_rejected_accumulate(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 10, 11)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        _, start, end = build_week_buckets(
+            self.project.tanggal_mulai,
+            self.project.tanggal_akhir_tambahan,
+            self.project.week_end_day,
+        )[5]
+        write_progress(self.project, [{
+            "pekerjaan_id": self.pekerjaan.id,
+            "week_number": 6,
+            "week_start_date": start,
+            "week_end_date": end,
+            "planned_proportion": Decimal("20"),
+            "actual_proportion": Decimal("0"),
+        }], kind="historical")
+
+        impact = analyze_project_timeline_change(
+            self.project,
+            self.project.tanggal_mulai,
+            date(2026, 9, 27),
+            target_field="tanggal_akhir_tambahan",
+        )
+        self.assertEqual(impact["contract_boundary_week"], 2)
+        self.assertEqual(impact["new_week_count"], 4)
+        self.assertEqual(impact["allowed_resolutions"], ["follow_date"])
+        self.assertEqual(impact["recommended_resolution"], "follow_date")
 
     def _seed_week_two_extension_plan(self):
         _, start, end = build_week_buckets(
