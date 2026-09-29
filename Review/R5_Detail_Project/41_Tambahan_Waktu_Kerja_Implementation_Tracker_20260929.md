@@ -73,7 +73,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | `36623610` | 2026-09-29 |
 | 1.3 | Aturan tulis rencana | DONE | `d615ce08` | 2026-09-29 |
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | DONE | `d64494ac` | 2026-09-29 |
-| 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | DONE | menunggu commit langkah ini | 2026-09-29 |
+| 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | DONE | `33cd8aa7` | 2026-09-29 |
 | 1.6 | Ubah hari batas minggu | TODO | | |
 | 1.7 | Frontend (tombol, dialog, grid, Kurva S/Gantt, build) | TODO | | |
 | UAT | Checklist §6 | TODO | | |
