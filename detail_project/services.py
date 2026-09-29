@@ -141,6 +141,7 @@ def build_project_cache_signature(project, *domains):
                 project.id,
                 project.tanggal_mulai,
                 project.tanggal_selesai,
+                getattr(project, "tanggal_akhir_tambahan", None),
                 project.week_start_day,
                 project.week_end_day,
             ),

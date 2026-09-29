@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 0 SELESAI** — Gate 0 dan langkah 0.1–0.4 selesai; berikutnya Tahap 1.1. Lihat bukti §3, §4, dan §9 |
+| Status keseluruhan | **TAHAP 1 BERJALAN** — Tahap 0 selesai; penyisiran 1.1 sedang diverifikasi sebelum commit. Lihat bukti §3–§5 dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -69,7 +69,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 0.2 | Restore memakai aturan minggu kanonik (bug B) | DONE | `7024dfec` | 2026-09-29 |
 | 0.3 | Satu penyalin data progres (bug A, C) | DONE | `8a900ffb` | 2026-09-29 |
 | 0.4 | Satu layanan tulis progres | DONE | `d004a9c1` | 2026-09-29 |
-| 1.1 | Skema, helper, penyisiran, field target | TODO | | |
+| 1.1 | Skema, helper, penyisiran, field target | WIP | | 2026-09-29 |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | TODO | | |
 | 1.3 | Aturan tulis rencana | TODO | | |
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | TODO | | |
@@ -100,19 +100,19 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 
 | Titik (file:baris) | Acuan yang dipakai | Keputusan | Diuji oleh |
 |---|---|---|---|
-| `timeline_utils.project_report_period_counts` | Rentang pencatatan | | |
-| `timeline_utils._persisted_timeline` | Rentang pencatatan | | |
-| `timeline_utils.analyze/apply_project_timeline_change` | Rentang pencatatan + field target | | |
-| `progress_utils` pembentukan tahapan mingguan | Rentang pencatatan | | |
-| `views_api_tahapan_v2.py:174` batas `week_number` | Rentang pencatatan | | |
-| `exports/jadwal_pekerjaan_adapter.py` | Rentang pencatatan | | |
-| `exports/export_manager.py` laporan harian | Rentang pencatatan | | |
-| `readiness.py` | Rentang pencatatan | | |
-| `views_api.py` export/import JSON | Rentang pencatatan | | |
-| `services.py` duplikasi & signature | Rentang pencatatan | | |
-| `detail_project/views.py` + template Jadwal | Rentang pencatatan | | |
-| Kunci rencana, penanda, garis | **Batas rencana** (`tanggal_selesai` via helper) | | |
-| `dashboard/*` (status, filter, form, tampilan) | **Tidak diubah** — tetap akhir waktu kerja | | |
+| `timeline_utils.project_report_period_counts` | Rentang pencatatan | Memakai `work_period_end`; period selector dapat melihat rentang tambahan | Helper 1.1; render export fase berikutnya |
+| `timeline_utils._persisted_timeline` | Rentang pencatatan | Membaca akhir tambahan valid sebagai akhir grid efektif | Helper 1.1 |
+| `timeline_utils.analyze/apply_project_timeline_change` | Rentang pencatatan + field target | `target_field` memisahkan akhir kontrak dari akhir tambahan; durasi Dashboard hanya dihitung untuk akhir kontrak | Tes API target 5 skenario |
+| `progress_utils` pembentukan tahapan mingguan | Rentang pencatatan | Builder/reset memakai akhir masa waktu kerja | Tes regresi timeline 53 lulus |
+| `views_api_tahapan_v2.py` batas `week_number` & timeline API | Rentang pencatatan | Save, preview, commit, dan regenerasi menggunakan rentang efektif; API menerima target tambahan/hapus | Tes target-field + API lama |
+| `exports/jadwal_pekerjaan_adapter.py` | Rentang pencatatan | Ditunda: rendering/export masuk fase 9 sesuai keputusan owner | Fase export |
+| `exports/export_manager.py` laporan harian | Rentang pencatatan | Ditunda: laporan/render masuk fase 9 sesuai keputusan owner | Fase export |
+| `readiness.py` | Rentang pencatatan | Pemeriksaan baris di luar timeline memakai helper | Tes timeline |
+| `views_api.py` statistik backup JSON | Rentang pencatatan | Jumlah minggu mengikuti akhir efektif; import sudah memakai penyalin kanonik 0.3 | Tes transfer |
+| `services.py` duplikasi & signature | Rentang pencatatan | Signature mencakup akhir tambahan; serialisasi/transfer metadata tambahan tetap di langkah 1.2 | 1.2 |
+| `detail_project/views.py` + template Jadwal | Rentang pencatatan | `data-project-end` disediakan dari helper, bukan tanggal kontrak langsung | Tes UI setelah 1.7 |
+| Kunci rencana, penanda, garis | **Batas rencana** (`tanggal_selesai` via helper) | Belum dipasang; sesuai langkah 1.3/1.7 | 1.3/1.7 |
+| `dashboard/*` status, filter, form | **Tidak diubah** sebagai acuan; `ProjectForm` mengecualikan field tambahan | Status & filter tetap memakai akhir kontrak | Tes field/form |
 
 ---
 
@@ -178,6 +178,8 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | 0.3 | Runner Django PostgreSQL: round-trip transfer, pemisahan format export JSON, dan smoke test Dashboard | 50 tes lulus | Mencakup biaya/catatan, duplikasi service/API/form, tanggal mulai baru, dan minggu yang tidak muat |
 | 2026-09-29 | 0.4 | Lima suite timeline/dashboard dan tes transfer pada PostgreSQL | 73 tes lulus | Termasuk uji jenis tulis planned_new, actual, historical, user_move; planned/realisasi/biaya tetap terpisah |
 | 2026-09-29 | 0.4 | Round-trip transfer, pemisahan export JSON, dan smoke test Dashboard | 56 tes lulus | Backup/restore, salin jadwal, duplikasi Dashboard dan API lulus setelah memakai layanan tulis tunggal |
+| 2026-09-29 | 1.1 | Migrasi Dashboard 0017; 8 modul helper/timeline di PostgreSQL | 65 tes lulus | Field, constraint tanggal, revisi jadwal, Dashboard form, API target-field, helper dan regresi timeline |
+| 2026-09-29 | 1.1 | `python manage.py makemigrations dashboard --check --dry-run` | Tidak ada perubahan model yang belum dimigrasikan | Migrasi 0017 sesuai model |
 | | | | | |
 
 ---

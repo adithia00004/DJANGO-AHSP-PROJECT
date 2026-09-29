@@ -1171,14 +1171,17 @@ def _generate_daily_tahapan(project):
     """
     from datetime import timedelta
 
+    from detail_project.timeline_utils import work_period_end
+
     tahapan_list = []
     current_date = project.tanggal_mulai
+    project_end = work_period_end(project)
     day_num = 1
 
     # Indonesian day names
     day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
 
-    while current_date <= project.tanggal_selesai:
+    while current_date <= project_end:
         # Format label as sequential day number; keep date information in description
         date_str = current_date.strftime("%d/%m")
         day_name = day_names_id[current_date.weekday()]
@@ -1217,9 +1220,11 @@ def _generate_weekly_tahapan(project, week_start_day=0, week_end_day=6):
         week_end_day: Python weekday (0=Monday) for week end
     """
     from datetime import timedelta
+    from detail_project.timeline_utils import work_period_end
 
     tahapan_list = []
-    if not project.tanggal_mulai or not project.tanggal_selesai:
+    project_end = work_period_end(project)
+    if not project.tanggal_mulai or not project_end:
         return tahapan_list
 
     week_end_day = week_end_day % 7
@@ -1231,13 +1236,13 @@ def _generate_weekly_tahapan(project, week_start_day=0, week_end_day=6):
     # Helper: Indonesian day names
     day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
 
-    while current_start <= project.tanggal_selesai:
+    while current_start <= project_end:
         # Find the next occurrence of week_end_day on or after current_start
         days_until_end = (week_end_day - current_start.weekday()) % 7
         current_end = current_start + timedelta(days=days_until_end)
 
-        if current_end > project.tanggal_selesai:
-            current_end = project.tanggal_selesai
+        if current_end > project_end:
+            current_end = project_end
 
         # Calculate actual days in this week
         days_in_week = (current_end - current_start).days + 1
@@ -1290,8 +1295,10 @@ def _generate_monthly_tahapan(project):
     partial weeks at month boundaries correctly.
     """
     from datetime import date, timedelta
+    from detail_project.timeline_utils import work_period_end
 
     tahapan_list = []
+    project_end = work_period_end(project)
     month_num = 1
 
     # Indonesian month names
@@ -1323,11 +1330,11 @@ def _generate_monthly_tahapan(project):
             month_start = project.tanggal_mulai
 
         # LAST MONTH EXCEPTION: Adjust end if project ends mid-month
-        if month_end > project.tanggal_selesai:
-            month_end = project.tanggal_selesai
+        if month_end > project_end:
+            month_end = project_end
 
         # Stop if we've passed project end
-        if month_start > project.tanggal_selesai:
+        if month_start > project_end:
             break
 
         # Calculate actual days in this month cycle

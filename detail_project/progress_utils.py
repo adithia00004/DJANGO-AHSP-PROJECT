@@ -342,9 +342,10 @@ def _build_weekly_tahapan_instances(project, week_start_day=0, week_end_day=6):
 
     day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
     tahapan_list = []
+    from detail_project.timeline_utils import work_period_end
 
     for week_num, current_start, current_end in build_week_buckets(
-        project.tanggal_mulai, project.tanggal_selesai, week_end_day
+        project.tanggal_mulai, work_period_end(project), week_end_day
     ):
         days_in_week = (current_end - current_start).days + 1
         start_str = current_start.strftime("%d/%m")
@@ -399,7 +400,8 @@ def reset_project_progress(project, regenerate_weekly=True):
     tahapan_deleted, _ = TahapPelaksanaan.objects.filter(project=project, is_auto_generated=True).delete()
 
     tahapan_created = 0
-    if regenerate_weekly and project.tanggal_mulai and project.tanggal_selesai:
+    from detail_project.timeline_utils import work_period_end
+    if regenerate_weekly and project.tanggal_mulai and work_period_end(project):
         week_start = project.week_start_day if project.week_start_day is not None else 0
         week_end = project.week_end_day if project.week_end_day is not None else ((week_start + 6) % 7)
         new_tahapan = _build_weekly_tahapan_instances(project, week_start, week_end)

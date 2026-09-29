@@ -312,7 +312,7 @@
   data-preview-url="{% url 'detail_project:api_preview_project_timeline' project.id %}"
   data-commit-url="{% url 'detail_project:api_commit_project_timeline' project.id %}"
   data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
-  data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"></div>
+  data-project-end="{{ work_period_end|date:'Y-m-d' }}"></div>
 
 <!-- Main App Container -->
 <div id="tahapan-grid-app" data-project-id="{{ project.id }}"
@@ -323,7 +323,7 @@
   data-api-assignments-base="/detail_project/api/project/{{ project.id }}/pekerjaan/"
   data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}" data-enable-uplot-kurva="true"
   data-project-name="{{ project.nama|escape }}" data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
-  data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}" data-default-time-scale="weekly"
+  data-project-end="{{ work_period_end|date:'Y-m-d'|default:'' }}" data-default-time-scale="weekly"
   data-project-location="{{ project.lokasi_project|default:'-' }}" data-project-owner="{{ project.nama_client|default:'-' }}"
   data-project-source-of-funds="{{ project.sumber_dana|default:'-' }}"
   data-project-budget="{{ project.anggaran_owner|default:0 }}" data-default-input-mode="percentage"

@@ -30,6 +30,7 @@ class ProjectForm(forms.ModelForm):
         exclude = [
             "owner", "index_project", "is_active", "created_at", "updated_at",
             "tahun_project", "week_start_day", "week_end_day", "schedule_revision",
+            "tanggal_akhir_tambahan",
         ]
         widgets = {
             "nama": forms.TextInput(attrs={"class": "form-control", "placeholder": "Masukkan nama project"}),

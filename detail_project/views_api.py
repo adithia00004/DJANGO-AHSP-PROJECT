@@ -9206,10 +9206,10 @@ def export_project_full_json(request: HttpRequest, project_id: int):
             export_data["stats"]["total_progress"] = len(progress_list)
             # Statistics must use the same calendar-week boundaries as Jadwal.
             if project.tanggal_mulai and project.tanggal_selesai:
-                from detail_project.timeline_utils import expected_week_count
+                from detail_project.timeline_utils import expected_week_count, work_period_end
                 export_data["stats"]["total_project_weeks"] = expected_week_count(
                     project.tanggal_mulai,
-                    project.tanggal_selesai,
+                    work_period_end(project),
                     project.week_end_day if project.week_end_day is not None else 6,
                 )
             else:

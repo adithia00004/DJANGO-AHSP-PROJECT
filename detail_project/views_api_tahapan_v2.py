@@ -44,6 +44,7 @@ from detail_project.timeline_utils import (
     build_resolution_preview,
     expected_week_count,
     invalidate_schedule_caches,
+    work_period_end,
 )
 from detail_project.progress_write_service import write_progress
 
@@ -172,9 +173,10 @@ def api_assign_pekerjaan_weekly(request, project_id):
         # JDW-02: batas minggu fallback HARUS mengikuti konfigurasi project (SSOT),
         # bukan hardcode Minggu(6). Pakai project.week_end_day; bila null pakai payload.
         effective_week_end_day = project.week_end_day if project.week_end_day is not None else week_end_day
+        effective_end = work_period_end(project)
         max_week_number = expected_week_count(
             project.tanggal_mulai,
-            project.tanggal_selesai,
+            effective_end,
             effective_week_end_day,
         )
 
@@ -303,6 +305,7 @@ def api_assign_pekerjaan_weekly(request, project_id):
                         project.tanggal_mulai,
                         week_end_day=effective_week_end_day  # JDW-02: konfigurasi project
                     )
+                    week_end = min(week_end, work_period_end(project))
             except Exception:
                 # Fallback: calculate from project start
                 week_start, week_end = get_week_date_range(
@@ -310,6 +313,7 @@ def api_assign_pekerjaan_weekly(request, project_id):
                     project.tanggal_mulai,
                     week_end_day=effective_week_end_day  # JDW-02: konfigurasi project
                 )
+                week_end = min(week_end, work_period_end(project))
 
             saved = write_progress(
                 project,
@@ -612,9 +616,25 @@ def api_preview_project_timeline(request, project_id):
     if revision_error:
         return revision_error
     new_start = _parse_timeline_date(data.get('tanggal_mulai'))
-    new_end = _parse_timeline_date(data.get('tanggal_selesai'))
+    target_field = data.get('target_field') or 'tanggal_selesai'
+    if target_field not in {'tanggal_selesai', 'tanggal_akhir_tambahan'}:
+        return JsonResponse({'ok': False, 'error': 'target_field tidak valid'}, status=400)
+    if target_field == 'tanggal_akhir_tambahan':
+        if data.get('hapus_tambahan'):
+            new_end = None
+        else:
+            raw_end = data.get('tanggal_akhir_tambahan')
+            new_end = _parse_timeline_date(raw_end)
+            if raw_end and new_end is None:
+                return JsonResponse({'ok': False, 'error': 'tanggal_akhir_tambahan tidak valid'}, status=400)
+            if not raw_end:
+                return JsonResponse({'ok': False, 'error': 'tanggal_akhir_tambahan wajib diisi'}, status=400)
+    else:
+        new_end = _parse_timeline_date(data.get('tanggal_selesai'))
     try:
-        impact = analyze_project_timeline_change(project, new_start, new_end)
+        impact = analyze_project_timeline_change(
+            project, new_start, new_end, target_field=target_field
+        )
     except TimelineChangeError as exc:
         return JsonResponse({
             'ok': False,
@@ -626,7 +646,9 @@ def api_preview_project_timeline(request, project_id):
     # yang identik dengan dialog di form edit project.
     previews = [
         _serialize_resolution_preview(
-            build_resolution_preview(project, new_start, new_end, option)
+            build_resolution_preview(
+                project, new_start, new_end, option, target_field=target_field
+            )
         )
         for option in impact.get('allowed_resolutions', [])
     ]
@@ -655,7 +677,21 @@ def api_commit_project_timeline(request, project_id):
     if revision_error:
         return revision_error
     new_start = _parse_timeline_date(data.get('tanggal_mulai'))
-    new_end = _parse_timeline_date(data.get('tanggal_selesai'))
+    target_field = data.get('target_field') or 'tanggal_selesai'
+    if target_field not in {'tanggal_selesai', 'tanggal_akhir_tambahan'}:
+        return JsonResponse({'ok': False, 'error': 'target_field tidak valid'}, status=400)
+    if target_field == 'tanggal_akhir_tambahan':
+        if data.get('hapus_tambahan'):
+            new_end = None
+        else:
+            raw_end = data.get('tanggal_akhir_tambahan')
+            new_end = _parse_timeline_date(raw_end)
+            if raw_end and new_end is None:
+                return JsonResponse({'ok': False, 'error': 'tanggal_akhir_tambahan tidak valid'}, status=400)
+            if not raw_end:
+                return JsonResponse({'ok': False, 'error': 'tanggal_akhir_tambahan wajib diisi'}, status=400)
+    else:
+        new_end = _parse_timeline_date(data.get('tanggal_selesai'))
     resolution = data.get('resolution') or 'none'
     if resolution not in ALL_RESOLUTIONS:
         return JsonResponse({'ok': False, 'error': 'resolution tidak valid'}, status=400)
@@ -668,6 +704,7 @@ def api_commit_project_timeline(request, project_id):
             resolution=resolution,
             user=request.user,
             expected_revision=int(data.get('schedule_revision')),
+            target_field=target_field,
         )
     except TimelineChangeError as exc:
         return JsonResponse({

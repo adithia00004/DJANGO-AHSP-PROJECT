@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from detail_project.models import PekerjaanProgressWeekly
 from detail_project.progress_utils import build_week_buckets
-from detail_project.timeline_utils import expected_week_count
+from detail_project.timeline_utils import expected_week_count, work_period_end
 from detail_project.progress_write_service import write_progress
 
 
@@ -31,7 +31,7 @@ def serialize_weekly_rows(project, pekerjaan_ref_by_id):
 
 def _canonical_week_dates(project):
     start = getattr(project, "tanggal_mulai", None)
-    end = getattr(project, "tanggal_selesai", None)
+    end = work_period_end(project)
     if not start or not end:
         return {}
     week_end_day = getattr(project, "week_end_day", 6)

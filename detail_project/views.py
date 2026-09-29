@@ -317,7 +317,7 @@ def jadwal_pekerjaan_view(request, project_id: int):
     
     # Pilihan periode modal export = periode NYATA proyek (tanpa minimum buatan);
     # sumber yang sama dipakai validasi export di backend.
-    from .timeline_utils import project_report_period_counts
+    from .timeline_utils import project_report_period_counts, work_period_end
 
     total_weeks, total_months = project_report_period_counts(project)
 
@@ -329,6 +329,7 @@ def jadwal_pekerjaan_view(request, project_id: int):
         # Export modal period selection
         "total_weeks": total_weeks,
         "total_months": total_months,
+        "work_period_end": work_period_end(project),
         "change_status": _ensure_change_status(project),
         **_get_sync_initial_timestamps(project),
     }

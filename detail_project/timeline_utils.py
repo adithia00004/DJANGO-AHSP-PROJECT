@@ -6,7 +6,7 @@ different trimming rules.
 """
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
 
@@ -128,6 +128,45 @@ def expected_week_count(project_start, project_end, week_end_day=6):
     return 1 + ((project_end - first_week_end).days + 6) // 7
 
 
+def work_period_end(project):
+    """Akhir rentang pencatatan: tambahan bila valid, selain itu akhir kontrak."""
+    contract_end = getattr(project, 'tanggal_selesai', None)
+    additional_end = getattr(project, 'tanggal_akhir_tambahan', None)
+    if contract_end and additional_end and additional_end > contract_end:
+        return additional_end
+    return contract_end
+
+
+def contract_boundary_week(project):
+    """Nomor minggu yang memuat akhir kontrak, memakai aturan minggu kanonik."""
+    return expected_week_count(
+        getattr(project, 'tanggal_mulai', None),
+        getattr(project, 'tanggal_selesai', None),
+        getattr(project, 'week_end_day', 6),
+    )
+
+
+def is_extension_week(project, week_number):
+    """True hanya untuk minggu sesudah minggu batas kontrak saat ada tambahan."""
+    if not getattr(project, 'tanggal_akhir_tambahan', None):
+        return False
+    try:
+        boundary = contract_boundary_week(project)
+        return boundary > 0 and int(week_number) > boundary
+    except (TypeError, ValueError):
+        return False
+
+
+def is_extension_day(project, target_date):
+    """True untuk hari sesudah kontrak yang masih berada dalam tambahan aktif."""
+    contract_end = getattr(project, 'tanggal_selesai', None)
+    additional_end = getattr(project, 'tanggal_akhir_tambahan', None)
+    return bool(
+        contract_end and additional_end and target_date and
+        contract_end < target_date <= additional_end
+    )
+
+
 REPORT_WEEKS_PER_MONTH = 4
 
 
@@ -140,7 +179,7 @@ def project_report_period_counts(project):
     mengabaikan batas minggu). "Bulan" laporan = 4 minggu.
     """
     start = getattr(project, 'tanggal_mulai', None)
-    end = getattr(project, 'tanggal_selesai', None)
+    end = work_period_end(project)
     weeks = expected_week_count(start, end, getattr(project, 'week_end_day', 6))
     if not weeks:
         # Tanggal proyek belum lengkap: pakai struktur/data mingguan yang ada.
@@ -187,37 +226,101 @@ def _persisted_timeline(project):
     cabang. Karena itu tanggal lama selalu dibaca ulang di sini, bukan dipercaya
     dari atribut instance.
     """
+    start, contract_end, additional_end = _persisted_project_dates(project)
+    effective_end = (
+        additional_end
+        if contract_end and additional_end and additional_end > contract_end
+        else contract_end
+    )
+    return start, effective_end
+
+
+def _persisted_project_dates(project):
+    """Read persisted contract fields; ModelForm may have mutated the instance."""
     if not getattr(project, 'pk', None):
-        return project.tanggal_mulai, project.tanggal_selesai
+        return (
+            project.tanggal_mulai,
+            project.tanggal_selesai,
+            getattr(project, 'tanggal_akhir_tambahan', None),
+        )
     persisted = (
         type(project).objects
         .filter(pk=project.pk)
-        .values('tanggal_mulai', 'tanggal_selesai')
+        .values('tanggal_mulai', 'tanggal_selesai', 'tanggal_akhir_tambahan')
         .first()
     )
     if not persisted:
-        return project.tanggal_mulai, project.tanggal_selesai
-    return persisted['tanggal_mulai'], persisted['tanggal_selesai']
-
-
-def analyze_project_timeline_change(project, new_start, new_end):
-    """Analyze a proposed timeline without mutating project or progress data."""
-    if not new_start or not new_end:
-        raise TimelineChangeError(
-            'Tanggal mulai dan tanggal selesai wajib diisi.',
-            {'safe': False, 'reason': 'incomplete_timeline'},
+        return (
+            project.tanggal_mulai,
+            project.tanggal_selesai,
+            getattr(project, 'tanggal_akhir_tambahan', None),
         )
-    if new_end < new_start:
+    return (
+        persisted['tanggal_mulai'],
+        persisted['tanggal_selesai'],
+        persisted['tanggal_akhir_tambahan'],
+    )
+
+
+def _proposed_project_dates(project, new_start, new_end, target_field):
+    """Resolve the contract fields and effective grid end for one timeline action."""
+    allowed_targets = {'tanggal_selesai', 'tanggal_akhir_tambahan'}
+    if target_field not in allowed_targets:
         raise TimelineChangeError(
-            'Tanggal selesai harus >= tanggal mulai.',
+            'Target perubahan timeline tidak valid.',
+            {'safe': False, 'reason': 'invalid_target_field', 'target_field': target_field},
+        )
+    _, current_contract_end, current_additional_end = _persisted_project_dates(project)
+
+    if target_field == 'tanggal_selesai':
+        if not new_end:
+            raise TimelineChangeError(
+                'Akhir waktu kerja harus diisi.',
+                {'safe': False, 'reason': 'incomplete_timeline'},
+            )
+        contract_end = new_end
+        additional_end = (
+            current_additional_end
+            if current_additional_end and current_additional_end > contract_end
+            else None
+        )
+    else:
+        contract_end = current_contract_end
+        additional_end = new_end
+        if additional_end and (not contract_end or additional_end <= contract_end):
+            raise TimelineChangeError(
+                'Akhir tambahan harus setelah akhir waktu kerja.',
+                {
+                    'safe': False,
+                    'reason': 'additional_end_not_after_contract',
+                    'contract_end': contract_end.isoformat() if contract_end else None,
+                },
+            )
+
+    if not contract_end or contract_end < new_start:
+        raise TimelineChangeError(
+            'Akhir waktu kerja harus sama dengan atau setelah tanggal mulai.',
             {'safe': False, 'reason': 'invalid_order'},
         )
+    work_end = additional_end or contract_end
+    return contract_end, additional_end, work_end
 
+
+def analyze_project_timeline_change(project, new_start, new_end, *, target_field='tanggal_selesai'):
+    """Analyze a proposed timeline without mutating project or progress data."""
+    if not new_start:
+        raise TimelineChangeError(
+            'Tanggal mulai wajib diisi.',
+            {'safe': False, 'reason': 'incomplete_timeline'},
+        )
+    contract_end, additional_end, new_work_end = _proposed_project_dates(
+        project, new_start, new_end, target_field
+    )
     old_start, old_end = _persisted_timeline(project)
     start_changed = (old_start or None) != new_start
-    end_changed = (old_end or None) != new_end
+    end_changed = (old_end or None) != new_work_end
     records = PekerjaanProgressWeekly.objects.filter(project=project)
-    affected = records.filter(_affected_filter(new_start, new_end))
+    affected = records.filter(_affected_filter(new_start, new_work_end))
     planned = affected.filter(planned_proportion__gt=0)
     actual = affected.filter(
         Q(actual_proportion__gt=0) | Q(actual_cost__isnull=False)
@@ -304,9 +407,13 @@ def analyze_project_timeline_change(project, new_start, new_end):
         'old_start': old_start.isoformat() if old_start else None,
         'old_end': old_end.isoformat() if old_end else None,
         'new_start': new_start.isoformat(),
-        'new_end': new_end.isoformat(),
+        'new_end': new_work_end.isoformat(),
+        'target_field': target_field,
+        'target_value': new_end.isoformat() if new_end else None,
+        'new_contract_end': contract_end.isoformat(),
+        'new_additional_end': additional_end.isoformat() if additional_end else None,
         'new_week_count': expected_week_count(
-            new_start, new_end, getattr(project, 'week_end_day', 6)
+            new_start, new_work_end, getattr(project, 'week_end_day', 6)
         ),
     }
 
@@ -437,16 +544,23 @@ RESOLUTION_HELP = {
 }
 
 
-def build_resolution_preview(project, new_start, new_end, resolution):
+def build_resolution_preview(
+    project, new_start, new_end, resolution, *, target_field='tanggal_selesai'
+):
     """Proyeksikan hasil sebuah resolusi TANPA menyentuh database.
 
     Dialog dampak memakai fungsi ini supaya angka yang dilihat user berasal dari
     planner yang sama dengan yang nanti melakukan commit — bukan perkiraan kedua
     yang bisa menyimpang.
     """
+    impact = analyze_project_timeline_change(
+        project, new_start, new_end, target_field=target_field
+    )
     week_end_day = project.week_end_day if project.week_end_day is not None else 6
     old_start, old_end = _persisted_timeline(project)
-    new_buckets = build_week_buckets(new_start, new_end, week_end_day)
+    new_buckets = build_week_buckets(
+        new_start, date.fromisoformat(impact['new_end']), week_end_day
+    )
     old_buckets = build_week_buckets(old_start, old_end, week_end_day)
 
     rows = list(
@@ -646,6 +760,7 @@ def apply_project_timeline_change(
     resolution='none',
     user=None,
     expected_revision=None,
+    target_field='tanggal_selesai',
 ):
     """Apply an approved timeline change as one transaction.
 
@@ -672,7 +787,15 @@ def apply_project_timeline_change(
             },
         )
 
-    impact = analyze_project_timeline_change(project, new_start, new_end)
+    impact = analyze_project_timeline_change(
+        project, new_start, new_end, target_field=target_field
+    )
+    new_work_end = date.fromisoformat(impact['new_end'])
+    new_contract_end = date.fromisoformat(impact['new_contract_end'])
+    new_additional_end = (
+        date.fromisoformat(impact['new_additional_end'])
+        if impact['new_additional_end'] else None
+    )
 
     if resolution not in ALL_RESOLUTIONS:
         raise TimelineChangeError('Resolusi timeline tidak valid.', impact)
@@ -710,7 +833,7 @@ def apply_project_timeline_change(
         if resolution == RESOLUTION_TRIM_PLANNED and impact['planned_records']:
             rows = PekerjaanProgressWeekly.objects.filter(
                 project=project,
-            ).filter(_affected_filter(new_start, new_end)).filter(planned_proportion__gt=0)
+            ).filter(_affected_filter(new_start, new_work_end)).filter(planned_proportion__gt=0)
             for row in rows:
                 trimmed.append({
                     'pekerjaan_id': row.pekerjaan_id,
@@ -734,7 +857,7 @@ def apply_project_timeline_change(
             empty_outside = (
                 PekerjaanProgressWeekly.objects
                 .filter(project=project)
-                .filter(_affected_filter(new_start, new_end))
+                .filter(_affected_filter(new_start, new_work_end))
                 .filter(
                     planned_proportion=0,
                     actual_proportion=0,
@@ -752,7 +875,7 @@ def apply_project_timeline_change(
             )
 
         week_end_day = project.week_end_day if project.week_end_day is not None else 6
-        buckets = build_week_buckets(new_start, new_end, week_end_day)
+        buckets = build_week_buckets(new_start, new_work_end, week_end_day)
         if not buckets:
             raise TimelineChangeError(
                 'Rentang tanggal baru tidak menghasilkan satu pun minggu.',
@@ -774,10 +897,16 @@ def apply_project_timeline_change(
     old_timeline = {
         'tanggal_mulai': project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
         'tanggal_selesai': project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+        'tanggal_akhir_tambahan': (
+            project.tanggal_akhir_tambahan.isoformat()
+            if project.tanggal_akhir_tambahan else None
+        ),
     }
     project.tanggal_mulai = new_start
-    project.tanggal_selesai = new_end
-    project.durasi_hari = (new_end - new_start).days + 1
+    project.tanggal_selesai = new_contract_end
+    project.tanggal_akhir_tambahan = new_additional_end
+    if target_field == 'tanggal_selesai':
+        project.durasi_hari = (new_contract_end - new_start).days + 1
     project.save()
     _regenerate_weekly_structure(project)
     invalidate_schedule_caches(project.id)
@@ -798,7 +927,12 @@ def apply_project_timeline_change(
             new_data={
                 'timeline': {
                     'tanggal_mulai': new_start.isoformat(),
-                    'tanggal_selesai': new_end.isoformat(),
+                    'tanggal_selesai': new_contract_end.isoformat(),
+                    'tanggal_akhir_tambahan': (
+                        new_additional_end.isoformat() if new_additional_end else None
+                    ),
+                    'work_period_end': new_work_end.isoformat(),
+                    'target_field': target_field,
                 },
                 'resolution': resolution,
                 'trimmed_count': len(trimmed),
@@ -808,7 +942,7 @@ def apply_project_timeline_change(
             user=user if getattr(user, 'id', None) else None,
             change_summary=(
                 f'Perubahan timeline {old_timeline["tanggal_mulai"]}–{old_timeline["tanggal_selesai"]} '
-                f'→ {new_start.isoformat()}–{new_end.isoformat()} ({resolution})'
+                f'→ {new_start.isoformat()}–{new_work_end.isoformat()} ({resolution})'
             ),
         )
     except Exception:

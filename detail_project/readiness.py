@@ -483,7 +483,8 @@ def _compute(project):
     # (e.g. project dates were changed after the schedule was built).
     timeline_stale = False
     start = getattr(project, "tanggal_mulai", None)
-    end = getattr(project, "tanggal_selesai", None)
+    from detail_project.timeline_utils import work_period_end
+    end = work_period_end(project)
     if start and end:
         timeline_stale = (
             PekerjaanProgressWeekly.objects.filter(project=project)

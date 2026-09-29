@@ -61,6 +61,12 @@ class Project(models.Model):
         blank=True,
         help_text='Tanggal target penyelesaian project'
     )
+    tanggal_akhir_tambahan = models.DateField(
+        'Akhir Tambahan Waktu Kerja',
+        null=True,
+        blank=True,
+        help_text='Tanggal akhir pencatatan realisasi setelah akhir waktu kerja kontrak',
+    )
     durasi_hari = models.PositiveIntegerField(
         'Durasi Pelaksanaan (hari)',
         null=True,
@@ -96,6 +102,18 @@ class Project(models.Model):
             models.Index(fields=['nama']),
             models.Index(fields=['tahun_project']),
         ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(tanggal_akhir_tambahan__isnull=True)
+                    | models.Q(
+                        tanggal_selesai__isnull=False,
+                        tanggal_akhir_tambahan__gt=models.F('tanggal_selesai'),
+                    )
+                ),
+                name='project_additional_end_after_contract_end',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.index_project or 'PRJ-NEW'} — {self.nama}"
@@ -108,7 +126,7 @@ class Project(models.Model):
         previous = None
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).values(
-                'tanggal_mulai', 'tanggal_selesai', 'week_start_day',
+                'tanggal_mulai', 'tanggal_selesai', 'tanggal_akhir_tambahan', 'week_start_day',
                 'week_end_day', 'schedule_revision'
             ).first()
 
@@ -149,7 +167,10 @@ class Project(models.Model):
 
         structure_changed = bool(previous and any(
             previous.get(field) != getattr(self, field)
-            for field in ('tanggal_mulai', 'tanggal_selesai', 'week_start_day', 'week_end_day')
+            for field in (
+                'tanggal_mulai', 'tanggal_selesai', 'tanggal_akhir_tambahan',
+                'week_start_day', 'week_end_day',
+            )
         ))
         if previous:
             current_revision = previous.get('schedule_revision') or 1
