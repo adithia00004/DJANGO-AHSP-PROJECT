@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 1 BERJALAN** — Tahap 0 dan langkah 1.1–1.2 selesai; berikutnya 1.3. Lihat bukti §3–§5 dan §9 |
+| Status keseluruhan | **TAHAP 1 BERJALAN** — Langkah 1.1–1.3 selesai; berikutnya 1.4. Lihat bukti §3–§5 dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -71,7 +71,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 0.4 | Satu layanan tulis progres | DONE | `d004a9c1` | 2026-09-29 |
 | 1.1 | Skema, helper, penyisiran, field target | DONE | `606e5668` | 2026-09-29 |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | `36623610` | 2026-09-29 |
-| 1.3 | Aturan tulis rencana | TODO | | |
+| 1.3 | Aturan tulis rencana | DONE | menunggu commit langkah ini | 2026-09-29 |
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | TODO | | |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | TODO | | |
 | 1.6 | Ubah hari batas minggu | TODO | | |
@@ -182,6 +182,9 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | 1.1 | Migrasi Dashboard 0017; 8 modul helper/timeline di PostgreSQL | 65 tes lulus | Field, constraint tanggal, revisi jadwal, Dashboard form, API target-field, helper dan regresi timeline |
 | 2026-09-29 | 1.1 | `python manage.py makemigrations dashboard --check --dry-run` | Tidak ada perubahan model yang belum dimigrasikan | Migrasi 0017 sesuai model |
 | 2026-09-29 | 1.2 | Round-trip progres, export JSON, dashboard smoke di PostgreSQL | 62 tes lulus | Tambahan waktu pulih dari backup dan duplikasi service/API/form; backup legacy tanpa field menghasilkan tambahan kosong |
+| 2026-09-29 | 1.3 | Guard API/timeline, readiness historis, regresi Jadwal di PostgreSQL | 73 tes lulus | Planned baru ditolak; actual/biaya diterima; planned historis ditandai dan tetap bisa berdampingan dengan input actual |
+| 2026-09-29 | 1.3 | `npm run test:frontend -- detail_project/static/detail_project/js/tests/readiness_banner.test.js --reporter=dot` | 16 tes lulus | Readiness banner menampilkan planned historis di minggu tambahan |
+| 2026-09-29 | 1.3 | `detail_project.tests_wp_b7_reference_sync` pada PostgreSQL | 46 tes lulus | Kontrak readiness/API lama tetap sesuai setelah versi schema menjadi b4.7 |
 | | | | | |
 
 ---

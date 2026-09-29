@@ -84,7 +84,7 @@ from .models import (
     PekerjaanProgressWeekly,
 )
 
-SCHEMA_VERSION = "b4.6"  # b4.6 = removed dead invalid_coefficient signal (koef<0 now blocked by DB constraint, P2a)
+SCHEMA_VERSION = "b4.7"  # b4.7 adds diagnostics for legacy planned values in added work weeks.
 
 # All signals are now computed; nothing pending.
 PENDING_SIGNALS = ()
@@ -441,12 +441,42 @@ def _compute(project):
     ]
 
     # --- jadwal-derived signals (inc-4a), from the weekly canonical.
-    planned_totals = {
-        r["pekerjaan_id"]: (r["total"] or Decimal("0"))
-        for r in PekerjaanProgressWeekly.objects.filter(project=project)
+    from detail_project.timeline_utils import contract_boundary_week
+    if getattr(project, "tanggal_akhir_tambahan", None):
+        additional_week_filter = Q(week_number__gt=contract_boundary_week(project))
+    else:
+        additional_week_filter = Q(pk__in=[])
+    planned_rows = list(
+        PekerjaanProgressWeekly.objects.filter(project=project)
         .values("pekerjaan_id")
-        .annotate(total=Sum("planned_proportion"))
+        .annotate(
+            total=Sum("planned_proportion"),
+            additional_total=Sum(
+                "planned_proportion", filter=additional_week_filter
+            ),
+        )
+    )
+    planned_totals = {
+        row["pekerjaan_id"]: (row["total"] or Decimal("0"))
+        for row in planned_rows
     }
+    planned_in_additional_weeks = []
+    for row in planned_rows:
+        additional_total = row["additional_total"] or Decimal("0")
+        if additional_total <= 0:
+            continue
+        pekerjaan_id = row["pekerjaan_id"]
+        kode, uraian = _pkj(pekerjaan_id)
+        planned_in_additional_weeks.append({
+            "pekerjaan_id": pekerjaan_id,
+            "kode": kode,
+            "uraian": uraian,
+            "source_table": "PekerjaanProgressWeekly",
+            "source_page": PAGE_JADWAL,
+            "issue": "planned_in_additional_work",
+            "actual": f"{additional_total}",
+        })
+    planned_in_additional_weeks.sort(key=lambda entry: entry["pekerjaan_id"])
     vol_qty = dict(
         VolumePekerjaan.objects.filter(project=project).values_list(
             "pekerjaan_id", "quantity"
@@ -499,6 +529,7 @@ def _compute(project):
         affected_pekerjaan.update(e["affected_pekerjaan"])
     affected_pekerjaan.update(e["pekerjaan_id"] for e in incomplete_planned_allocation)
     affected_pekerjaan.update(e["pekerjaan_id"] for e in allocation_without_volume)
+    affected_pekerjaan.update(e["pekerjaan_id"] for e in planned_in_additional_weeks)
     affected_pekerjaan.update(e["pekerjaan_id"] for e in reference_update_available)
 
     return {
@@ -510,6 +541,7 @@ def _compute(project):
         # Jadwal-derived — live since inc-4a.
         "incomplete_planned_allocation": incomplete_planned_allocation,
         "allocation_without_volume": allocation_without_volume,
+        "planned_in_additional_weeks": planned_in_additional_weeks,
         "timeline_stale": timeline_stale,
         # CUSTOM master reference sync (B7b) — advisory, non-blocking.
         "reference_update_available": reference_update_available,

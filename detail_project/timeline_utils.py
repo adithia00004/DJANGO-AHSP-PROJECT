@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
+from types import SimpleNamespace
 
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
@@ -624,7 +625,7 @@ def build_resolution_preview(
     }
 
 
-def _guard_target(target, impact):
+def _guard_target(target, impact, project, source_rows):
     """Post-condition R-6: batas kuantitas diperiksa, bukan diasumsikan.
 
     Batas "total planned per pekerjaan <= 100%" hanya ditegakkan di
@@ -635,8 +636,47 @@ def _guard_target(target, impact):
     diverifikasi di sini alih-alih dipercaya.
     """
     totals = defaultdict(lambda: {'planned': Decimal('0.00'), 'actual': Decimal('0.00')})
+    source_planned = defaultdict(lambda: Decimal('0.00'))
+    for row in source_rows:
+        source_planned[(row.pekerjaan_id, row.week_number)] += (
+            row.planned_proportion or Decimal('0.00')
+        )
+
+    # Resolution engines also write canonical rows in bulk. Do not let a
+    # user-selected placement introduce planned progress into a new extension
+    # week; unchanged historical planned values remain available for review.
+    from detail_project.progress_write_service import (
+        PlannedProgressOutsideWorkPeriod,
+        validate_progress_write,
+    )
+    policy_project = SimpleNamespace(
+        tanggal_mulai=date.fromisoformat(impact['new_start']),
+        tanggal_selesai=date.fromisoformat(impact['new_contract_end']),
+        tanggal_akhir_tambahan=(
+            date.fromisoformat(impact['new_additional_end'])
+            if impact['new_additional_end'] else None
+        ),
+        week_end_day=project.week_end_day,
+    )
 
     for (pekerjaan_id, week_number), cell in target.items():
+        if cell['planned'] > source_planned[(pekerjaan_id, week_number)]:
+            try:
+                validate_progress_write(
+                    policy_project,
+                    kind='user_move',
+                    week_number=week_number,
+                    planned=cell['planned'],
+                )
+            except PlannedProgressOutsideWorkPeriod as exc:
+                raise TimelineChangeError(
+                    str(exc),
+                    {
+                        **impact,
+                        'blocking_reason': 'planned_in_extension',
+                        'blocking_week_numbers': [week_number],
+                    },
+                ) from exc
         for field in ('planned', 'actual'):
             if cell[field] > _PERCENT_MAX + _PERCENT_TOLERANCE:
                 raise TimelineChangeError(
@@ -890,7 +930,7 @@ def apply_project_timeline_change(
         target, resolution_counts = plan_timeline_resolution(
             rows, buckets, new_start, resolution
         )
-        _guard_target(target, impact)
+        _guard_target(target, impact, project, rows)
         rows_before = _snapshot_rows(rows)
         _write_target(project, rows, target, buckets)
 

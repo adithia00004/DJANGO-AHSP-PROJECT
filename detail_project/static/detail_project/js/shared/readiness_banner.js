@@ -124,6 +124,10 @@ function buildReadinessBannerHTML(readiness) {
   if (ipa.length) {
     lines.push(`<li><strong>${ipa.length}</strong> pekerjaan jadwalnya belum 100%: ${codes(ipa, 'kode')} <span class="text-muted">(lengkapi di Jadwal)</span></li>`);
   }
+  const pia = readiness.planned_in_additional_weeks || [];
+  if (pia.length) {
+    lines.push(`<li><strong>${pia.length}</strong> pekerjaan memiliki rencana lama pada minggu tambahan: ${codes(pia, 'kode')} <span class="text-muted">(data historis; hanya realisasi yang boleh ditambahkan)</span></li>`);
+  }
   if (readiness.timeline_stale) {
     lines.push('<li>Jadwal tidak sesuai rentang tanggal proyek <span class="text-muted">(perlu regenerasi di Jadwal)</span></li>');
   }

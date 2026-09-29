@@ -46,7 +46,10 @@ from detail_project.timeline_utils import (
     invalidate_schedule_caches,
     work_period_end,
 )
-from detail_project.progress_write_service import write_progress
+from detail_project.progress_write_service import (
+    PlannedProgressOutsideWorkPeriod,
+    write_progress,
+)
 
 # Import helper from original views
 from detail_project.views_api_tahapan import _owner_or_404
@@ -315,22 +318,31 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 )
                 week_end = min(week_end, work_period_end(project))
 
-            saved = write_progress(
-                project,
-                [{
-                    'pekerjaan_id': pekerjaan.id,
+            try:
+                saved = write_progress(
+                    project,
+                    [{
+                        'pekerjaan_id': pekerjaan.id,
+                        'week_number': week_number,
+                        'week_start_date': week_start,
+                        'week_end_date': week_end,
+                        'planned_proportion': proportion_decimal if progress_mode == 'planned' else Decimal('0'),
+                        'actual_proportion': proportion_decimal if progress_mode == 'actual' else Decimal('0'),
+                        'actual_cost': actual_cost_decimal,
+                        'has_actual_cost': has_actual_cost if progress_mode == 'actual' else False,
+                        'clear_actual_cost': clear_actual_cost if progress_mode == 'actual' else False,
+                        'notes': notes,
+                    }],
+                    kind='planned_new' if progress_mode == 'planned' else 'actual',
+                )[0]
+            except PlannedProgressOutsideWorkPeriod as exc:
+                errors.append({
+                    'error': str(exc),
+                    'pekerjaan_id': pekerjaan_id,
                     'week_number': week_number,
-                    'week_start_date': week_start,
-                    'week_end_date': week_end,
-                    'planned_proportion': proportion_decimal if progress_mode == 'planned' else Decimal('0'),
-                    'actual_proportion': proportion_decimal if progress_mode == 'actual' else Decimal('0'),
-                    'actual_cost': actual_cost_decimal,
-                    'has_actual_cost': has_actual_cost if progress_mode == 'actual' else False,
-                    'clear_actual_cost': clear_actual_cost if progress_mode == 'actual' else False,
-                    'notes': notes,
-                }],
-                kind='planned_new' if progress_mode == 'planned' else 'actual',
-            )[0]
+                    'code': 'planned_in_extension',
+                })
+                continue
             wp = saved['record']
             created = saved['created']
 

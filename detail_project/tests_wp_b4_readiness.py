@@ -139,6 +139,32 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(entry["actual"], "60.00")
         self.assertEqual(entry["source_page"], "jadwal")
 
+    def test_readiness_marks_legacy_planned_rows_in_additional_weeks(self):
+        self.project.tanggal_mulai = date(2026, 1, 1)
+        self.project.tanggal_selesai = date(2026, 1, 14)
+        self.project.tanggal_akhir_tambahan = date(2026, 1, 28)
+        self.project.save()
+        pekerjaan = self._pekerjaan("P-LEGACY-PLAN")
+        VolumePekerjaan.objects.create(
+            project=self.project,
+            pekerjaan=pekerjaan,
+            quantity=Decimal("1.000"),
+        )
+        self._weekly(
+            pekerjaan,
+            4,
+            "20.00",
+            start="2026-01-19",
+            end="2026-01-25",
+        )
+
+        readiness = compute_project_readiness(self.project)
+        entries = readiness["planned_in_additional_weeks"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["pekerjaan_id"], pekerjaan.id)
+        self.assertEqual(entries[0]["issue"], "planned_in_additional_work")
+        self.assertIn(pekerjaan.id, readiness["affected_pekerjaan"])
+
     def test_incomplete_planned_allocation_honors_one_basis_point_tolerance(self):
         p_tolerated = self._pekerjaan("P-99-99")
         p_incomplete = self._pekerjaan("P-99-98")
@@ -441,7 +467,7 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(r["incomplete_planned_allocation"], [])
         self.assertEqual(r["allocation_without_volume"], [])
         self.assertFalse(r["timeline_stale"])
-        self.assertEqual(r["schema_version"], "b4.6")
+        self.assertEqual(r["schema_version"], "b4.7")
 
     # ----- affected_items canonical index (Master Plan minimum contract) -
     def test_affected_items_is_canonical_item_index(self):
@@ -668,7 +694,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertIn("readiness", body)
-        self.assertEqual(body["readiness"]["schema_version"], "b4.6")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.7")
 
     def test_readiness_reflects_missing_price_and_volume(self):
         body = self.client.get(self.url).json()
@@ -692,7 +718,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["readiness"]["schema_version"], "b4.6")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.7")
         self.assertIn("BHN-NULL", {e["kode"] for e in body["readiness"]["missing_price"]})
 
     def test_dedicated_readiness_endpoint_is_owner_scoped(self):

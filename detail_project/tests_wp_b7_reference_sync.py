@@ -154,7 +154,7 @@ class ReferenceUpdateAvailableSignalTests(MasterReferenceSignatureTests):
         return readiness["reference_update_available"]
 
     def test_schema_version_is_b4_6(self):
-        self.assertEqual(compute_project_readiness(self.project)["schema_version"], "b4.6")
+        self.assertEqual(compute_project_readiness(self.project)["schema_version"], "b4.7")
 
     def test_no_signal_when_in_sync(self):
         ahsp = self._master("A.1")

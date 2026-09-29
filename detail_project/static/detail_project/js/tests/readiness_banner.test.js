@@ -95,6 +95,24 @@ describe('buildReadinessBannerHTML', () => {
     expect(html).toContain('P-A');
   });
 
+  test('renders legacy planned values in additional work weeks', () => {
+    const html = buildReadinessBannerHTML({
+      planned_in_additional_weeks: [{ kode: 'P-EXT' }],
+    });
+    expect(html).toContain('memiliki rencana lama pada minggu tambahan');
+    expect(html).toContain('P-EXT');
+    expect(html).toContain('data historis');
+  });
+
+  test('renders legacy planned values recorded in additional work weeks', () => {
+    const html = buildReadinessBannerHTML({
+      planned_in_additional_weeks: [{ kode: 'P-EXT' }],
+    });
+    expect(html).toContain('memiliki rencana lama pada minggu tambahan');
+    expect(html).toContain('P-EXT');
+    expect(html).toContain('data historis');
+  });
+
   test('renders reference_update_available signal (B7b)', () => {
     const html = buildReadinessBannerHTML({
       reference_update_available: [{ kode: 'A.2.3.1.1' }],

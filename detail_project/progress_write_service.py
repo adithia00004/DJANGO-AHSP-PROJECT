@@ -5,9 +5,24 @@ from decimal import Decimal
 from django.db import transaction
 
 from detail_project.models import PekerjaanProgressWeekly
+from detail_project.timeline_utils import is_extension_week
 
 
 WRITE_KINDS = frozenset({"planned_new", "actual", "historical", "user_move"})
+
+
+class PlannedProgressOutsideWorkPeriod(ValueError):
+    """A new/moved planned value cannot be stored after the contract boundary."""
+
+
+def validate_progress_write(project, *, kind, week_number, planned):
+    if kind in {"planned_new", "user_move"} and planned > 0 and is_extension_week(project, week_number):
+        contract_end = getattr(project, "tanggal_selesai", None)
+        contract_label = contract_end.strftime("%d-%m-%Y") if contract_end else ""
+        raise PlannedProgressOutsideWorkPeriod(
+            "Rencana tidak bisa diisi pada minggu penambahan waktu kerja"
+            + (f" (setelah {contract_label})." if contract_label else ".")
+        )
 
 
 @transaction.atomic
@@ -31,6 +46,9 @@ def write_progress(project, cells, *, kind):
 
         planned = Decimal(str(cell.get("planned_proportion", 0) or 0))
         actual = Decimal(str(cell.get("actual_proportion", 0) or 0))
+        validate_progress_write(
+            project, kind=kind, week_number=week_number, planned=planned
+        )
         has_actual_cost = cell.get("has_actual_cost", "actual_cost" in cell)
         clear_actual_cost = cell.get("clear_actual_cost", False)
         actual_cost = cell.get("actual_cost")
