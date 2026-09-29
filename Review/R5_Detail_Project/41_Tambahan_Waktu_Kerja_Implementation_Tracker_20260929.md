@@ -70,7 +70,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 0.3 | Satu penyalin data progres (bug A, C) | DONE | `8a900ffb` | 2026-09-29 |
 | 0.4 | Satu layanan tulis progres | DONE | `d004a9c1` | 2026-09-29 |
 | 1.1 | Skema, helper, penyisiran, field target | DONE | `606e5668` | 2026-09-29 |
-| 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | menunggu commit langkah ini | 2026-09-29 |
+| 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | `36623610` | 2026-09-29 |
 | 1.3 | Aturan tulis rencana | TODO | | |
 | 1.4 | Perpanjang / pendekkan / hapus tambahan | TODO | | |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | TODO | | |
