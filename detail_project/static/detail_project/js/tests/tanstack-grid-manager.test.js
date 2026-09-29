@@ -113,6 +113,40 @@ describe('TanStackGridManager', () => {
             expect(manager.currentRows.length).toBe(1); // Only root in flat rows
             expect(manager.currentRows[0].subRows.length).toBe(2);
         });
+
+        test('locks extension weeks only in planned mode while keeping boundary editable', () => {
+            mockState.workPeriodMeta = { additional_end: '2026-09-20' };
+            mockState.workPeriodMeta.contract_end = '2026-09-07';
+            mockState.progressMode = 'planned';
+            mockState.displayScale = 'weekly';
+            const timeColumns = [
+                {
+                    id: 'col_2', fieldId: 'col_2', label: 'Week 2', isBoundaryWeek: true,
+                    workEndDate: '2026-09-07', startDate: new Date(2026, 8, 7), endDate: new Date(2026, 8, 13),
+                },
+                {
+                    id: 'col_3', fieldId: 'col_3', label: 'Week 3', isExtensionWeek: true,
+                    workEndDate: '2026-09-07', startDate: new Date(2026, 8, 14), endDate: new Date(2026, 8, 20),
+                },
+            ];
+
+            manager.updateData({ tree: [], timeColumns });
+            let timeDefs = manager.currentColumns.filter((column) => column.meta?.timeColumn);
+            expect(timeDefs[0].meta.readOnly).toBe(false);
+            expect(timeDefs[1].meta.readOnly).toBe(true);
+            expect(manager._isColumnEditable(timeDefs[0])).toBe(true);
+            expect(manager._isColumnEditable(timeDefs[1])).toBe(false);
+            expect(manager.headerInner.querySelector('.contract-boundary-header .tanstack-grid-header-status').textContent)
+                .toBe('Waktu kerja berakhir Senin');
+            expect(manager.headerInner.querySelector('.extension-week-header .tanstack-grid-header-status').textContent)
+                .toBe('Penambahan');
+
+            mockState.progressMode = 'actual';
+            manager.updateData({ tree: [], timeColumns });
+            timeDefs = manager.currentColumns.filter((column) => column.meta?.timeColumn);
+            expect(timeDefs[1].meta.readOnly).toBe(false);
+            expect(manager._isColumnEditable(timeDefs[1])).toBe(true);
+        });
     });
 
     describe('getAllCellBoundingRects()', () => {

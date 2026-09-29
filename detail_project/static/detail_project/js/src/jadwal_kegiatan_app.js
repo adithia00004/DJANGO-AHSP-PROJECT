@@ -453,6 +453,8 @@ class JadwalKegiatanApp {
     this.state.projectName = dataset.projectName || this.state.projectName;
     this.state.projectStart = dataset.projectStart || this.state.projectStart;
     this.state.projectEnd = dataset.projectEnd || this.state.projectEnd;
+    this.state.contractEndDate = dataset.projectContractEnd || this.state.contractEndDate;
+    this.state.additionalEndDate = dataset.projectAdditionalEnd || this.state.additionalEndDate;
     const scheduleRevision = Number.parseInt(dataset.scheduleRevision || '', 10);
     if (Number.isFinite(scheduleRevision) && scheduleRevision > 0) {
       this.state.scheduleRevision = scheduleRevision;
@@ -520,6 +522,8 @@ class JadwalKegiatanApp {
           (this.state.apiEndpoints && this.state.apiEndpoints.save) ||
           this._getDefaultSaveEndpoint(),
         weekBoundary: dataset.apiWeekBoundary || '',
+        timelinePreview: dataset.apiTimelinePreview || '',
+        timelineCommit: dataset.apiTimelineCommit || '',
         regenerateTahapan: dataset.apiRegenerateTahapan || '',
         reset: dataset.apiResetProgress || (this.state.apiEndpoints && this.state.apiEndpoints.reset) || '',
       },
@@ -580,6 +584,386 @@ class JadwalKegiatanApp {
       const derivedStart = (nextEnd + 1) % 7;
       this._handleWeekBoundaryChange({ weekStartDay: derivedStart, weekEndDay: nextEnd, source: 'end' });
     });
+  }
+
+  _setupWorkExtensionControls() {
+    const button = this.state.domRefs?.workExtensionButton;
+    const modal = this.state.domRefs?.workExtensionModal;
+    if (!modal || this._workExtensionHandlersAttached) {
+      this._syncWorkExtensionButtonVisibility();
+      return;
+    }
+
+    const dateInput = modal.querySelector('#work-extension-end-date');
+    const deleteButton = modal.querySelector('#btn-delete-work-extension');
+    const saveButton = modal.querySelector('#btn-save-work-extension');
+    button?.addEventListener('click', () => this._openWorkExtensionDialog());
+    dateInput?.addEventListener('input', () => {
+      this._workExtensionDeleteRequested = false;
+      if (deleteButton) {
+        deleteButton.disabled = false;
+        deleteButton.classList.toggle('d-none', !this.state.additionalEndDate);
+      }
+      if (saveButton) saveButton.textContent = 'Simpan';
+      this._previewWorkExtension(false);
+    });
+    deleteButton?.addEventListener('click', () => {
+      this._workExtensionDeleteRequested = true;
+      if (dateInput) dateInput.value = '';
+      deleteButton.classList.add('d-none');
+      this._previewWorkExtension(true);
+    });
+    saveButton?.addEventListener('click', () => this._commitWorkExtension());
+    modal.addEventListener('shown.bs.modal', () => dateInput?.focus());
+    this._workExtensionHandlersAttached = true;
+    this._syncWorkExtensionButtonVisibility();
+  }
+
+  _syncWorkExtensionButtonVisibility(mode = this.state.progressMode) {
+    const button = this.state.domRefs?.workExtensionButton;
+    if (button) {
+      button.classList.toggle('d-none', (mode || 'planned') !== 'actual');
+    }
+  }
+
+  _openWorkExtensionDialog() {
+    if ((this.state.progressMode || 'planned') !== 'actual') {
+      this._syncWorkExtensionButtonVisibility();
+      return;
+    }
+    if (this.state.isDirty || this._getModifiedCount() > 0) {
+      this.showToast(
+        'Simpan atau batalkan perubahan di grid terlebih dahulu. Perpanjangan waktu kerja membentuk ulang kolom minggu.',
+        'warning',
+        4200,
+      );
+      return;
+    }
+
+    const modalEl = this.state.domRefs?.workExtensionModal;
+    const modalApi = globalThis.bootstrap?.Modal;
+    if (!modalEl || !modalApi) {
+      this.showToast('Dialog perubahan waktu kerja tidak tersedia.', 'danger');
+      return;
+    }
+
+    const meta = this.state.workPeriodMeta || {};
+    const contractEnd = meta.contract_end || this.state.contractEndDate;
+    const additionalEnd = meta.additional_end || this.state.additionalEndDate;
+    const dateInput = modalEl.querySelector('#work-extension-end-date');
+    const deleteButton = modalEl.querySelector('#btn-delete-work-extension');
+    const info = modalEl.querySelector('#work-extension-current-period');
+    const detection = modalEl.querySelector('#work-extension-detection');
+    const saveButton = modalEl.querySelector('#btn-save-work-extension');
+    const options = modalEl.querySelector('#work-extension-resolution-options');
+    if (!contractEnd || !dateInput || !saveButton) {
+      this.showToast('Tanggal akhir waktu kerja belum tersedia.', 'danger');
+      return;
+    }
+
+    this._workExtensionDeleteRequested = false;
+    this._workExtensionPreviewData = null;
+    this._workExtensionPreviewToken = (this._workExtensionPreviewToken || 0) + 1;
+    dateInput.min = this._addIsoDays(contractEnd, 1);
+    dateInput.value = additionalEnd || dateInput.min;
+    dateInput.disabled = false;
+    if (deleteButton) {
+      deleteButton.classList.toggle('d-none', !additionalEnd);
+      deleteButton.disabled = false;
+    }
+    if (info) {
+      info.textContent = `Akhir waktu kerja: ${this._formatIsoDate(contractEnd)} · Tambahan: ${additionalEnd ? this._formatIsoDate(additionalEnd) : 'belum ada'}.`;
+    }
+    if (detection) {
+      detection.className = 'alert alert-info py-2 mt-3 mb-2';
+      detection.textContent = 'Pilih tanggal untuk melihat dampaknya.';
+    }
+    if (options) {
+      options.textContent = '';
+      options.classList.add('d-none');
+    }
+    saveButton.disabled = true;
+    saveButton.textContent = 'Simpan';
+
+    const modal = modalApi.getOrCreateInstance(modalEl);
+    modal.show();
+    this._previewWorkExtension(false);
+  }
+
+  async _previewWorkExtension(deleteAdditional = false) {
+    const modal = this.state.domRefs?.workExtensionModal;
+    const root = this.state.domRefs?.root;
+    if (!modal || !root) return;
+    const dateInput = modal.querySelector('#work-extension-end-date');
+    const detection = modal.querySelector('#work-extension-detection');
+    const guarantee = modal.querySelector('#work-extension-guarantee');
+    const saveButton = modal.querySelector('#btn-save-work-extension');
+    const options = modal.querySelector('#work-extension-resolution-options');
+    if (!dateInput || !detection || !saveButton) return;
+
+    const token = (this._workExtensionPreviewToken || 0) + 1;
+    this._workExtensionPreviewToken = token;
+    this._workExtensionPreviewData = null;
+    saveButton.disabled = true;
+    saveButton.textContent = deleteAdditional ? 'Hapus tambahan' : 'Simpan';
+    if (options) {
+      options.textContent = '';
+      options.classList.add('d-none');
+    }
+    if (guarantee) guarantee.textContent = 'Nilai progres yang sudah ada tidak berubah.';
+    if (!deleteAdditional && (!dateInput.value || dateInput.value < dateInput.min)) {
+      detection.className = 'alert alert-warning py-2 mt-3 mb-2';
+      detection.textContent = 'Tanggal akhir tambahan harus setelah akhir waktu kerja.';
+      return;
+    }
+
+    detection.className = 'alert alert-info py-2 mt-3 mb-2';
+    detection.textContent = 'Memeriksa dampak perubahan…';
+    try {
+      const response = await fetch(this.state.apiEndpoints?.timelinePreview, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': this._getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({
+          tanggal_mulai: this.state.projectStart,
+          target_field: 'tanggal_akhir_tambahan',
+          tanggal_akhir_tambahan: deleteAdditional ? null : dateInput.value,
+          ...(deleteAdditional ? { hapus_tambahan: true } : {}),
+          schedule_revision: this.state.scheduleRevision,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (token !== this._workExtensionPreviewToken) return;
+      if (!response.ok || !data?.ok) {
+        detection.className = 'alert alert-danger py-2 mt-3 mb-2';
+        detection.textContent = data?.impact?.blocking_reason
+          ? this._formatWorkExtensionBlockingMessage(data.impact)
+          : data?.error || 'Perubahan tidak dapat diterapkan.';
+        if (deleteAdditional) {
+          modal.querySelector('#btn-delete-work-extension')?.classList.remove('d-none');
+        }
+        return;
+      }
+
+      const impact = data.impact || {};
+      const previews = Array.isArray(data.previews) ? data.previews : [];
+      const unchanged = impact.jenis === 'tidak_berubah';
+      const resolution = impact.recommended_resolution
+        || previews[0]?.resolution
+        || null;
+      detection.className = `alert ${impact.blocking_reason ? 'alert-danger' : 'alert-info'} py-2 mt-3 mb-2`;
+      detection.textContent = impact.blocking_reason
+        ? this._formatWorkExtensionBlockingMessage(impact)
+        : this._formatWorkExtensionDetection(impact);
+
+      const guarantee = modal.querySelector('#work-extension-guarantee');
+      if (guarantee && Number(impact.planned_records || 0) > 0) {
+        guarantee.textContent = 'Rencana pada minggu yang dipendekkan perlu ditangani dengan pilihan di bawah; realisasi dan biaya aktual tetap di minggu asal.';
+      } else if (guarantee) {
+        guarantee.textContent = 'Nilai rencana, realisasi, dan biaya aktual yang sudah ada tidak berubah.';
+      }
+
+      if (previews.length > 0 && options) {
+        this._renderWorkExtensionResolutionOptions(options, previews, resolution);
+      }
+      if (!previews.length || impact.blocking_reason) {
+        saveButton.disabled = true;
+        if (deleteAdditional) {
+          modal.querySelector('#btn-delete-work-extension')?.classList.remove('d-none');
+        }
+        return;
+      }
+
+      this._workExtensionPreviewData = {
+        deleteAdditional,
+        dateValue: dateInput.value,
+        scheduleRevision: data.schedule_revision,
+        impact,
+        previews,
+        resolution,
+      };
+      saveButton.disabled = unchanged;
+      if (deleteAdditional) {
+        modal.querySelector('#btn-delete-work-extension')?.classList.add('d-none');
+      }
+    } catch (error) {
+      if (token !== this._workExtensionPreviewToken) return;
+      detection.className = 'alert alert-danger py-2 mt-3 mb-2';
+      detection.textContent = 'Gagal memeriksa dampak perubahan. Coba lagi.';
+      console.warn('[JadwalKegiatanApp] Work extension preview failed', error);
+    }
+  }
+
+  _renderWorkExtensionResolutionOptions(container, previews, recommended) {
+    container.textContent = '';
+    const requiresChoice = previews.length > 1 || previews[0]?.resolution !== 'none';
+    container.classList.toggle('d-none', !requiresChoice);
+    if (!requiresChoice) return;
+
+    const heading = document.createElement('div');
+    heading.className = 'fw-semibold small mb-2';
+    heading.textContent = 'Pilih cara menangani rencana pada minggu yang dipendekkan';
+    container.appendChild(heading);
+    previews.forEach((preview) => {
+      const label = document.createElement('label');
+      label.className = 'form-check border rounded p-2 mb-2';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'work-extension-resolution';
+      input.className = 'form-check-input me-2';
+      input.value = preview.resolution;
+      input.checked = preview.resolution === recommended;
+      input.addEventListener('change', () => {
+        if (this._workExtensionPreviewData) {
+          this._workExtensionPreviewData.resolution = preview.resolution;
+        }
+        const guarantee = this.state.domRefs?.workExtensionModal?.querySelector('#work-extension-guarantee');
+        if (guarantee) {
+          const lost = Number(preview.planned_lost || 0);
+          guarantee.textContent = lost > 0
+            ? `Pilihan ini menghapus ${preview.planned_lost}% rencana di luar rentang baru; realisasi dan biaya aktual tetap.`
+            : `Pilihan ini mempertahankan total rencana ${preview.total_planned_after}%; realisasi dan biaya aktual tetap.`;
+        }
+      });
+      const title = document.createElement('span');
+      title.className = 'fw-semibold';
+      title.textContent = preview.label;
+      const help = document.createElement('div');
+      help.className = 'small text-muted ms-4';
+      const lost = Number(preview.planned_lost || 0);
+      help.textContent = `${preview.help} Total rencana ${preview.total_planned_before}% → ${preview.total_planned_after}%${lost > 0 ? `; ${preview.planned_lost}% dihapus` : ''}.`;
+      label.append(input, title, help);
+      container.appendChild(label);
+    });
+  }
+
+  _formatWorkExtensionDetection(impact) {
+    const oldWeeks = Number(impact.old_week_count || 0);
+    const newWeeks = Number(impact.new_week_count || 0);
+    if (impact.jenis === 'tidak_berubah') return 'Tanggal sama dengan tambahan saat ini.';
+    if (impact.jenis === 'hapus') {
+      return `Tambahan dihapus; masa waktu kerja kembali sampai ${this._formatIsoDate(impact.new_contract_end)}.`;
+    }
+    if (impact.jenis === 'pengurangan') {
+      return `Tambahan dipendekkan: M${oldWeeks} → M${newWeeks}, sampai ${this._formatIsoDate(impact.new_end)}.`;
+    }
+    if (impact.jenis === 'tipe_1') {
+      const column = this.state.timeColumns?.find((item) => Number(item.weekNumber) === newWeeks);
+      const start = column?.startDate ? this._formatIsoDate(column.startDate) : '';
+      return `Diperpanjang dalam minggu yang sama (M${newWeeks}: ${start ? `${start} – ` : ''}${this._formatIsoDate(impact.new_end)}).`;
+    }
+    const firstNewWeek = oldWeeks + 1;
+    return `+${Math.max(0, newWeeks - oldWeeks)} minggu tambahan (M${firstNewWeek}–M${newWeeks}).`;
+  }
+
+  _formatWorkExtensionBlockingMessage(impact) {
+    if (impact.blocking_reason === 'actual_out_of_window') {
+      const weeks = (impact.blocking_week_numbers || []).join(', ');
+      return `Minggu ${weeks} berisi realisasi atau biaya aktual, sehingga tidak bisa dibuang.`;
+    }
+    if (impact.blocking_reason === 'notes_out_of_window') {
+      const weeks = (impact.blocking_week_numbers || []).join(', ');
+      return `Minggu ${weeks} masih memiliki catatan. Pindahkan atau hapus catatan itu sebelum memendekkan tambahan.`;
+    }
+    return 'Perubahan tidak dapat diterapkan karena akan menggeser atau menghapus realisasi yang sudah ada.';
+  }
+
+  async _commitWorkExtension() {
+    const preview = this._workExtensionPreviewData;
+    const modalEl = this.state.domRefs?.workExtensionModal;
+    const dateInput = modalEl?.querySelector('#work-extension-end-date');
+    const saveButton = modalEl?.querySelector('#btn-save-work-extension');
+    if (!preview || !saveButton) return;
+    if (this.state.isDirty || this._getModifiedCount() > 0) {
+      this.showToast('Simpan atau batalkan perubahan di grid terlebih dahulu.', 'warning', 3600);
+      return;
+    }
+    if (!preview.deleteAdditional && dateInput?.value !== preview.dateValue) {
+      await this._previewWorkExtension(false);
+      return;
+    }
+
+    saveButton.disabled = true;
+    try {
+      const response = await fetch(this.state.apiEndpoints?.timelineCommit, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': this._getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({
+          tanggal_mulai: this.state.projectStart,
+          target_field: 'tanggal_akhir_tambahan',
+          tanggal_akhir_tambahan: preview.deleteAdditional ? null : preview.dateValue,
+          ...(preview.deleteAdditional ? { hapus_tambahan: true } : {}),
+          resolution: preview.resolution,
+          schedule_revision: preview.scheduleRevision,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        const detection = modalEl.querySelector('#work-extension-detection');
+        if (detection) {
+          detection.className = 'alert alert-danger py-2 mt-3 mb-2';
+          detection.textContent = result?.error || 'Gagal menyimpan perubahan waktu kerja.';
+        }
+        if (result?.impact?.blocking_week_numbers?.length) {
+          const detection = modalEl.querySelector('#work-extension-detection');
+          detection.textContent = this._formatWorkExtensionBlockingMessage(result.impact);
+        }
+        saveButton.disabled = false;
+        return;
+      }
+
+      this.state.scheduleRevision = Number(result.schedule_revision || this.state.scheduleRevision);
+      this.state.contractEndDate = result.new_contract_end || this.state.contractEndDate;
+      this.state.additionalEndDate = result.new_additional_end || null;
+      this.state.projectEnd = result.new_end || this.state.projectEnd;
+      this.state.isDirty = false;
+      this._invalidateCachedDataset();
+      if (globalThis.bootstrap?.Modal) {
+        globalThis.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+      }
+      await this._loadInitialData({ forceReload: true });
+      this._applyProgressModeSwitch('actual', { showToast: false });
+      const ending = result.new_additional_end || result.new_contract_end;
+      if (!result.new_additional_end) {
+        this.showToast(`Tambahan dihapus; masa waktu kerja kembali sampai ${this._formatIsoDate(ending)}.`, 'success', 3600);
+      } else if (preview.impact.jenis === 'pengurangan') {
+        this.showToast(`Tambahan dipendekkan sampai ${this._formatIsoDate(ending)}.`, 'success', 3600);
+      } else {
+        const extraWeeks = Math.max(0, Number(result.new_week_count || 0) - Number(preview.impact.old_week_count || 0));
+        this.showToast(`Waktu kerja diperpanjang sampai ${this._formatIsoDate(ending)}${extraWeeks ? ` (+${extraWeeks} minggu tambahan)` : ''}.`, 'success', 3600);
+      }
+    } catch (error) {
+      console.error('[JadwalKegiatanApp] Work extension commit failed', error);
+      saveButton.disabled = false;
+      this.showToast('Gagal menyimpan perubahan waktu kerja. Coba muat ulang halaman.', 'danger', 4000);
+    }
+  }
+
+  _addIsoDays(value, dayCount) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '';
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    date.setUTCDate(date.getUTCDate() + dayCount);
+    return date.toISOString().slice(0, 10);
+  }
+
+  _formatIsoDate(value) {
+    const raw = value instanceof Date
+      ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+      : String(value || '').slice(0, 10);
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '—';
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   /**
@@ -2087,6 +2471,7 @@ class JadwalKegiatanApp {
     const normalized = nextMode === 'actual' ? 'actual' : 'planned';
     const previousInputMode = this.state.inputMode || 'percentage';
     this.state.progressMode = normalized;
+    this._syncWorkExtensionButtonVisibility(normalized);
 
     if (normalized !== 'actual' && this.state.inputMode === 'cost') {
       this.state.inputMode = 'percentage';
@@ -4980,6 +5365,9 @@ class JadwalKegiatanApp {
         rangeText,
         startDate,
         endDate,
+        isBoundaryWeek: blockColumns.some((column) => column.isBoundaryWeek),
+        containsAdditionalWork: blockColumns.some((column) => column.containsAdditionalWork),
+        workEndDate: blockColumns.find((column) => column.workEndDate)?.workEndDate || null,
         tooltip: startLabel && endLabel ? `${startLabel} \u2014 ${endLabel} ` : `${label}: Week ${startWeek} -${endWeek} `,
         generationMode: 'monthly',
         type: 'monthly',
@@ -4998,6 +5386,11 @@ class JadwalKegiatanApp {
     }
     if (value instanceof Date) {
       return Number.isNaN(value.getTime()) ? null : value;
+    }
+    const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+      const localDate = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+      return Number.isNaN(localDate.getTime()) ? null : localDate;
     }
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;

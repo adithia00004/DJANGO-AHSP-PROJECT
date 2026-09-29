@@ -217,6 +217,10 @@ export class TimeColumnGenerator {
 
     const weekEndDay = this._getJsWeekEndDay();
     const columns = [];
+    const workPeriod = this.state.workPeriodMeta || {};
+    const extensionWeekNumbers = new Set(workPeriod.extension_week_numbers || []);
+    const additionalStart = this._parseDateOnly(workPeriod.additional_start);
+    const additionalEnd = this._parseDateOnly(workPeriod.additional_end);
     let currentStart = new Date(start);
     let weekNumber = 1;
 
@@ -249,6 +253,15 @@ export class TimeColumnGenerator {
         weekNumber,
         startDate: new Date(currentStart),
         endDate: new Date(currentEnd),
+        isExtensionWeek: extensionWeekNumbers.has(weekNumber),
+        isBoundaryWeek: Number(workPeriod.contract_boundary_week) === weekNumber,
+        workEndDate: workPeriod.contract_end || this.state.contractEndDate || null,
+        additionalStartDate: workPeriod.additional_start || null,
+        containsAdditionalWork: Boolean(
+          additionalStart && additionalEnd
+          && additionalStart <= currentEnd
+          && additionalEnd >= currentStart
+        ),
         urutan: weekNumber - 1,
       });
 
@@ -280,8 +293,8 @@ export class TimeColumnGenerator {
    * @private
    */
   _createColumn(tahap, index) {
-    const startDate = tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null;
-    const endDate = tahap.tanggal_selesai ? new Date(tahap.tanggal_selesai) : null;
+    const startDate = this._parseDateOnly(tahap.tanggal_mulai);
+    const endDate = this._parseDateOnly(tahap.tanggal_selesai);
 
     let label = tahap.nama || `Tahap ${index + 1}`;
     let rangeLabel = '';
@@ -362,6 +375,11 @@ export class TimeColumnGenerator {
       weekNumber,
       startDate,
       endDate,
+      isExtensionWeek: Boolean(tahap.is_extension_week),
+      isBoundaryWeek: Boolean(tahap.is_boundary_week),
+      workEndDate: tahap.work_end_date || this.state.workPeriodMeta?.contract_end || this.state.contractEndDate || null,
+      additionalStartDate: tahap.additional_start_date || this.state.workPeriodMeta?.additional_start || null,
+      containsAdditionalWork: Boolean(tahap.contains_additional_period),
       urutan: tahap.urutan || index
     };
   }
@@ -410,17 +428,7 @@ export class TimeColumnGenerator {
     if (typeof this._projectStartCache !== 'undefined') {
       return this._projectStartCache;
     }
-    const raw = this.state.projectStart;
-    if (!raw) {
-      this._projectStartCache = null;
-      return this._projectStartCache;
-    }
-    if (raw instanceof Date) {
-      this._projectStartCache = Number.isNaN(raw.getTime()) ? null : raw;
-      return this._projectStartCache;
-    }
-    const parsed = new Date(raw);
-    this._projectStartCache = Number.isNaN(parsed.getTime()) ? null : parsed;
+    this._projectStartCache = this._parseDateOnly(this.state.projectStart);
     return this._projectStartCache;
   }
 

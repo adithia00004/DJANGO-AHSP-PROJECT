@@ -102,6 +102,48 @@
     background: rgba(var(--bs-info-rgb), .10);
   }
 
+  .tanstack-grid-header-cell.extension-week-header {
+    background: rgba(var(--bs-warning-rgb), .16);
+    border-left: 1px solid rgba(var(--bs-warning-rgb), .45);
+    border-right: 1px solid rgba(var(--bs-warning-rgb), .45);
+  }
+
+  .tanstack-grid-header-cell.extension-month-header {
+    background: rgba(var(--bs-warning-rgb), .12);
+  }
+
+  .tanstack-grid-header-cell.contract-boundary-header {
+    border-right: 3px solid var(--bs-danger);
+  }
+
+  .tanstack-grid-header-status {
+    display: block;
+    margin-top: 2px;
+    color: var(--bs-secondary-color);
+    font-size: .68rem;
+    line-height: 1.1;
+    white-space: normal;
+  }
+
+  .tanstack-grid-cell.extension-week-locked {
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 6px,
+      rgba(var(--bs-secondary-rgb), .06) 6px,
+      rgba(var(--bs-secondary-rgb), .06) 12px
+    );
+    cursor: not-allowed;
+  }
+
+  .tanstack-grid-cell.extension-week-cell {
+    background-color: rgba(var(--bs-warning-rgb), .05);
+  }
+
+  .tanstack-grid-cell.contract-boundary-cell {
+    border-right: 3px solid rgba(var(--bs-danger-rgb), .8);
+  }
+
   [data-bs-theme="dark"] .export-report-option:hover {
     background: rgba(var(--bs-primary-rgb), .14);
   }
@@ -147,6 +189,12 @@
 
     <!-- Primary Action Buttons (Grouped) -->
     <div class="toolbar-actions">
+      <button type="button" class="btn btn-outline-warning btn-sm d-none" id="btn-work-extension"
+        aria-label="Perpanjang waktu kerja" title="Perpanjang waktu kerja">
+        <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+        <span class="btn-text d-none d-lg-inline">Perpanjang Waktu Kerja</span>
+      </button>
+
       <button type="button" class="btn btn-primary btn-sm btn-save" id="save-button"
         aria-label="Simpan semua perubahan" title="Simpan semua perubahan" disabled>
         <i class="bi bi-save" aria-hidden="true"></i>
@@ -312,7 +360,9 @@
   data-preview-url="{% url 'detail_project:api_preview_project_timeline' project.id %}"
   data-commit-url="{% url 'detail_project:api_commit_project_timeline' project.id %}"
   data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
-  data-project-end="{{ work_period_end|date:'Y-m-d' }}"></div>
+  data-project-end="{{ work_period_end|date:'Y-m-d' }}"
+  data-project-contract-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
+  data-project-additional-end="{{ project.tanggal_akhir_tambahan|date:'Y-m-d' }}"></div>
 
 <!-- Main App Container -->
 <div id="tahapan-grid-app" data-project-id="{{ project.id }}"
@@ -324,12 +374,16 @@
   data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}" data-enable-uplot-kurva="true"
   data-project-name="{{ project.nama|escape }}" data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
   data-project-end="{{ work_period_end|date:'Y-m-d'|default:'' }}" data-default-time-scale="weekly"
+  data-project-contract-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}"
+  data-project-additional-end="{{ project.tanggal_akhir_tambahan|date:'Y-m-d'|default:'' }}"
   data-project-location="{{ project.lokasi_project|default:'-' }}" data-project-owner="{{ project.nama_client|default:'-' }}"
   data-project-source-of-funds="{{ project.sumber_dana|default:'-' }}"
   data-project-budget="{{ project.anggaran_owner|default:0 }}" data-default-input-mode="percentage"
   data-week-start-day="{{ project.week_start_day|default:0 }}" data-week-end-day="{{ project.week_end_day|default:6 }}"
   data-schedule-revision="{{ project.schedule_revision|default:1 }}"
   data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}"
+  data-api-timeline-preview="{% url 'detail_project:api_preview_project_timeline' project.id %}"
+  data-api-timeline-commit="{% url 'detail_project:api_commit_project_timeline' project.id %}"
   data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
   data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
@@ -422,6 +476,37 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
         <button type="button" class="btn btn-primary" id="confirm-action">Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="workExtensionModal" tabindex="-1" aria-labelledby="workExtensionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="workExtensionModalLabel">Perpanjang Waktu Kerja</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2" id="work-extension-current-period"></p>
+        <label for="work-extension-end-date" class="form-label">Tanggal akhir tambahan</label>
+        <input type="date" class="form-control" id="work-extension-end-date">
+        <div class="form-text">Pilih tanggal setelah akhir waktu kerja. Perubahan kontrak tetap dilakukan dari Dashboard.</div>
+        <div class="alert alert-info py-2 mt-3 mb-2" id="work-extension-detection" role="status" aria-live="polite">
+          Pilih tanggal untuk melihat dampaknya.
+        </div>
+        <div class="small text-muted" id="work-extension-guarantee">
+          Nilai progres yang sudah ada tidak berubah.
+        </div>
+        <div id="work-extension-resolution-options" class="mt-3 d-none" aria-live="polite"></div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button type="button" class="btn btn-outline-danger d-none" id="btn-delete-work-extension">Hapus tambahan</button>
+        <div class="ms-auto d-flex gap-2">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-primary" id="btn-save-work-extension" disabled>Simpan</button>
+        </div>
       </div>
     </div>
   </div>

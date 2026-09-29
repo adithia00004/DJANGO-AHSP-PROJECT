@@ -228,6 +228,11 @@ export class TanStackGridManager {
     const dynamicColumns = (timeColumns || []).map((col) => {
       const width = Number(col?.width) || 120;
       const isAggregated = Array.isArray(col?.childColumns) && col.childColumns.length > 0;
+      const extensionLocked = Boolean(
+        col?.isExtensionWeek
+        && this.state?.workPeriodMeta?.additional_end
+        && (this.state?.progressMode || 'planned') !== 'actual'
+      );
       return {
         id: col.fieldId || col.id,
         header: () => col.label || col.id || 'Periode',
@@ -237,7 +242,8 @@ export class TanStackGridManager {
           timeColumn: true,
           columnMeta: col,
           pinned: false,
-          readOnly: Boolean(col?.readOnly || isAggregated),
+          readOnly: Boolean(col?.readOnly || isAggregated || extensionLocked),
+          extensionLocked,
         },
       };
     });
@@ -332,6 +338,16 @@ export class TanStackGridManager {
         const content = flexRender(header.column.columnDef.header, header.getContext());
         const labelText = typeof content === 'string' ? content : header.column.columnDef.header;
         if (header.column.columnDef.meta?.timeColumn) {
+          const columnMeta = header.column.columnDef.meta?.columnMeta || {};
+          const hasAdditionalWork = Boolean(this.state?.workPeriodMeta?.additional_end);
+          const isExtension = hasAdditionalWork && columnMeta.isExtensionWeek;
+          const isBoundary = hasAdditionalWork && columnMeta.isBoundaryWeek;
+          const isMonthlyAdditional = (this.state?.displayScale || this.state?.timeScale) === 'monthly'
+            && columnMeta.containsAdditionalWork;
+          if (isExtension) cellEl.classList.add('extension-week-header');
+          if (isBoundary) cellEl.classList.add('contract-boundary-header');
+          if (isMonthlyAdditional) cellEl.classList.add('extension-month-header');
+
           const titleEl = document.createElement('div');
           titleEl.className = 'tanstack-header-title';
           titleEl.textContent = labelText;
@@ -343,6 +359,27 @@ export class TanStackGridManager {
             rangeEl.className = 'tanstack-header-range';
             rangeEl.textContent = rangeText;
             cellEl.appendChild(rangeEl);
+          }
+          const statusTexts = [];
+          if (isExtension) {
+            statusTexts.push('Penambahan');
+            cellEl.title = `Penambahan waktu kerja setelah ${columnMeta.workEndDate || this.state.workPeriodMeta.contract_end}. Hanya realisasi.`;
+          }
+          if (isBoundary) {
+            const date = this._parseLocalDate(columnMeta.workEndDate || this.state.workPeriodMeta.contract_end);
+            const weekday = date
+              ? ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][date.getDay()]
+              : '';
+            statusTexts.push(`Waktu kerja berakhir${weekday ? ` ${weekday}` : ''}`);
+          }
+          if (isMonthlyAdditional) {
+            statusTexts.push('Penambahan waktu kerja');
+          }
+          if (statusTexts.length) {
+            const statusEl = document.createElement('small');
+            statusEl.className = 'tanstack-grid-header-status';
+            statusEl.textContent = statusTexts.join(' · ');
+            cellEl.appendChild(statusEl);
           }
         } else {
           cellEl.textContent = labelText;
@@ -592,11 +629,31 @@ export class TanStackGridManager {
 
     const rowEditable = this._isRowEditable(row);
     const isEditable = rowEditable && this._isColumnEditable(columnDef);
+    const isExtensionWeek = Boolean(
+      columnMeta?.isExtensionWeek && this.state?.workPeriodMeta?.additional_end
+    );
+    const extensionLocked = isExtensionWeek
+      && (this.state?.progressMode || 'planned') !== 'actual';
+    if (isExtensionWeek) cellEl.classList.add('extension-week-cell');
+    if (columnMeta?.isBoundaryWeek && this.state?.workPeriodMeta?.additional_end) {
+      cellEl.classList.add('contract-boundary-cell');
+    }
     cellEl.tabIndex = isEditable ? 0 : -1;
     if (isEditable) {
       cellEl.classList.add('editable');
     } else {
       cellEl.classList.add('readonly');
+    }
+
+    if (extensionLocked) {
+      cellEl.classList.add('extension-week-locked');
+      cellEl.setAttribute('aria-disabled', 'true');
+      cellEl.title = 'Minggu penambahan waktu kerja hanya menerima realisasi.';
+      cellEl.addEventListener('click', () => this._showValidationToast({
+        isValid: false,
+        message: 'Minggu penambahan waktu kerja hanya menerima realisasi.',
+        level: 'warning',
+      }));
     }
 
     if (this._isCellModified(pekerjaanId, columnId)) {
@@ -1273,7 +1330,21 @@ export class TanStackGridManager {
     if (columnDef.meta?.readOnly || columnDef.meta?.columnMeta?.readOnly) {
       return false;
     }
+    if (
+      columnDef.meta?.columnMeta?.isExtensionWeek
+      && this.state?.workPeriodMeta?.additional_end
+      && (this.state?.progressMode || 'planned') !== 'actual'
+    ) {
+      return false;
+    }
     return true;
+  }
+
+  _parseLocalDate(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   _isRowEditable(row) {

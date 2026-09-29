@@ -9,7 +9,14 @@ from django.urls import resolve, reverse
 from django.utils import timezone
 
 from dashboard.models import Project
-from detail_project.models import Klasifikasi, Pekerjaan, PekerjaanProgressWeekly, SubKlasifikasi, VolumePekerjaan
+from detail_project.models import (
+    Klasifikasi,
+    Pekerjaan,
+    PekerjaanProgressWeekly,
+    SubKlasifikasi,
+    TahapPelaksanaan,
+    VolumePekerjaan,
+)
 from detail_project.progress_utils import build_week_buckets
 from detail_project.progress_write_service import PlannedProgressOutsideWorkPeriod, write_progress
 from detail_project.readiness import compute_project_readiness
@@ -149,6 +156,108 @@ class AdditionalWorkPlanGuardTests(TestCase):
         self.assertEqual(impact["new_boundary_week"], 1)
         self.assertEqual(impact["planned_extension_records"], 1)
         self.assertEqual(impact["planned_extension_rows"][0]["week_number"], 2)
+
+    def test_tahapan_api_returns_server_work_period_markers_per_column(self):
+        boundary_stage = TahapPelaksanaan.objects.create(
+            project=self.project,
+            nama="Week 2",
+            urutan=1,
+            tanggal_mulai=date(2026, 9, 7),
+            tanggal_selesai=date(2026, 9, 13),
+            is_auto_generated=True,
+            generation_mode="weekly",
+        )
+        extension_stage = TahapPelaksanaan.objects.create(
+            project=self.project,
+            nama="Week 3",
+            urutan=2,
+            tanggal_mulai=date(2026, 9, 14),
+            tanggal_selesai=date(2026, 9, 20),
+            is_auto_generated=True,
+            generation_mode="weekly",
+        )
+        url = reverse(
+            "detail_project:api_list_create_tahapan",
+            kwargs={"project_id": self.project.pk},
+        )
+        request = RequestFactory().get(url)
+        request.user = self.owner
+        match = resolve(url)
+        response = match.func(request, **match.kwargs)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        by_id = {row["tahapan_id"]: row for row in payload["tahapan"]}
+        self.assertTrue(by_id[boundary_stage.id]["is_boundary_week"])
+        self.assertFalse(by_id[boundary_stage.id]["is_extension_week"])
+        self.assertEqual(by_id[boundary_stage.id]["work_end_date"], "2026-09-07")
+        self.assertTrue(by_id[extension_stage.id]["is_extension_week"])
+        self.assertFalse(by_id[extension_stage.id]["is_boundary_week"])
+        self.assertTrue(by_id[extension_stage.id]["contains_additional_period"])
+        self.assertEqual(payload["work_period"]["extension_week_numbers"], [3])
+
+    def test_jadwal_page_renders_extension_controls_and_timeline_metadata(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse(
+            "detail_project:jadwal_pekerjaan",
+            kwargs={"project_id": self.project.pk},
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="btn-work-extension"')
+        self.assertContains(response, 'id="workExtensionModal"')
+        self.assertContains(response, 'id="work-extension-end-date"')
+        self.assertContains(response, 'data-project-contract-end="2026-09-07"')
+        self.assertContains(response, 'data-project-additional-end="2026-09-20"')
+        self.assertContains(response, 'data-api-timeline-preview=')
+        self.assertContains(response, 'data-api-timeline-commit=')
+
+    def test_shortening_additional_period_does_not_drop_notes_outside_new_range(self):
+        write_progress(self.project, [self._week_three_cell(
+            planned_proportion=Decimal("0"),
+            actual_proportion=Decimal("0"),
+            actual_cost=None,
+            notes="catatan akhir masa kerja",
+        )], kind="historical")
+        preview_url = reverse(
+            "detail_project:api_preview_project_timeline",
+            kwargs={"project_id": self.project.pk},
+        )
+        payload = {
+            "tanggal_mulai": self.project.tanggal_mulai.isoformat(),
+            "target_field": "tanggal_akhir_tambahan",
+            "tanggal_akhir_tambahan": "2026-09-13",
+            "schedule_revision": self.project.schedule_revision,
+        }
+        request = RequestFactory().post(
+            preview_url, data=json.dumps(payload), content_type="application/json"
+        )
+        request.user = self.owner
+        match = resolve(preview_url)
+        preview = match.func(request, **match.kwargs)
+        impact = json.loads(preview.content)["impact"]
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(impact["blocking_reason"], "notes_out_of_window")
+        self.assertEqual(impact["blocking_week_numbers"], [3])
+        self.assertEqual(json.loads(preview.content)["previews"], [])
+
+        commit_url = reverse(
+            "detail_project:api_commit_project_timeline",
+            kwargs={"project_id": self.project.pk},
+        )
+        request = RequestFactory().post(
+            commit_url,
+            data=json.dumps({**payload, "resolution": "none"}),
+            content_type="application/json",
+        )
+        request.user = self.owner
+        match = resolve(commit_url)
+        commit = match.func(request, **match.kwargs)
+        self.assertEqual(commit.status_code, 400)
+        row = PekerjaanProgressWeekly.objects.get(project=self.project, week_number=3)
+        self.assertEqual(row.notes, "catatan akhir masa kerja")
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.tanggal_akhir_tambahan, date(2026, 9, 20))
 
     def _seed_week_two_extension_plan(self):
         _, start, end = build_week_buckets(

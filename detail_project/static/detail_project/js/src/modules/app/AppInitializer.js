@@ -76,6 +76,9 @@ export class AppInitializer {
         projectName: '',
         projectStart: null,
         projectEnd: null,
+        contractEndDate: null,
+        additionalEndDate: null,
+        workPeriodMeta: null,
         scheduleRevision: 1,
         useUPlotKurva: true, // uPlot Kurva-S aktif secara default
         timeScale: 'weekly',
@@ -184,6 +187,8 @@ export class AppInitializer {
       {
         root: document.getElementById('tahapan-grid-app'),
         saveButton: document.getElementById('save-button') || document.getElementById('btn-save-all'),
+        workExtensionButton: document.getElementById('btn-work-extension'),
+        workExtensionModal: document.getElementById('workExtensionModal'),
         refreshButton: document.getElementById('refresh-button'),
         regenerateButton: document.getElementById('btn-regenerate-timeline'),
         resetButton: document.getElementById('btn-reset-progress'),

@@ -398,6 +398,9 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
     )
     old_start, old_end = _persisted_timeline(project)
     _, old_contract_end, old_additional_end = _persisted_project_dates(project)
+    old_week_count = expected_week_count(
+        old_start, old_end, getattr(project, 'week_end_day', 6)
+    )
     records = PekerjaanProgressWeekly.objects.filter(project=project)
     start_changed = (old_start or None) != new_start
     end_changed = (old_end or None) != new_work_end
@@ -494,6 +497,11 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         and (start_requires_policy or planned.count() > 0)
     ):
         blocking_reason = 'mixed_planned_extension_and_range_change'
+    if target_field == 'tanggal_akhir_tambahan' and end_changed and not blocking_reason:
+        notes_outside = records.filter(week_number__gt=new_week_count, notes__gt='')
+        if notes_outside.exists():
+            blocking_qs = notes_outside
+            blocking_reason = 'notes_out_of_window'
 
     blocking_week_numbers = (
         sorted({
@@ -562,6 +570,7 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         'affected_week_end': max(end_dates).isoformat() if end_dates else None,
         'old_start': old_start.isoformat() if old_start else None,
         'old_end': old_end.isoformat() if old_end else None,
+        'old_week_count': old_week_count,
         'new_start': new_start.isoformat(),
         'new_end': new_work_end.isoformat(),
         'target_field': target_field,
@@ -589,6 +598,7 @@ def _snapshot_rows(rows):
             'planned_proportion': str(row.planned_proportion),
             'actual_proportion': str(row.actual_proportion),
             'actual_cost': str(row.actual_cost) if row.actual_cost is not None else None,
+            'notes': row.notes or '',
         }
         for row in rows
     ]
@@ -1146,6 +1156,12 @@ def apply_project_timeline_change(
             'Tanggal baru melewati minggu yang memiliki actual progress atau biaya aktual. Perubahan dibatalkan.',
             impact,
         )
+    if impact['blocking_reason'] == 'notes_out_of_window':
+        raise TimelineChangeError(
+            'Tanggal akhir tambahan melewati minggu yang masih memiliki catatan. '
+            'Pindahkan atau hapus catatan tersebut terlebih dahulu.',
+            impact,
+        )
 
     trimmed = []
     resolution_counts = {}
@@ -1220,6 +1236,7 @@ def apply_project_timeline_change(
                     planned_proportion=0,
                     actual_proportion=0,
                     actual_cost__isnull=True,
+                    notes='',
                 )
             )
             rows_before = planned_move_snapshot + _snapshot_rows(empty_outside)

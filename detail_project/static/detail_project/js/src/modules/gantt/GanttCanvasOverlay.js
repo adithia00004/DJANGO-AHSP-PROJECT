@@ -1,5 +1,6 @@
 import { getCssVar, getBtnColor } from '../shared/canvas-utils.js';
 import { TooltipManager } from '../shared/tooltip-manager.js';
+import { drawWorkPeriodEndMarker } from '../shared/work-period-marker.js';
 
 export class GanttCanvasOverlay {
   constructor(tableManager) {
@@ -241,6 +242,11 @@ export class GanttCanvasOverlay {
     this._drawBars(cellRects);
     this._publishMetrics(cellRects, scrollArea);
     this._drawDependencies(cellRects);
+    drawWorkPeriodEndMarker(this.ctx, this.tableManager, cellRects, {
+      xOffset: this.pinnedWidth,
+      top: 0,
+      bottom: this.canvas.height,
+    });
     this.ctx.restore();
   }
 

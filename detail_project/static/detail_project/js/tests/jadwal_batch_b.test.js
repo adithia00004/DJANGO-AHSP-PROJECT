@@ -78,6 +78,23 @@ describe('JDW-11/JDW-15 - boundary confirmation and project identity metadata', 
   });
 });
 
+describe('Tambahan Waktu Kerja - toolbar, preview, and edit guard', () => {
+  test('toolbar button and date dialog are wired for actual mode only', () => {
+    expect(template).toContain('id="btn-work-extension"');
+    expect(template).toContain('id="workExtensionModal"');
+    expect(template).toContain('id="work-extension-end-date"');
+    expect(app).toContain("this._syncWorkExtensionButtonVisibility(normalized);");
+    expect(app).toContain("(mode || 'planned') !== 'actual'");
+  });
+
+  test('dialog previews on the server and refuses to open with unsaved grid edits', () => {
+    expect(app).toContain('Simpan atau batalkan perubahan di grid terlebih dahulu. Perpanjangan waktu kerja membentuk ulang kolom minggu.');
+    expect(app).toContain("target_field: 'tanggal_akhir_tambahan'");
+    expect(app).toContain('this.state.apiEndpoints?.timelinePreview');
+    expect(app).toContain('this.state.apiEndpoints?.timelineCommit');
+  });
+});
+
 describe('WP-P7j — loadAssignments propagates errors (JDW-04)', () => {
   test('error sets a flag and re-throws (no empty-map masking)', () => {
     expect(dataLoader).toContain('this.state.assignmentsLoadError = error');

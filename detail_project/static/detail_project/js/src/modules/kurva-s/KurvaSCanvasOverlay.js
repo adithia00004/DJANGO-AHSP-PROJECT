@@ -11,6 +11,7 @@
 import { createCanvas, createClipViewport, getContext2D, hitTestPoint, isDarkMode } from './canvas-utils.js';
 import { TooltipManager, createLegend, updateLegendColors } from './tooltip-manager.js';
 import { StateManager } from '../core/state-manager.js';
+import { drawWorkPeriodEndMarker } from '../shared/work-period-marker.js';
 
 export class KurvaSCanvasOverlay {
   constructor(tableManager, options = {}) {
@@ -382,6 +383,11 @@ export class KurvaSCanvasOverlay {
     // Draw curves (canvas-relative coordinates)
     this._drawCurve(cellRects, this.curveData.planned, this._getPlannedColor(), 'Planned');
     this._drawCurve(cellRects, this.curveData.actual, this._getActualColor(), 'Actual');
+    drawWorkPeriodEndMarker(this.ctx, this.tableManager, cellRects, {
+      xOffset: gridBounds.gridLeft,
+      top: 0,
+      bottom: gridBounds.gridHeight,
+    });
 
     // DEBUG: Log canvas info for hover debugging
     const canvasRect = this.canvas.getBoundingClientRect();

@@ -60,6 +60,7 @@ export class EventBinder {
   _attachToolbarEvents() {
     const dom = this.app.state?.domRefs || {};
     const saveButton = dom.saveButton;
+    const workExtensionButton = dom.workExtensionButton;
     const refreshButton = dom.refreshButton;
     const regenerateButton = dom.regenerateButton;
     const resetButton = dom.resetButton;
@@ -67,6 +68,10 @@ export class EventBinder {
 
     if (saveButton) {
       saveButton.addEventListener('click', () => this.app.saveChanges());
+    }
+
+    if (workExtensionButton) {
+      workExtensionButton.addEventListener('click', () => this.app._openWorkExtensionDialog());
     }
 
     if (refreshButton) {
@@ -100,6 +105,7 @@ export class EventBinder {
     this.app._attachRadioGroupHandler('progressMode', (value) => this.app._handleProgressModeChange(value));
     this.app._attachRadioGroupHandler('timeScale', (value) => this.app._handleTimeScaleChange(value));
     this.app._setupWeekBoundaryControls();
+    this.app._setupWorkExtensionControls();
     this.app._setupExportButtons();
     this.app._setupCostViewToggle();
     this._setupKeyboardShortcuts();

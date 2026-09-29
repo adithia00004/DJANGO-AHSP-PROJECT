@@ -30,7 +30,14 @@ from .services import (
     get_project_period_options,
 )
 from .api_helpers import parse_kebutuhan_query_params, limit_request_body, rate_limit
-from .timeline_utils import invalidate_schedule_caches
+from .timeline_utils import (
+    contract_boundary_week,
+    expected_week_count,
+    invalidate_schedule_caches,
+    is_extension_week,
+    work_period_end,
+)
+from .progress_utils import calculate_week_number
 from .decorators import api_deprecated
 
 # Helper untuk validasi ownership
@@ -86,13 +93,56 @@ def api_list_create_tahapan(request, project_id):
 
     if request.method == 'GET':
         # Return list tahapan dengan summary
-        summary = get_tahapan_summary(project)
-        
+        summary = [dict(row) for row in get_tahapan_summary(project)]
+        boundary_week = contract_boundary_week(project)
+        project_work_end = work_period_end(project)
+        additional_start = (
+            project.tanggal_selesai + timedelta(days=1)
+            if project.tanggal_akhir_tambahan else None
+        )
+        for row in summary:
+            is_weekly = row.get('generation_mode') == 'weekly'
+            week_number = None
+            if is_weekly and row.get('tanggal_mulai') and project.tanggal_mulai:
+                week_number = calculate_week_number(
+                    date.fromisoformat(row['tanggal_mulai']),
+                    project.tanggal_mulai,
+                    project.week_end_day if project.week_end_day is not None else 6,
+                )
+            stage_start = date.fromisoformat(row['tanggal_mulai']) if row.get('tanggal_mulai') else None
+            stage_end = date.fromisoformat(row['tanggal_selesai']) if row.get('tanggal_selesai') else None
+            row.update({
+                'week_number': week_number,
+                'is_extension_week': bool(week_number and is_extension_week(project, week_number)),
+                'is_boundary_week': bool(week_number and week_number == boundary_week),
+                'work_end_date': project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+                'additional_start_date': additional_start.isoformat() if additional_start else None,
+                'contains_additional_period': bool(
+                    additional_start and stage_start and stage_end
+                    and stage_start <= project_work_end and stage_end >= additional_start
+                ),
+            })
+
+        work_week_count = expected_week_count(
+            project.tanggal_mulai,
+            project_work_end,
+            project.week_end_day if project.week_end_day is not None else 6,
+        )
+
         return JsonResponse({
             'ok': True,
             'tahapan': summary,
             'count': len(summary),
             'schedule_revision': project.schedule_revision,
+            'work_period': {
+                'contract_end': project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+                'additional_end': project.tanggal_akhir_tambahan.isoformat() if project.tanggal_akhir_tambahan else None,
+                'additional_start': additional_start.isoformat() if additional_start else None,
+                'work_end': project_work_end.isoformat() if project_work_end else None,
+                'contract_boundary_week': boundary_week,
+                'extension_week_numbers': list(range(boundary_week + 1, work_week_count + 1))
+                if additional_start else [],
+            },
         })
 
     # POST: Create new tahapan

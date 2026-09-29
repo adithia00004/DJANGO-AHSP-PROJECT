@@ -268,6 +268,7 @@ export class DataLoader {
     this.cacheTTL = options.cacheTTL || 60000; // default 60s
     this.responseCache = {
       tahapan: null,
+      workPeriodMeta: null,
       pekerjaan: null,
       volumes: null,
       assignments: null
@@ -351,6 +352,7 @@ export class DataLoader {
 
       if (useCache) {
         this.state.tahapanList = JSON.parse(JSON.stringify(this.responseCache.tahapan));
+        this.state.workPeriodMeta = this.responseCache.workPeriodMeta || this.state.workPeriodMeta || null;
         const detectedModeFromCache = deriveTimeScaleFromTahapan(
           this.state.tahapanList,
           this.state.timeScale || 'weekly'
@@ -362,6 +364,13 @@ export class DataLoader {
 
       const url = this.state.apiBase || `/detail_project/api/project/${this.projectId}/tahapan/`;
       const data = await apiCall(url);
+
+      this.state.workPeriodMeta = data?.work_period || this.state.workPeriodMeta || null;
+      if (this.state.workPeriodMeta) {
+        this.state.contractEndDate = this.state.workPeriodMeta.contract_end || null;
+        this.state.additionalEndDate = this.state.workPeriodMeta.additional_end || null;
+        this.state.projectEnd = this.state.workPeriodMeta.work_end || this.state.projectEnd;
+      }
 
       if (Number.isFinite(Number(data?.schedule_revision))) {
         this.state.scheduleRevision = Number(data.schedule_revision);
@@ -377,6 +386,7 @@ export class DataLoader {
       this.state.timeScale = detectedMode;
 
       this._setCache('tahapan', JSON.parse(JSON.stringify(this.state.tahapanList)));
+      this.responseCache.workPeriodMeta = this.state.workPeriodMeta;
 
       console.log(`[DataLoader] ✅ Loaded ${this.state.tahapanList.length} tahapan, mode: ${detectedMode}`);
       return this.state.tahapanList;
