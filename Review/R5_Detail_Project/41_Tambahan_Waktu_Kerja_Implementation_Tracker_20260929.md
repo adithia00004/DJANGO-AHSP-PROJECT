@@ -72,7 +72,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 1.1 | Skema, helper, penyisiran, field target | DONE | `606e5668` | 2026-09-29 |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | `36623610` | 2026-09-29 |
 | 1.3 | Aturan tulis rencana | DONE | `d615ce08` | 2026-09-29 |
-| 1.4 | Perpanjang / pendekkan / hapus tambahan | WIP | | 2026-09-29 |
+| 1.4 | Perpanjang / pendekkan / hapus tambahan | DONE | `d64494ac` | 2026-09-29 |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | TODO | | |
 | 1.6 | Ubah hari batas minggu | TODO | | |
 | 1.7 | Frontend (tombol, dialog, grid, Kurva S/Gantt, build) | TODO | | |
