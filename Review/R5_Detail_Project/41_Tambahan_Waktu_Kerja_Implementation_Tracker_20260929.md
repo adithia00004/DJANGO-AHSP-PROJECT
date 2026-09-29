@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 1 BERJALAN** — Langkah 1.1–1.3 selesai; berikutnya 1.4. Lihat bukti §3–§5 dan §9 |
+| Status keseluruhan | **TAHAP 1 BERJALAN** — Langkah 1.1–1.3 selesai; 1.4 (perpanjang/pendekkan/hapus tambahan) sedang dikerjakan. Lihat bukti §3–§5 dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -72,7 +72,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 1.1 | Skema, helper, penyisiran, field target | DONE | `606e5668` | 2026-09-29 |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | DONE | `36623610` | 2026-09-29 |
 | 1.3 | Aturan tulis rencana | DONE | `d615ce08` | 2026-09-29 |
-| 1.4 | Perpanjang / pendekkan / hapus tambahan | TODO | | |
+| 1.4 | Perpanjang / pendekkan / hapus tambahan | WIP | | 2026-09-29 |
 | 1.5 | Ubah akhir waktu kerja (Dashboard) + pindahkan rencana | TODO | | |
 | 1.6 | Ubah hari batas minggu | TODO | | |
 | 1.7 | Frontend (tombol, dialog, grid, Kurva S/Gantt, build) | TODO | | |
@@ -185,6 +185,7 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-29 | 1.3 | Guard API/timeline, readiness historis, regresi Jadwal di PostgreSQL | 73 tes lulus | Planned baru ditolak; actual/biaya diterima; planned historis ditandai dan tetap bisa berdampingan dengan input actual |
 | 2026-09-29 | 1.3 | `npm run test:frontend -- detail_project/static/detail_project/js/tests/readiness_banner.test.js --reporter=dot` | 16 tes lulus | Readiness banner menampilkan planned historis di minggu tambahan |
 | 2026-09-29 | 1.3 | `detail_project.tests_wp_b7_reference_sync` pada PostgreSQL | 46 tes lulus | Kontrak readiness/API lama tetap sesuai setelah versi schema menjadi b4.7 |
+| 2026-09-29 | 1.4 | Resolver timeline, target-field API, field model, dan dialog lama | 50 tes lulus | Tipe perpanjangan/pengurangan, hapus tambahan, penjagaan minggu terbuang, penyelarasan tanggal baris, dan snapshot audit |
 | | | | | |
 
 ---

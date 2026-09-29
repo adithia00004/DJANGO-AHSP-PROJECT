@@ -213,10 +213,6 @@ def invalidate_schedule_caches(project_id, pekerjaan_ids=None):
     cache.delete(f"v2_assignments:{project_id}:v1")
 
 
-def _affected_filter(new_start, new_end):
-    return Q(week_end_date__gt=new_end) | Q(week_start_date__lt=new_start)
-
-
 def _persisted_timeline(project):
     """Tanggal proyek versi DATABASE, bukan versi in-memory.
 
@@ -318,10 +314,39 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         project, new_start, new_end, target_field
     )
     old_start, old_end = _persisted_timeline(project)
+    _, _, old_additional_end = _persisted_project_dates(project)
     start_changed = (old_start or None) != new_start
     end_changed = (old_end or None) != new_work_end
+    new_week_count = expected_week_count(
+        new_start, new_work_end, getattr(project, 'week_end_day', 6)
+    )
+    change_type = None
+    if target_field == 'tanggal_akhir_tambahan':
+        if not new_end:
+            change_type = 'hapus' if old_additional_end else 'tidak_berubah'
+        elif new_end == old_additional_end:
+            change_type = 'tidak_berubah'
+        elif new_work_end < old_end:
+            change_type = 'pengurangan'
+        else:
+            old_week_count = expected_week_count(
+                old_start, old_end, getattr(project, 'week_end_day', 6)
+            )
+            change_type = 'tipe_1' if new_week_count == old_week_count else 'tipe_2'
     records = PekerjaanProgressWeekly.objects.filter(project=project)
-    affected = records.filter(_affected_filter(new_start, new_work_end))
+    if start_changed:
+        affected = records.filter(
+            Q(planned_proportion__gt=0)
+            | Q(actual_proportion__gt=0)
+            | Q(actual_cost__isnull=False)
+        )
+    elif end_changed:
+        # Weekly progress is indivisible. Shortening a partial final bucket
+        # keeps that whole week/value; only complete ordinal buckets past the
+        # new end are at risk.
+        affected = records.filter(week_number__gt=new_week_count)
+    else:
+        affected = records.none()
     planned = affected.filter(planned_proportion__gt=0)
     actual = affected.filter(
         Q(actual_proportion__gt=0) | Q(actual_cost__isnull=False)
@@ -357,7 +382,10 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         blocking_qs = records.filter(_actual_filter())
         blocking_reason = 'actual_present_start_shift' if blocking_qs.exists() else None
     else:
-        blocking_qs = actual
+        blocking_qs = (
+            actual.filter(week_number__gt=new_week_count)
+            if end_changed else actual.none()
+        )
         blocking_reason = 'actual_out_of_window' if blocking_qs.exists() else None
 
     blocking_week_numbers = (
@@ -410,12 +438,11 @@ def analyze_project_timeline_change(project, new_start, new_end, *, target_field
         'new_start': new_start.isoformat(),
         'new_end': new_work_end.isoformat(),
         'target_field': target_field,
+        'jenis': change_type,
         'target_value': new_end.isoformat() if new_end else None,
         'new_contract_end': contract_end.isoformat(),
         'new_additional_end': additional_end.isoformat() if additional_end else None,
-        'new_week_count': expected_week_count(
-            new_start, new_work_end, getattr(project, 'week_end_day', 6)
-        ),
+        'new_week_count': new_week_count,
     }
 
 
@@ -792,6 +819,36 @@ def _regenerate_weekly_structure(project):
     )
 
 
+def _align_weekly_row_dates(project, new_start, new_end, week_end_day):
+    """Align stored dates to canonical buckets without changing progress values."""
+    buckets = {
+        number: (start, end)
+        for number, start, end in build_week_buckets(new_start, new_end, week_end_day)
+    }
+    rows = list(
+        PekerjaanProgressWeekly.objects
+        .filter(project=project, week_number__in=buckets)
+        .order_by('pekerjaan_id', 'week_number')
+    )
+    changed = []
+    for row in rows:
+        start, end = buckets[row.week_number]
+        if (row.week_start_date, row.week_end_date) == (start, end):
+            continue
+        changed.append((row, start, end))
+    snapshot = _snapshot_rows([row for row, _, _ in changed]) if changed else []
+    for row, start, end in changed:
+        row.week_start_date = start
+        row.week_end_date = end
+    if changed:
+        PekerjaanProgressWeekly.objects.bulk_update(
+            [row for row, _, _ in changed],
+            ['week_start_date', 'week_end_date'],
+            batch_size=500,
+        )
+    return len(changed), snapshot
+
+
 @transaction.atomic
 def apply_project_timeline_change(
     project,
@@ -873,7 +930,9 @@ def apply_project_timeline_change(
         if resolution == RESOLUTION_TRIM_PLANNED and impact['planned_records']:
             rows = PekerjaanProgressWeekly.objects.filter(
                 project=project,
-            ).filter(_affected_filter(new_start, new_work_end)).filter(planned_proportion__gt=0)
+                week_number__gt=impact['new_week_count'],
+                planned_proportion__gt=0,
+            )
             for row in rows:
                 trimmed.append({
                     'pekerjaan_id': row.pekerjaan_id,
@@ -897,7 +956,7 @@ def apply_project_timeline_change(
             empty_outside = (
                 PekerjaanProgressWeekly.objects
                 .filter(project=project)
-                .filter(_affected_filter(new_start, new_work_end))
+                .filter(week_number__gt=impact['new_week_count'])
                 .filter(
                     planned_proportion=0,
                     actual_proportion=0,
@@ -948,6 +1007,14 @@ def apply_project_timeline_change(
     if target_field == 'tanggal_selesai':
         project.durasi_hari = (new_contract_end - new_start).days + 1
     project.save()
+    aligned_row_count, date_alignment_snapshot = _align_weekly_row_dates(
+        project,
+        new_start,
+        new_work_end,
+        project.week_end_day if project.week_end_day is not None else 6,
+    )
+    if date_alignment_snapshot and resolution in LEGACY_RESOLUTIONS:
+        rows_before.extend(date_alignment_snapshot)
     _regenerate_weekly_structure(project)
     invalidate_schedule_caches(project.id)
 
@@ -977,6 +1044,7 @@ def apply_project_timeline_change(
                 'resolution': resolution,
                 'trimmed_count': len(trimmed),
                 'resolution_counts': resolution_counts,
+                'weekly_date_rows_aligned': aligned_row_count,
             },
             triggered_by='user',
             user=user if getattr(user, 'id', None) else None,
@@ -994,5 +1062,6 @@ def apply_project_timeline_change(
         'resolution': resolution,
         'trimmed_count': len(trimmed),
         'resolution_counts': resolution_counts,
+        'weekly_date_rows_aligned': aligned_row_count,
         'schedule_revision': project.schedule_revision,
     }

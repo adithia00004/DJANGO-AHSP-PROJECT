@@ -360,6 +360,53 @@ class TimelineResolutionEngineTests(TestCase):
         )
         self.assertEqual(row.actual_proportion, Decimal('8.00'))
 
+    def test_shortening_days_inside_final_week_preserves_actual_and_cost(self):
+        """Weekly values remain intact when the final bucket only loses days."""
+        self._seed(9, planned='20', actual='30', actual_cost=Decimal('5000'))
+        new_start, new_end = date(2026, 1, 1), date(2026, 2, 25)  # Wed, still week 9
+        result = self._apply(new_start, new_end, 'none')
+
+        self.assertEqual(result['actual_records'], 0)
+        row = PekerjaanProgressWeekly.objects.get(project=self.project, week_number=9)
+        self.assertEqual(row.actual_proportion, Decimal('30.00'))
+        self.assertEqual(row.actual_cost, Decimal('5000'))
+        self.assertEqual(row.week_start_date, date(2026, 2, 23))
+        self.assertEqual(row.week_end_date, new_end)
+
+    def test_extending_final_partial_week_aligns_row_dates_and_keeps_values(self):
+        """Adding days through Fri expands the same week without moving progress."""
+        self.project.tanggal_selesai = date(2026, 2, 25)
+        self.project.durasi_hari = (date(2026, 2, 25) - self.project.tanggal_mulai).days + 1
+        self.project.save(update_fields=['tanggal_selesai', 'durasi_hari', 'updated_at'])
+        self._seed(9, planned='20', actual='30', actual_cost=Decimal('5000'))
+        before_duration = self.project.durasi_hari
+        new_start, new_additional_end = date(2026, 1, 1), date(2026, 2, 27)  # Fri, same week
+        result = apply_project_timeline_change(
+            self.project,
+            new_start,
+            new_additional_end,
+            resolution='none',
+            target_field='tanggal_akhir_tambahan',
+            expected_revision=self.project.schedule_revision,
+            user=self.owner,
+        )
+
+        self.assertEqual(result['new_week_count'], 9)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.tanggal_selesai, date(2026, 2, 25))
+        self.assertEqual(self.project.tanggal_akhir_tambahan, new_additional_end)
+        self.assertEqual(self.project.durasi_hari, before_duration)
+        row = PekerjaanProgressWeekly.objects.get(project=self.project, week_number=9)
+        self.assertEqual(row.actual_proportion, Decimal('30.00'))
+        self.assertEqual(row.actual_cost, Decimal('5000'))
+        self.assertEqual(row.week_end_date, new_additional_end)
+        from detail_project.models import DetailAHSPAudit
+        audit = DetailAHSPAudit.objects.filter(project=self.project).latest('id')
+        self.assertEqual(
+            audit.old_data['rows_before'][0]['week_end_date'],
+            date(2026, 2, 25).isoformat(),
+        )
+
     # ------------------------------------------------------- kombinasi ilegal
 
     def test_resolution_outside_allowed_list_is_rejected(self):

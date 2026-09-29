@@ -66,6 +66,55 @@ class TimelineTargetFieldTests(TestCase):
         self.assertEqual(self.project.tanggal_akhir_tambahan, date(2026, 3, 7))
         self.assertEqual(self.project.durasi_hari, before_duration)
 
+    def test_preview_detects_type_two_and_reduction_from_week_counts(self):
+        type_two = self._post(
+            "detail_project:api_preview_project_timeline",
+            self._payload(
+                target_field="tanggal_akhir_tambahan",
+                tanggal_akhir_tambahan="2026-03-31",
+            ),
+        )
+        self.assertEqual(type_two.status_code, 200, type_two.content[:400])
+        self.assertEqual(json.loads(type_two.content)["impact"]["jenis"], "tipe_2")
+
+        self.project.tanggal_akhir_tambahan = date(2026, 3, 31)
+        self.project.save()
+        reduction = self._post(
+            "detail_project:api_preview_project_timeline",
+            self._payload(
+                target_field="tanggal_akhir_tambahan",
+                tanggal_akhir_tambahan="2026-03-15",
+            ),
+        )
+        self.assertEqual(reduction.status_code, 200, reduction.content[:400])
+        self.assertEqual(json.loads(reduction.content)["impact"]["jenis"], "pengurangan")
+
+        unchanged = self._post(
+            "detail_project:api_preview_project_timeline",
+            self._payload(
+                target_field="tanggal_akhir_tambahan",
+                tanggal_akhir_tambahan="2026-03-31",
+            ),
+        )
+        self.assertEqual(unchanged.status_code, 200, unchanged.content[:400])
+        self.assertEqual(json.loads(unchanged.content)["impact"]["jenis"], "tidak_berubah")
+
+    def test_preview_detects_extra_days_inside_the_same_final_week(self):
+        self.project.tanggal_selesai = date(2026, 2, 25)
+        self.project.durasi_hari = 56
+        self.project.save(update_fields=["tanggal_selesai", "durasi_hari", "updated_at"])
+        response = self._post(
+            "detail_project:api_preview_project_timeline",
+            self._payload(
+                target_field="tanggal_akhir_tambahan",
+                tanggal_akhir_tambahan="2026-02-27",
+            ),
+        )
+        self.assertEqual(response.status_code, 200, response.content[:400])
+        self.assertEqual(json.loads(response.content)["impact"]["jenis"], "tipe_1")
+        self.assertEqual(json.loads(response.content)["impact"]["new_week_count"], 9)
+
+
     def test_contract_change_keeps_additional_end_when_it_is_still_later(self):
         self.project.tanggal_akhir_tambahan = date(2026, 3, 31)
         self.project.save()
@@ -105,6 +154,12 @@ class TimelineTargetFieldTests(TestCase):
     def test_delete_additional_restores_contract_range(self):
         self.project.tanggal_akhir_tambahan = date(2026, 3, 31)
         self.project.save()
+        preview = self._post(
+            "detail_project:api_preview_project_timeline",
+            self._payload(target_field="tanggal_akhir_tambahan", hapus_tambahan=True),
+        )
+        self.assertEqual(preview.status_code, 200, preview.content[:400])
+        self.assertEqual(json.loads(preview.content)["impact"]["jenis"], "hapus")
         response = self._post(
             "detail_project:api_commit_project_timeline",
             self._payload(
