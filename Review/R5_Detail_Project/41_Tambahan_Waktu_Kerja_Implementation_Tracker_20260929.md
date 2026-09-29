@@ -68,7 +68,7 @@ Kegagalan lama yang diketahui (tidak boleh bertambah):
 | 0.1 | Uji bolak-balik backup/restore/duplikasi | DONE | `e54679be` | 2026-09-29 |
 | 0.2 | Restore memakai aturan minggu kanonik (bug B) | DONE | `7024dfec` | 2026-09-29 |
 | 0.3 | Satu penyalin data progres (bug A, C) | DONE | `8a900ffb` | 2026-09-29 |
-| 0.4 | Satu layanan tulis progres | DONE | menunggu commit langkah ini | 2026-09-29 |
+| 0.4 | Satu layanan tulis progres | DONE | `d004a9c1` | 2026-09-29 |
 | 1.1 | Skema, helper, penyisiran, field target | TODO | | |
 | 1.2 | Tambahan ikut backup/restore/duplikasi | TODO | | |
 | 1.3 | Aturan tulis rencana | TODO | | |
