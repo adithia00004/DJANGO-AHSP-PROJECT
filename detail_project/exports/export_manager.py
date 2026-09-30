@@ -18,6 +18,7 @@ from .volume_pekerjaan_adapter import VolumePekerjaanAdapter
 from .harga_items_adapter import HargaItemsAdapter
 from .rincian_ahsp_adapter import RincianAHSPAdapter
 from .jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
+from detail_project.timeline_utils import is_extension_day
 
 
 logger = logging.getLogger(__name__)
@@ -936,6 +937,7 @@ class ExportManager:
             'report_type': report_type,
             'professional': True,  # Flag for professional format
             'project_info': report_data.get('project_info', {}),
+            **adapter.get_timeline_metadata(),
         }
         
         if report_type == 'rekap':
@@ -1350,6 +1352,7 @@ class ExportManager:
             used_names.add(sheet_name)
             sheets.append({
                 'date': report_date,
+                'is_extension_day': is_extension_day(self.project, report_date),
                 'sheet_name': sheet_name,
                 'day_number': (report_date - project_start).days + 1,
                 'week_number': week_number,

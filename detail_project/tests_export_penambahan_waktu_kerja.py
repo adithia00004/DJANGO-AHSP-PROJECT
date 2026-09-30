@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from dashboard.models import Project
+from detail_project.exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
 from detail_project.timeline_utils import (
     contract_boundary_week,
     is_extension_day,
@@ -79,3 +80,39 @@ class ExtensionExportFixtureTests(ExtensionExportFixtureMixin, TestCase):
         self.assertEqual(project_report_period_counts(self.without_extension), (6, 2))
         self.assertFalse(is_extension_week(self.without_extension, 7))
         self.assertFalse(is_extension_day(self.without_extension, date(2026, 9, 20)))
+
+
+class ExtensionExportAdapterTests(ExtensionExportFixtureMixin, TestCase):
+    def test_same_week_extension_marks_boundary_without_an_extra_week(self):
+        data = JadwalPekerjaanExportAdapter(self.same_week).get_rekap_report_data()
+        self.assertEqual(data["contract_end"], date(2026, 9, 16))
+        self.assertEqual(data["additional_end"], date(2026, 9, 19))
+        self.assertEqual(data["boundary_week"], 1)
+        self.assertEqual(len(data["weekly_columns"]), 1)
+        self.assertTrue(data["weekly_columns"][0]["is_boundary_week"])
+        self.assertFalse(data["weekly_columns"][0]["is_extension_week"])
+
+    def test_w6_boundary_and_w7_extension_reach_all_report_payloads(self):
+        adapter = JadwalPekerjaanExportAdapter(self.next_week)
+        for data in (
+            adapter.get_rekap_report_data(),
+            adapter.get_monthly_comparison_data(2),
+            adapter.get_weekly_comparison_data(7),
+        ):
+            self.assertEqual(data["contract_end"], date(2026, 9, 19))
+            self.assertEqual(data["additional_end"], date(2026, 9, 27))
+            self.assertEqual(data["boundary_week"], 6)
+        columns = adapter.get_rekap_report_data()["weekly_columns"]
+        self.assertEqual(len(columns), 7)
+        self.assertTrue(columns[5]["is_boundary_week"])
+        self.assertFalse(columns[5]["is_extension_week"])
+        self.assertFalse(columns[6]["is_boundary_week"])
+        self.assertTrue(columns[6]["is_extension_week"])
+
+    def test_project_without_extension_has_no_column_markers(self):
+        data = JadwalPekerjaanExportAdapter(self.without_extension).get_rekap_report_data()
+        self.assertIsNone(data["additional_end"])
+        self.assertIsNone(data["boundary_week"])
+        self.assertEqual(len(data["weekly_columns"]), 6)
+        self.assertTrue(all(not col["is_boundary_week"] for col in data["weekly_columns"]))
+        self.assertTrue(all(not col["is_extension_week"] for col in data["weekly_columns"]))

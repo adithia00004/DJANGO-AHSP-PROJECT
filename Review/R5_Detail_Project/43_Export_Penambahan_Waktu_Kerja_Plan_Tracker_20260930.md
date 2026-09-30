@@ -174,8 +174,8 @@ Aturan penempatan:
 
 | Langkah | Status | Commit | Tanggal | Catatan |
 |---|---|---|---|---|
-| E0 | REVIEW | commit ini | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
-| E1 | TODO | | | |
+| E0 | REVIEW | `63ef286c` | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
+| E1 | REVIEW | commit ini | 2026-09-30 | Adapter meneruskan akhir kontrak/tambahan dan minggu batas; kolom bertanda, harian membawa flag hari tambahan; 21 tes terkait lulus |
 | E2 | TODO | | | |
 | E3 | TODO | | | |
 | E4 | TODO | | | |
@@ -193,6 +193,7 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E0 baseline backend | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_20260930 ahsp_web python manage.py test detail_project dashboard --settings=config.settings.test_pg --noinput --verbosity=1` | 894 tes; 3 gagal baseline yang sama dengan doc 41 §3; 40 skipped. DB terisolasi dibuat dan dihancurkan. |
 | 2026-09-30 | E0 baseline frontend | `npm run test:frontend -- --reporter=dot --silent` | 39 file; 431 lulus, 25 skipped. |
 | 2026-09-30 | E0 fixture | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e0 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja --settings=config.settings.test_pg --noinput --verbosity=1` | 3 lulus: tambahan satu minggu yang sama, tambahan sampai W7, tanpa tambahan. |
+| 2026-09-30 | E1 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e1 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja detail_project.tests_jadwal_monthly_report.ReportPeriodCountTests detail_project.tests_wp_export_parity.JadwalDailyDocxExportTests --settings=config.settings.test_pg --noinput --verbosity=1` | 21 lulus; metadata tipe 1/2 dan tanpa tambahan, hitung periode kanonik, serta jalur DOCX harian lama. |
 
 ## 8. Log temuan & keputusan tambahan
 

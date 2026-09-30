@@ -30,6 +30,11 @@ from detail_project.models import (
 )
 from detail_project.progress_utils import calculate_week_number, get_week_date_range
 from detail_project.services import compute_rekap_for_project
+from detail_project.timeline_utils import (
+    contract_boundary_week,
+    is_extension_week,
+    work_period_end,
+)
 from ..export_config import get_page_size_mm, JadwalExportLayout
 from .table_styles import SectionHeaderFormatter as SHF
 
@@ -103,6 +108,17 @@ class JadwalPekerjaanExportAdapter:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def get_timeline_metadata(self) -> Dict[str, Any]:
+        """Canonical contract/additional boundary for all report formats."""
+        contract_end = getattr(self.project, "tanggal_selesai", None)
+        period_end = work_period_end(self.project)
+        additional_end = period_end if contract_end and period_end and period_end > contract_end else None
+        return {
+            "contract_end": contract_end,
+            "additional_end": additional_end,
+            "boundary_week": contract_boundary_week(self.project) if additional_end else None,
+        }
+
     def get_export_data(self) -> Dict[str, Any]:
         weekly_tahapan = self._fetch_weekly_tahapan()
         progress_map, progress_meta = self._build_progress_map()
@@ -204,7 +220,7 @@ class JadwalPekerjaanExportAdapter:
             "rows_per_page": self.max_rows_per_page,
         }
 
-        return {"pages": pages, "meta": meta}
+        return {"pages": pages, "meta": meta, **self.get_timeline_metadata()}
 
     # ------------------------------------------------------------------
     # Weekly / Monthly column builders
@@ -223,6 +239,7 @@ class JadwalPekerjaanExportAdapter:
     ) -> List[Dict[str, Any]]:
         week_end_day = self._get_week_end_day()
         project_start = self.project_start or date.today()
+        timeline_meta = self.get_timeline_metadata()
         expected_weeks = self._estimate_week_count(project_start, self.project_end or project_start)
         target_weeks = max(expected_weeks, max_week_number or 0)
         columns: List[Dict[str, Any]] = []
@@ -249,6 +266,12 @@ class JadwalPekerjaanExportAdapter:
             target_weeks = max(1, target_weeks)
 
         columns = self._ensure_weekly_column_count(columns, target_weeks, project_start, week_end_day)
+        for column in columns:
+            week_number = column["week_number"]
+            column["is_boundary_week"] = week_number == timeline_meta["boundary_week"]
+            column["is_extension_week"] = bool(
+                timeline_meta["additional_end"] and is_extension_week(self.project, week_number)
+            )
         return columns
 
     def _ensure_weekly_column_count(
@@ -387,8 +410,9 @@ class JadwalPekerjaanExportAdapter:
 
         project_start = min(start_candidates) if start_candidates else today
 
-        if getattr(self.project, "tanggal_selesai", None):
-            end_candidates.append(self.project.tanggal_selesai)
+        period_end = work_period_end(self.project)
+        if period_end:
+            end_candidates.append(period_end)
         else:
             end_candidates.append(date(project_start.year, 12, 31))
 
@@ -398,7 +422,7 @@ class JadwalPekerjaanExportAdapter:
             if tahap.tanggal_selesai:
                 end_candidates.append(tahap.tanggal_selesai)
 
-        project_end = max(end_candidates) if end_candidates else project_start
+        project_end = period_end or (max(end_candidates) if end_candidates else project_start)
         if project_end < project_start:
             project_end = project_start
 
@@ -727,6 +751,7 @@ class JadwalPekerjaanExportAdapter:
             "summary": summary,
             "project_info": self._get_project_info(),
             "weekly_columns": weekly_columns,  # Added for Gantt week headers with dates
+            **self.get_timeline_metadata(),
             "meta": {
                 "total_weeks": len(weekly_columns),
                 "total_months": len(monthly_columns),
@@ -801,6 +826,7 @@ class JadwalPekerjaanExportAdapter:
 
         return {
             "month": month,
+            **self.get_timeline_metadata(),
             "period": {
                 "start_date": period_start,
                 "end_date": period_end,
@@ -887,6 +913,7 @@ class JadwalPekerjaanExportAdapter:
 
         return {
             "week": week,
+            **self.get_timeline_metadata(),
             "period": {
                 "start_date": period_start,
                 "end_date": period_end,
