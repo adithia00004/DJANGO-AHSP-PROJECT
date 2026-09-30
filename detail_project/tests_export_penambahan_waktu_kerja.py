@@ -4,6 +4,7 @@ Type 1 extends the final week only. Type 2 extends that week and adds W7.
 Both scenarios use the same canonical Monday-Sunday week boundary as project 217.
 """
 
+import base64
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -16,6 +17,7 @@ from dashboard.models import Project
 from detail_project.exports.errors import ExportValidationError
 from detail_project.exports.export_manager import ExportManager
 from detail_project.exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
+from detail_project.exports.pdf_exporter import PDFExporter
 from detail_project.models import (
     DetailAHSPExpanded,
     DetailAHSPProject,
@@ -348,3 +350,108 @@ class ExtensionSummaryPdfTests(ExtensionSummaryFixtureMixin, TestCase):
         )
         for pages in (before, pdf_page_texts(response.content)):
             self.assertFalse(any("RANGKUMAN PROGRESS AKHIR WAKTU KERJA" in page for page in pages))
+
+
+class ExtensionPdfMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
+    def test_rekap_boundary_line_is_after_w6_not_w7(self):
+        manager = ExportManager(self.next_week, self.owner)
+        page = JadwalPekerjaanExportAdapter(self.next_week).get_rekap_report_data()['planned_pages'][0]
+        config = manager._create_config_simple('Jadwal', page_orientation='landscape', page_size='A3')
+        table = PDFExporter(config)._build_table(page)
+        boundary_lines = [
+            command for command in table._linecmds
+            if command[0] == 'LINEAFTER' and command[3] == 2.5
+        ]
+        self.assertEqual(len(boundary_lines), 1)
+        self.assertEqual(boundary_lines[0][1], (8, 0))  # 3 static + W6 at index 5
+
+    def test_rekap_planned_and_actual_grids_label_additional_week(self):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="rekap",
+        )
+        pages = pdf_page_texts(response.content)
+        planned = next(page for page in pages if "GRID VIEW - RENCANA" in page)
+        actual = next(page for page in pages if "GRID VIEW - REALISASI" in page)
+        for page in (planned, actual):
+            self.assertIn("W6", page)
+            self.assertIn("W7", page)
+            self.assertIn("Penambahan", page)
+
+    def test_gantt_uses_server_boundary_when_frontend_sends_columns(self):
+        pekerjaan = list(Pekerjaan.objects.filter(project=self.next_week).order_by('id'))
+        gantt_data = {
+            'rows': [
+                {'id': item.id, 'name': item.snapshot_uraian, 'type': 'pekerjaan',
+                 'volume': 10, 'satuan': 'm2', 'level': 3}
+                for item in pekerjaan
+            ],
+            'time_columns': [
+                {'week': week, 'label': f'W{week}', 'range': ''}
+                for week in range(1, 8)
+            ],
+            'planned': {str(item.id): {6: 100} for item in pekerjaan},
+            'actual': {str(item.id): {6: 50, 7: 50} for item in pekerjaan},
+        }
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="rekap", gantt_data=gantt_data,
+        )
+        pages = pdf_page_texts(response.content)
+        gantt = next(page for page in pages if "BAGIAN 4: GANTT CHART" in page)
+        self.assertIn("Penambahan", gantt)
+
+    def test_monthly_kurva_tables_mark_the_additional_column(self):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="monthly", months=[2],
+        )
+        pages = pdf_page_texts(response.content)
+        kurva_pages = [
+            page for page in pages
+            if "RINGKASAN PROGRESS KURVA S" in page or "GRAFIK KURVA S" in page
+        ]
+        self.assertTrue(kurva_pages)
+        self.assertTrue(all("Penambahan" in page for page in kurva_pages))
+
+    def test_rekap_kurva_table_marks_w7(self):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="rekap",
+        )
+        pages = pdf_page_texts(response.content)
+        kurva_pages = [page for page in pages if "KURVA S" in page and "W7" in page]
+        self.assertTrue(kurva_pages)
+        self.assertTrue(any("Penambahan" in page for page in kurva_pages))
+
+    def test_browser_kurva_attachment_does_not_duplicate_server_kurva(self):
+        manager = ExportManager(self.next_week, self.owner)
+        base = pdf_page_texts(manager.export_jadwal_professional("pdf", report_type="rekap").content)
+        tiny_png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII="
+        )
+        attached = pdf_page_texts(manager.export_jadwal_professional(
+            "pdf", report_type="rekap",
+            attachments=[{'title': 'Kurva S dari browser', 'bytes': tiny_png}],
+        ).content)
+        self.assertEqual(len(attached), len(base))
+        self.assertEqual(sum("KURVA S" in page for page in attached),
+                         sum("KURVA S" in page for page in base))
+
+    def test_weekly_extension_subtitle_is_absent_from_boundary_week(self):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="weekly", weeks=[6, 7],
+        )
+        pages = pdf_page_texts(response.content)
+        week_six = next(page for page in pages if "PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-6" in page)
+        week_seven = next(page for page in pages if "PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7" in page)
+        self.assertNotIn("Penambahan Waktu Kerja", week_six)
+        self.assertIn("Penambahan Waktu Kerja", week_seven)
+
+    def test_later_month_has_subtitle_and_front_summary(self):
+        self.next_week.tanggal_akhir_tambahan = date(2026, 10, 11)  # W9, month 3
+        self.next_week.save(update_fields=['tanggal_akhir_tambahan'])
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="monthly", months=[3],
+        )
+        pages = pdf_page_texts(response.content)
+        summary = next(i for i, page in enumerate(pages) if "RANGKUMAN PROGRESS AKHIR WAKTU KERJA" in page)
+        month_three = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-3" in page)
+        self.assertLess(summary, month_three)
+        self.assertIn("Penambahan Waktu Kerja", pages[month_three])

@@ -216,6 +216,7 @@ class JadwalPekerjaanExportAdapter:
                                 "rows": rows,
                             },
                             "col_widths": self._build_col_widths(len(chunk)),
+                            "weekly_columns": list(chunk),
                             "hierarchy_levels": hierarchy_slice,
                             "meta": {
                                 "mode": "weekly",
@@ -1040,6 +1041,7 @@ class JadwalPekerjaanExportAdapter:
                         "rows": rows,
                     },
                     "col_widths": self._build_col_widths(len(chunk)),
+                    "weekly_columns": list(chunk),
                     "hierarchy_levels": hierarchy_slice,
                     "meta": {
                         "page_seq": page_seq,

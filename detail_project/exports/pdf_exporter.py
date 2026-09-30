@@ -1464,6 +1464,7 @@ class PDFExporter(ConfigExporterBase):
                     hierarchy_data=hierarchy_data,
                     period_info=period_info,
                     include_signatures=not (contract_summary and month == boundary_month and not summary_inserted),
+                    is_extension_period=bool(contract_summary and month > boundary_month),
                 )
                 story.extend(progress_elements)
                 story.append(PageBreak())
@@ -1581,7 +1582,8 @@ class PDFExporter(ConfigExporterBase):
                         month=month,
                         project_info=project_info,
                         planned_progress=planned_progress,
-                        actual_progress=actual_progress
+                        actual_progress=actual_progress,
+                        weekly_columns=all_weekly_columns,
                     )
                     if portrait_charts:
                         for p_idx, p_chart in enumerate(portrait_charts):
@@ -1636,6 +1638,7 @@ class PDFExporter(ConfigExporterBase):
                     hierarchy_data=hierarchy_data,
                     period_info=period_info,
                     include_signatures=not (contract_summary and week == boundary_week and not summary_inserted),
+                    is_extension_period=bool(contract_summary and week > boundary_week),
                 )
                 story.extend(progress_elements)
 
@@ -1696,6 +1699,7 @@ class PDFExporter(ConfigExporterBase):
                     hierarchy_data=hierarchy_data,
                     period_info=data.get('period', {}),
                     include_signatures=not (contract_summary and month == boundary_month and not summary_inserted),
+                    is_extension_period=bool(contract_summary and month > boundary_month),
                 )
                 story.extend(progress_elements)
                 story.append(PageBreak())
@@ -1712,6 +1716,7 @@ class PDFExporter(ConfigExporterBase):
                     hierarchy_data=hierarchy_data,
                     period_info=data.get('period', {}),
                     include_signatures=not (contract_summary and week == boundary_week and not summary_inserted),
+                    is_extension_period=bool(contract_summary and week > boundary_week),
                 )
                 story.extend(progress_elements)
                 story.append(PageBreak())
@@ -1857,7 +1862,8 @@ class PDFExporter(ConfigExporterBase):
                         month=month,
                         project_info=project_info,
                         planned_progress=planned_progress,
-                        actual_progress=actual_progress
+                        actual_progress=actual_progress,
+                        weekly_columns=all_weekly_columns,
                     )
                     if portrait_charts:
                         for p_idx, p_chart in enumerate(portrait_charts):
@@ -2008,7 +2014,8 @@ class PDFExporter(ConfigExporterBase):
                         pekerjaan_rows,
                         kurva_s_data,
                         total_weeks=len(kurva_s_data),
-                        max_rows_per_page=25
+                        max_rows_per_page=25,
+                        weekly_columns=data.get('weekly_columns') or [],
                     )
                     
                     for idx, page_drawing in enumerate(kurva_pages):
@@ -2133,6 +2140,24 @@ class PDFExporter(ConfigExporterBase):
                 total_weeks = meta.get('total_weeks', 0)
                 if total_weeks > 0:
                     time_columns = [{'week_number': i+1, 'week': i+1, 'label': f'W{i+1}', 'range': ''} for i in range(total_weeks)]
+
+            # Boundary flags always come from the canonical adapter, even when
+            # the frontend supplied Gantt column labels and bars.
+            canonical_weeks = {
+                int(column['week_number']): column for column in weekly_columns_from_adapter
+                if column.get('week_number') is not None
+            }
+            canonical_time_columns = []
+            for index, column in enumerate(time_columns, start=1):
+                week_number = int(column.get('week_number') or index)
+                canonical = canonical_weeks.get(week_number, {})
+                canonical_time_columns.append({
+                    **column,
+                    'week_number': week_number,
+                    'is_boundary_week': bool(canonical.get('is_boundary_week')),
+                    'is_extension_week': bool(canonical.get('is_extension_week')),
+                })
+            time_columns = canonical_time_columns
             
             # Build backend Gantt if we have data
             if pekerjaan_rows and time_columns:
@@ -2514,6 +2539,7 @@ class PDFExporter(ConfigExporterBase):
         table_data = data.get('table_data', {})
         headers = table_data.get('headers', [])
         rows = table_data.get('rows', [])
+        week_columns = data.get('weekly_columns') or []
         col_widths = [w * mm for w in data.get('col_widths', [])]
         hierarchy = data.get('hierarchy_levels', {})
 
@@ -2573,7 +2599,7 @@ class PDFExporter(ConfigExporterBase):
             textColor=colors.white,
         )
 
-        def create_header_cell(header_text, is_week=False):
+        def create_header_cell(header_text, is_week=False, is_extension=False):
             """Create header cell, with 2-line format for week columns"""
             if is_week:
                 # Parse week header like "Week 1 (01/01 - 07/01)" or "W1 (01/01-07/01)"
@@ -2596,6 +2622,8 @@ class PDFExporter(ConfigExporterBase):
                     else:
                         header_text = week_label
                 
+                if is_extension:
+                    header_text = f'{header_text}<br/><font size="4">Penambahan</font>'
                 st = week_header_style
             else:
                 st = plain_header_style
@@ -2607,7 +2635,8 @@ class PDFExporter(ConfigExporterBase):
         header_cells = []
         for idx, h in enumerate(headers):
             is_week = idx >= static_cols
-            header_cells.append(create_header_cell(h, is_week))
+            week_meta = week_columns[idx - static_cols] if is_week and idx - static_cols < len(week_columns) else {}
+            header_cells.append(create_header_cell(h, is_week, week_meta.get('is_extension_week', False)))
         
         # =============================================
         # FIXED TABLE WIDTH CALCULATION
@@ -2698,6 +2727,10 @@ class PDFExporter(ConfigExporterBase):
         # Apply hierarchy styling using HierarchyStyler
         hierarchy_commands = HS.get_style_commands(hierarchy, header_offset=1)
         style_commands.extend(hierarchy_commands)
+        for week_index, column in enumerate(week_columns[:weeks_to_render]):
+            if column.get('is_boundary_week'):
+                edge = static_cols + week_index
+                style_commands.append(('LINEAFTER', (edge, 0), (edge, -1), 2.5, colors.HexColor('#DC3545')))
         
         table.setStyle(TableStyle(style_commands))
         
@@ -3228,6 +3261,7 @@ class PDFExporter(ConfigExporterBase):
         hierarchy_data: List[Dict[str, Any]],
         period_info: Dict[str, Any] = None,
         include_signatures: bool = True,
+        is_extension_period: bool = False,
     ) -> List:
         """
         Build combined Progress Pelaksanaan Pekerjaan page.
@@ -3262,6 +3296,11 @@ class PDFExporter(ConfigExporterBase):
             f"<b>PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-{month}</b>",
             title_style
         ))
+        if is_extension_period:
+            elements.append(Paragraph('Penambahan Waktu Kerja', ParagraphStyle(
+                'AdditionalWorkSubtitle', fontName='Helvetica-Bold', fontSize=10,
+                alignment=TA_CENTER, textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            )))
         elements.append(Spacer(1, 5*mm))
         
         # ==============================================
@@ -3656,6 +3695,7 @@ class PDFExporter(ConfigExporterBase):
         hierarchy_data: List[Dict[str, Any]],
         period_info: Dict[str, Any] = None,
         include_signatures: bool = True,
+        is_extension_period: bool = False,
     ) -> List:
         """
         Build Weekly Progress page (same structure as monthly, but with "Minggu" labels).
@@ -3690,6 +3730,11 @@ class PDFExporter(ConfigExporterBase):
             f"<b>PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-{week}</b>",
             title_style
         ))
+        if is_extension_period:
+            elements.append(Paragraph('Penambahan Waktu Kerja', ParagraphStyle(
+                'AdditionalWorkSubtitle', fontName='Helvetica-Bold', fontSize=10,
+                alignment=TA_CENTER, textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            )))
         elements.append(Spacer(1, 5*mm))
         
         # ==============================================
@@ -4712,10 +4757,13 @@ class PDFExporter(ConfigExporterBase):
                 # ALWAYS return 2-line format with <br/>
                 week_label = f'W{week_num}'
                 if date_range:
-                    return f'<b>{week_label}</b><br/><font size="4">{date_range}</font>'
+                    result = f'<b>{week_label}</b><br/><font size="4">{date_range}</font>'
                 else:
                     # Use dash placeholder to maintain 2-line format
-                    return f'<b>{week_label}</b><br/><font size="4">-</font>'
+                    result = f'<b>{week_label}</b><br/><font size="4">-</font>'
+                if tc.get('is_extension_week'):
+                    result += '<br/><font size="4">Penambahan</font>'
+                return result
             
             # Create header cells with proper leading for 2-line display
             header_style = ParagraphStyle(
@@ -4800,6 +4848,12 @@ class PDFExporter(ConfigExporterBase):
                         bar_width = (end_week - start_week + 1) * week_width
                         d.add(Rect(bar_x, bar_y_actual, bar_width, BAR_HEIGHT,
                                   fillColor=actual_color, strokeColor=None))
+
+                for i, column in enumerate(page_time_columns):
+                    if column.get('is_boundary_week'):
+                        x = (i + 1) * week_width
+                        d.add(Line(x, 0, x, ROW_HEIGHT,
+                                   strokeColor=colors.HexColor('#DC3545'), strokeWidth=2.5))
                 
                 return d
             
@@ -4958,6 +5012,9 @@ class PDFExporter(ConfigExporterBase):
             style_commands.append(('LINEBEFORE', (1, 0), (1, -1), 0.5, border_color))  # After Uraian
             style_commands.append(('LINEBEFORE', (2, 0), (2, -1), 0.5, border_color))  # After Volume
             style_commands.append(('LINEBEFORE', (3, 0), (3, -1), 0.5, border_color))  # After Satuan
+            for i, column in enumerate(page_time_columns):
+                if column.get('is_boundary_week'):
+                    style_commands.append(('LINEAFTER', (3 + i, 0), (3 + i, 0), 2.5, colors.HexColor('#DC3545')))
             
             # Merge week columns in data rows for bar display (col 3 to end)
             # Column indices: 0=Uraian, 1=Volume, 2=Satuan, 3+=Weeks
@@ -5336,6 +5393,7 @@ class PDFExporter(ConfigExporterBase):
                     col = all_weekly_columns[i]
                     week_num = col.get('week_number', i + 1)
                 else:
+                    col = {}
                     week_num = i + 1
                 
                 x = left_margin + static_total + (i * week_width) + week_width/2  # Add left_margin offset
@@ -5344,6 +5402,12 @@ class PDFExporter(ConfigExporterBase):
                 drawing.add(String(x, header_y + 6, f'W{week_num}',
                                   fontSize=week_font_size, fontName='Helvetica-Bold', 
                                   fillColor=header_text, textAnchor='middle'))
+                if col.get('is_extension_week'):
+                    drawing.add(String(
+                        x, header_y + 1, 'Penambahan',
+                        fontSize=min(4, max(2, week_width / 5)), fontName='Helvetica',
+                        fillColor=header_text, textAnchor='middle',
+                    ))
             
             # Data rows for this page
             for row_idx, row in enumerate(page_rows):
@@ -5551,6 +5615,12 @@ class PDFExporter(ConfigExporterBase):
                 drawing.add(String(legend_x + 13, legend_y_top - 19, 'Realisasi', 
                                   fontSize=7, fontName='Helvetica'))
             
+            for week_index, column in enumerate(all_weekly_columns[:num_weeks]):
+                if column.get('is_boundary_week'):
+                    x = left_margin + static_total + (week_index + 1) * week_width
+                    drawing.add(Line(x, table_bottom, x, table_top,
+                                     strokeColor=colors.HexColor('#DC3545'), strokeWidth=2.5))
+
             # Page indicator removed per user request
             # if not is_first_page and not is_last_page:
             #     drawing.add(String(total_table_width / 2, table_bottom - 10, 
@@ -5575,7 +5645,8 @@ class PDFExporter(ConfigExporterBase):
         month: int = 1,
         project_info: Dict[str, Any] = None,
         planned_progress: Dict[str, Dict] = None,
-        actual_progress: Dict[str, Dict] = None
+        actual_progress: Dict[str, Dict] = None,
+        weekly_columns: List[Dict] = None,
     ) -> List[Drawing]:
         """
         Build Portrait mode Kurva S table with 4-week segment chart overlay.
@@ -5764,6 +5835,10 @@ class PDFExporter(ConfigExporterBase):
             for i, wk in enumerate(weeks_this_month):
                 x = static_total + (i * week_width) + week_width/2
                 drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+                column = weekly_columns[wk - 1] if weekly_columns and wk <= len(weekly_columns) else {}
+                if column.get('is_extension_week'):
+                    drawing.add(String(x, header_y + 1, 'Penambahan', fontSize=3.5,
+                                       fontName='Helvetica', fillColor=header_text, textAnchor='middle'))
             
             # Data rows
             for row_idx, row in enumerate(page_rows):
@@ -6020,6 +6095,13 @@ class PDFExporter(ConfigExporterBase):
                 drawing.add(Rect(legend_x, legend_y_top - 20, 10, 8, fillColor=actual_color))
                 drawing.add(String(legend_x + 13, legend_y_top - 19, 'Realisasi', fontSize=7, fontName='Helvetica'))
             
+            for i, wk in enumerate(weeks_this_month):
+                column = weekly_columns[wk - 1] if weekly_columns and wk <= len(weekly_columns) else {}
+                if column.get('is_boundary_week'):
+                    x = static_total + (i + 1) * week_width
+                    drawing.add(Line(x, table_bottom, x, table_top,
+                                     strokeColor=colors.HexColor('#DC3545'), strokeWidth=2.5))
+
             # === Signature section REMOVED per user request ===
             
             drawings.append(drawing)
@@ -6206,7 +6288,8 @@ class PDFExporter(ConfigExporterBase):
         kurva_s_data: List[Dict],
         total_weeks: int,
         row_height: float = 14,
-        max_rows_per_page: int = 30
+        max_rows_per_page: int = 30,
+        weekly_columns: List[Dict] = None,
     ) -> List[Drawing]:
         """
         Build paginated Kurva S visualization with freeze columns.
@@ -6389,6 +6472,11 @@ class PDFExporter(ConfigExporterBase):
                     
                     # Use WHF for consistent week header drawing
                     WHF.draw_on_canvas(drawing, x, header_y + 4, week_num, date_range, header_text_color)
+                    column = weekly_columns[week_num - 1] if weekly_columns and week_num <= len(weekly_columns) else {}
+                    if column.get('is_extension_week'):
+                        drawing.add(String(x, header_y + 1, 'Penambahan', fontSize=4,
+                                           fontName='Helvetica', fillColor=header_text_color,
+                                           textAnchor='middle'))
                 
                 # Data rows with dynamic heights
                 current_y = header_y
@@ -6592,6 +6680,14 @@ class PDFExporter(ConfigExporterBase):
                 # Actual legend
                 drawing.add(Circle(width/2 + 15, legend_y + 4, 4, fillColor=actual_color, strokeColor=colors.white, strokeWidth=0.5))
                 drawing.add(String(width/2 + 22, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica-Bold'))
+
+                for i in range(weeks_in_page):
+                    week_num = week_start + i + 1
+                    column = weekly_columns[week_num - 1] if weekly_columns and week_num <= len(weekly_columns) else {}
+                    if column.get('is_boundary_week'):
+                        x = freeze_width + (i + 1) * week_width
+                        drawing.add(Line(x, table_bottom, x, table_top,
+                                         strokeColor=colors.HexColor('#DC3545'), strokeWidth=2.5))
                 
                 pages.append(drawing)
         
