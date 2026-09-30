@@ -11,7 +11,7 @@
 import { createCanvas, createClipViewport, getContext2D, hitTestPoint, isDarkMode } from './canvas-utils.js';
 import { TooltipManager, createLegend, updateLegendColors } from './tooltip-manager.js';
 import { StateManager } from '../core/state-manager.js';
-import { drawWorkPeriodEndMarker } from '../shared/work-period-marker.js';
+import { getBodyOffsetInContainer } from '../shared/canvas-utils.js';
 
 export class KurvaSCanvasOverlay {
   constructor(tableManager, options = {}) {
@@ -316,11 +316,10 @@ export class KurvaSCanvasOverlay {
     const gridHeight = maxY - minY;
     const gridTop = minY;
 
-    // Get header height for clipViewport positioning
-    const header = container.querySelector('.tanstack-grid-header');
-    const headerHeight = header?.offsetHeight || 0;
-
-    const containerRect = container.getBoundingClientRect();
+    // Measured origin of the table body inside the container. The container
+    // has viewport-relative padding, so positioning from its edge (or from
+    // the header height alone) shifts the curve off the column lines.
+    const bodyOffset = getBodyOffsetInContainer(container, scrollArea);
     const scrollAreaRect = scrollArea.getBoundingClientRect();
 
     // Viewport margins
@@ -329,12 +328,12 @@ export class KurvaSCanvasOverlay {
     const marginBottom = 15;
 
     // ClipViewport: FIXED overlay - shows only visible portion of canvas
-    // Positioned at frozen column boundary, below header
-    const viewportWidth = containerRect.width - this.pinnedWidth - marginLeft - marginRight;
+    // Positioned at frozen column boundary, at the top of the table body
+    const viewportWidth = scrollAreaRect.width - this.pinnedWidth - marginLeft - marginRight;
     const viewportHeight = scrollAreaRect.height - marginBottom;
 
-    this.clipViewport.style.left = `${this.pinnedWidth + marginLeft}px`;
-    this.clipViewport.style.top = `${headerHeight}px`;
+    this.clipViewport.style.left = `${bodyOffset.left + this.pinnedWidth + marginLeft}px`;
+    this.clipViewport.style.top = `${bodyOffset.top}px`;
     this.clipViewport.style.width = `${viewportWidth}px`;
     this.clipViewport.style.height = `${viewportHeight}px`;
     this.clipViewport.style.overflow = 'hidden'; // CLIP canvas to visible area
@@ -368,7 +367,7 @@ export class KurvaSCanvasOverlay {
       gridBounds: { minX, maxX, minY, maxY },
       gridSize: { width: gridWidth, height: gridHeight },
       canvasSize: { width: canvasWidth, height: canvasHeight },
-      clipViewport: { left: this.pinnedWidth + marginLeft, top: headerHeight, width: viewportWidth, height: viewportHeight },
+      clipViewport: { left: bodyOffset.left + this.pinnedWidth + marginLeft, top: bodyOffset.top, width: viewportWidth, height: viewportHeight },
       scroll: { left: this.scrollLeft, top: this.scrollTop },
       cellRects: cellRects.length,
     });
@@ -383,11 +382,8 @@ export class KurvaSCanvasOverlay {
     // Draw curves (canvas-relative coordinates)
     this._drawCurve(cellRects, this.curveData.planned, this._getPlannedColor(), 'Planned');
     this._drawCurve(cellRects, this.curveData.actual, this._getActualColor(), 'Actual');
-    drawWorkPeriodEndMarker(this.ctx, this.tableManager, cellRects, {
-      xOffset: this.gridBounds.gridLeft,
-      top: 0,
-      bottom: this.gridBounds.gridHeight,
-    });
+    // The contract boundary is shown by the grid's column-edge border (CSS);
+    // no second canvas line, so there is only one red marker on screen.
 
     // DEBUG: Log canvas info for hover debugging
     const canvasRect = this.canvas.getBoundingClientRect();

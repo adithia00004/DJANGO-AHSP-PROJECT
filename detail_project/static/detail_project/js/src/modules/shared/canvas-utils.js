@@ -122,3 +122,22 @@ export function getBtnColor(selector) {
   }
 }
 
+
+/**
+ * Offset of the scrolling table body inside its container's padding box,
+ * i.e. the origin an absolutely positioned overlay child must use so that
+ * canvas x/y line up with cell x/y. The container padding is `0.5vw/0.5vh`
+ * (changes with window size), so it is measured, never assumed.
+ * @param {HTMLElement} container - Positioned parent of the body
+ * @param {HTMLElement} scrollArea - Scrolling table body
+ * @returns {{left: number, top: number}}
+ */
+export function getBodyOffsetInContainer(container, scrollArea) {
+  if (!container || !scrollArea) return { left: 0, top: 0 };
+  const containerRect = container.getBoundingClientRect();
+  const bodyRect = scrollArea.getBoundingClientRect();
+  return {
+    left: bodyRect.left - containerRect.left - (container.clientLeft || 0),
+    top: bodyRect.top - containerRect.top - (container.clientTop || 0),
+  };
+}

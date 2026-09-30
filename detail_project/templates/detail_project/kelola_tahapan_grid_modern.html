@@ -102,18 +102,21 @@
     background: rgba(var(--bs-info-rgb), .10);
   }
 
+  /* Column lines must be identical in header and cells: markers use background
+     or an inset shadow only, never extra borders on one side of the grid. */
   .tanstack-grid-header-cell.extension-week-header {
     background: rgba(var(--bs-warning-rgb), .16);
-    border-left: 1px solid rgba(var(--bs-warning-rgb), .45);
-    border-right: 1px solid rgba(var(--bs-warning-rgb), .45);
   }
 
   .tanstack-grid-header-cell.extension-month-header {
     background: rgba(var(--bs-warning-rgb), .12);
   }
 
-  .tanstack-grid-header-cell.contract-boundary-header {
-    border-right: 3px solid var(--bs-danger);
+  /* The only contract-boundary marker, in every mode (Grid, Gantt, Kurva S):
+     the right edge of the boundary week, identical in header and cells. */
+  .tanstack-grid-header-cell.contract-boundary-header,
+  .tanstack-grid-cell.contract-boundary-cell {
+    box-shadow: inset -3px 0 0 rgba(var(--bs-danger-rgb), .8);
   }
 
   .tanstack-grid-header-status {
@@ -138,10 +141,6 @@
 
   .tanstack-grid-cell.extension-week-cell {
     background-color: rgba(var(--bs-warning-rgb), .05);
-  }
-
-  .tanstack-grid-cell.contract-boundary-cell {
-    border-right: 3px solid rgba(var(--bs-danger-rgb), .8);
   }
 
   [data-bs-theme="dark"] .export-report-option:hover {

@@ -1,6 +1,5 @@
-import { getCssVar, getBtnColor } from '../shared/canvas-utils.js';
+import { getCssVar, getBtnColor, getBodyOffsetInContainer } from '../shared/canvas-utils.js';
 import { TooltipManager } from '../shared/tooltip-manager.js';
-import { drawWorkPeriodEndMarker } from '../shared/work-period-marker.js';
 
 export class GanttCanvasOverlay {
   constructor(tableManager) {
@@ -143,26 +142,23 @@ export class GanttCanvasOverlay {
     this.scrollLeft = scrollArea.scrollLeft || 0;
     this.scrollTop = scrollArea.scrollTop || 0;
 
-    // Get header height to position clipViewport below header
-    const header = container.querySelector('.tanstack-grid-header');
-    const headerHeight = header?.offsetHeight || 0;
-
-    // Use bounding rect for accurate viewport sizing
-    const containerRect = container.getBoundingClientRect();
+    // Measured origin of the table body inside the container. The container
+    // has viewport-relative padding, so a fixed offset only lines the bars up
+    // with the cells at one window width.
+    const bodyOffset = getBodyOffsetInContainer(container, scrollArea);
     const scrollAreaRect = scrollArea.getBoundingClientRect();
 
-    // Margins to avoid covering scrollbars and add spacing
-    const marginLeft = 10;   // Space from frozen columns
+    // Clip starts exactly at the frozen-column boundary and the body top, so
+    // canvas (rect.x - pinnedWidth, rect.y) lands on the cell's own position.
     const marginRight = 20;  // Space for vertical scrollbar
-    const marginTop = 5;     // Space from header
     const marginBottom = 10;  // Space from bottom
 
     // ClipViewport: positioned after frozen columns, acts as viewport window
-    const viewportWidth = containerRect.width - this.pinnedWidth - marginLeft - marginRight;
-    const viewportHeight = scrollAreaRect.height - marginTop - marginBottom;
+    const viewportWidth = scrollAreaRect.width - this.pinnedWidth - marginRight;
+    const viewportHeight = scrollAreaRect.height - marginBottom;
 
-    this.clipViewport.style.left = `${this.pinnedWidth + marginLeft}px`;
-    this.clipViewport.style.top = `${headerHeight + marginTop}px`;
+    this.clipViewport.style.left = `${bodyOffset.left + this.pinnedWidth}px`;
+    this.clipViewport.style.top = `${bodyOffset.top}px`;
     this.clipViewport.style.width = `${viewportWidth}px`;
     this.clipViewport.style.height = `${viewportHeight}px`;
 
@@ -242,11 +238,7 @@ export class GanttCanvasOverlay {
     this._drawBars(cellRects);
     this._publishMetrics(cellRects, scrollArea);
     this._drawDependencies(cellRects);
-    drawWorkPeriodEndMarker(this.ctx, this.tableManager, cellRects, {
-      xOffset: this.pinnedWidth,
-      top: 0,
-      bottom: this.canvas.height,
-    });
+    // Contract boundary = the grid's column-edge border (CSS), not a canvas line.
     this.ctx.restore();
   }
 

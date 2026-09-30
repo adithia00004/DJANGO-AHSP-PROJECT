@@ -4022,56 +4022,38 @@ class JadwalKegiatanApp {
     const HEADER_HEIGHT = 50;
     const LEGEND_HEIGHT = 40;
 
-    // Text wrapping settings (like PDF export)
+    // Text wrapping settings: measured in pixels so wrapped names never
+    // overflow the label column.
     const BASE_ROW_HEIGHT = 20;
     const LINE_HEIGHT = 11;
-    const MAX_CHARS_PER_LINE = 50;
     const FONT_SIZE = 9;
     const LABEL_PADDING = 5;
 
-    // Helper: wrap text and return lines
-    const wrapText = (text, maxChars) => {
-      if (!text) return [''];
-      const words = text.split(' ');
-      const lines = [];
-      let currentLine = '';
-
-      words.forEach(word => {
-        if ((currentLine + ' ' + word).trim().length <= maxChars) {
-          currentLine = (currentLine + ' ' + word).trim();
-        } else {
-          if (currentLine) lines.push(currentLine);
-          currentLine = word.length > maxChars ? word.substring(0, maxChars) : word;
-        }
-      });
-      if (currentLine) lines.push(currentLine);
-      return lines.length > 0 ? lines : [''];
-    };
-
-    // Helper: calculate row height based on text
-    const calculateRowHeight = (text, indent) => {
-      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
-      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
-      return Math.max(BASE_ROW_HEIGHT, 6 + (lines.length * LINE_HEIGHT));
-    };
-
-    // Pre-calculate row heights
-    const rowHeights = rows.map(row => {
+    // Offscreen canvas (created first so labels can be measured)
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const labelFont = (row) => (
+      row.type === 'klasifikasi' || row.type === 'sub_klasifikasi'
+        ? `bold ${FONT_SIZE}px Arial`
+        : `${FONT_SIZE}px Arial`
+    );
+    const rowLines = rows.map((row) => {
       const indent = (row.level || 0) * 15;
-      const text = row.name || row.uraian || '';
-      return calculateRowHeight(text, indent);
+      ctx.font = labelFont(row);
+      return wrapTextToWidth(
+        row.name || row.uraian || '',
+        LABEL_WIDTH - indent - LABEL_PADDING * 2,
+        (text) => ctx.measureText(text).width,
+      );
     });
+    const rowHeights = rowLines.map((lines) => Math.max(BASE_ROW_HEIGHT, 6 + lines.length * LINE_HEIGHT));
 
     // Calculate total height
     const totalRowsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
     const canvasWidth = LABEL_WIDTH + (timeColumns.length * COL_WIDTH) + 20;
     const canvasHeight = HEADER_HEIGHT + LEGEND_HEIGHT + totalRowsHeight + 20;
-
-    // Create offscreen canvas
-    const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d');
 
     // Background
     ctx.fillStyle = '#ffffff';
@@ -4125,12 +4107,10 @@ class JadwalKegiatanApp {
 
       // Row label with indent and text wrapping
       const indent = (row.level || 0) * 15;
-      const text = row.name || row.uraian || '';
-      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
-      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
+      const lines = rowLines[rowIdx];
 
       ctx.fillStyle = isKlasifikasi ? '#1e3a5f' : '#374151';
-      ctx.font = isKlasifikasi ? `bold ${FONT_SIZE}px Arial` : `${FONT_SIZE}px Arial`;
+      ctx.font = labelFont(row);
 
       lines.forEach((line, lineIdx) => {
         const textY = currentY + 12 + (lineIdx * LINE_HEIGHT);
@@ -4336,7 +4316,8 @@ class JadwalKegiatanApp {
     }
     ctx.restore();
 
-    // Work period end marker (only when the project has an additional period)
+    // Contract boundary (only with an additional period): the same solid line
+    // as the web grid border, on the right edge of the boundary week column.
     const tableManager = this.unifiedManager?.tanstackGrid;
     const marker = tableManager
       ? findWorkPeriodEndMarker(
@@ -4348,14 +4329,17 @@ class JadwalKegiatanApp {
         })),
       )
       : null;
-    if (marker) {
+    const boundaryIndex = marker
+      ? columns.findIndex((column) => column.key === marker.columnId)
+      : -1;
+    if (boundaryIndex >= 0) {
+      const x = chartLeft + (boundaryIndex + 1) * COL_WIDTH;
       ctx.save();
-      ctx.strokeStyle = '#dc3545';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(220, 53, 69, 0.8)';
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(marker.x, bodyTop);
-      ctx.lineTo(marker.x, bodyTop + bodyHeight);
+      ctx.moveTo(x - 1.5, headerY);
+      ctx.lineTo(x - 1.5, bodyTop + bodyHeight);
       ctx.stroke();
       ctx.restore();
     }
@@ -5557,12 +5541,13 @@ class JadwalKegiatanApp {
         await this._loadChartModules();
       }
 
-      // Keep the export mode in sync with the selected tab even if an overlay
-      // fails to draw.
+      // 4. Update state displayMode first: it must follow the selected tab even
+      //    if an overlay fails to draw, or the PNG download exports the
+      //    previous chart.
       const modeToDisplayMode = { grid: 'grid', gantt: 'gantt', kurva: 'scurve' };
       this.state.displayMode = modeToDisplayMode[mode] || 'grid';
 
-      // 4. Switch mode via UnifiedTableManager (shows/hides overlays)
+      // 5. Switch mode via UnifiedTableManager (shows/hides overlays)
       if (this.unifiedManager) {
         try {
           this.unifiedManager.switchMode(mode);
