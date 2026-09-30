@@ -4392,12 +4392,16 @@ class DeepCopyService:
             target_end = new_tanggal_mulai + (
                 self.source.tanggal_selesai - self.source.tanggal_mulai
             )
-        target_additional_end = None
+        # D-11 (owner 2026-09-30): Penambahan Waktu Kerja hanya ikut tersalin bila
+        # timeline kontrak salinan sama dengan sumber. Duplikasi dengan tanggal
+        # kontrak baru = proyek baru, tanpa tambahan; minggu progres yang tidak
+        # muat di timeline baru tidak disalin dan dilaporkan (G0-5).
         source_additional_end = getattr(self.source, 'tanggal_akhir_tambahan', None)
-        if source_additional_end and target_end and self.source.tanggal_selesai:
-            extension_days = (source_additional_end - self.source.tanggal_selesai).days
-            if extension_days > 0:
-                target_additional_end = target_end + timedelta(days=extension_days)
+        same_contract_timeline = (
+            target_start == self.source.tanggal_mulai
+            and target_end == self.source.tanggal_selesai
+        )
+        target_additional_end = source_additional_end if same_contract_timeline else None
         if target_start and target_end and target_end < target_start:
             raise DeepCopyValidationError(
                 code=1003,

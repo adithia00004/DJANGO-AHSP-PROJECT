@@ -276,7 +276,8 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
         self.assertEqual(copied_rows[("P-001", 1)][:2], (new_start, new_start))
         self.assertEqual(copied_rows[("P-001", 2)][:2], (date(2026, 9, 21), new_end))
         self.assertEqual(copied_rows[("P-001", 2)][2:], source_rows[("P-001", 2)][2:])
-        self.assertEqual(copied.tanggal_akhir_tambahan, date(2026, 10, 4))
+        # D-11: tanggal kontrak baru = proyek baru, tambahan tidak ikut.
+        self.assertIsNone(copied.tanggal_akhir_tambahan)
 
     def test_shorter_api_copy_reports_progress_weeks_that_do_not_fit(self):
         response = self.client.post(
@@ -299,6 +300,39 @@ class DuplicateRoundtripTests(_TransferFixtureMixin, TestCase):
             copied.tahapan.filter(is_auto_generated=True, generation_mode="weekly").count(),
             1,
         )
+
+    def test_copy_with_new_contract_end_drops_extension_and_reports_its_weeks(self):
+        # D-11: END (13/09) + tambahan s.d. 20/09 = W3 tambahan berisi realisasi.
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        source_row = PekerjaanProgressWeekly.objects.filter(project=self.project).first()
+        PekerjaanProgressWeekly.objects.create(
+            project=self.project, pekerjaan=source_row.pekerjaan, week_number=3,
+            week_start_date=date(2026, 9, 14), week_end_date=date(2026, 9, 20),
+            planned_proportion=0, actual_proportion=10,
+        )
+        response = self.client.post(
+            reverse("detail_project:api_deep_copy_project", args=[self.project.id]),
+            data=json.dumps({
+                "new_name": "Proyek Transfer (kontrak baru)",
+                "new_tanggal_mulai": START.isoformat(),
+                "new_tanggal_selesai": date(2026, 9, 12).isoformat(),
+                "copy_jadwal": True,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content[:500])
+        payload = json.loads(response.content)
+        copied = Project.objects.get(pk=payload["new_project"]["id"])
+        self.assertIsNone(copied.tanggal_akhir_tambahan)
+        self.assertNotIn(3, {week for _, week in self._rows(copied)})
+        self.assertGreaterEqual(payload["skipped_items"]["jadwal"], 1)
+
+    def test_copy_with_same_contract_dates_keeps_extension(self):
+        self.project.tanggal_akhir_tambahan = date(2026, 9, 20)
+        self.project.save(update_fields=["tanggal_akhir_tambahan", "updated_at"])
+        copied = self._service_copy(new_tanggal_mulai=START, new_tanggal_selesai=END)
+        self.assertEqual(copied.tanggal_akhir_tambahan, date(2026, 9, 20))
 
 
 class NonSundayBoundaryBackupRestoreTests(_TransferFixtureMixin, TestCase):
