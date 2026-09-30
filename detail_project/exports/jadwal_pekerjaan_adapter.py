@@ -119,6 +119,57 @@ class JadwalPekerjaanExportAdapter:
             "boundary_week": contract_boundary_week(self.project) if additional_end else None,
         }
 
+    def get_contract_end_summary(self) -> Dict[str, Any] | None:
+        """Weighted progress through the contract boundary week, for PDF/Word."""
+        timeline = self.get_timeline_metadata()
+        boundary = timeline["boundary_week"]
+        if boundary is None:
+            return None
+
+        base_rows, _ = self._build_base_rows()
+        _, _, bobot_map = self._get_bobot_maps(base_rows)
+        planned_map, _ = self._build_progress_map()
+        actual_map = self._build_actual_progress_map()
+        planned_total, actual_total = self._build_weighted_totals(
+            bobot_map, set(range(1, boundary + 1))
+        )
+        week_start, week_end = get_week_date_range(
+            boundary, self.project.tanggal_mulai, self._get_week_end_day()
+        )
+
+        unfinished = []
+        for row in base_rows:
+            if row.get("type") != "pekerjaan":
+                continue
+            pekerjaan_id = row["pekerjaan_id"]
+            actual = sum(
+                (actual_map.get((pekerjaan_id, week), Decimal("0")) for week in range(1, boundary + 1)),
+                Decimal("0"),
+            )
+            if actual >= 100:
+                continue
+            remaining = max(Decimal("0"), Decimal("100") - actual)
+            weight = bobot_map.get(pekerjaan_id, Decimal("0"))
+            unfinished.append({
+                "number": len(unfinished) + 1,
+                "description": row.get("uraian", ""),
+                "weight": weight * 100,
+                "actual": actual,
+                "remaining": remaining,
+                "remaining_weight": weight * remaining,
+                "remarks": "",
+            })
+
+        return {
+            **timeline,
+            "boundary_start": week_start,
+            "boundary_end": week_end,
+            "planned": planned_total,
+            "actual": actual_total,
+            "deviation": actual_total - planned_total,
+            "unfinished": unfinished,
+        }
+
     def get_export_data(self) -> Dict[str, Any]:
         weekly_tahapan = self._fetch_weekly_tahapan()
         progress_map, progress_meta = self._build_progress_map()

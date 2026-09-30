@@ -138,7 +138,20 @@ class WordExporter:
             }]
 
         first_page = True
+        contract_summary = data.get('contract_summary')
+        summary_inserted = False
+
+        def append_contract_summary():
+            nonlocal first_page, summary_inserted
+            if not first_page:
+                self.doc.add_page_break()
+            first_page = False
+            self._daily_add_contract_summary(contract_summary)
+            summary_inserted = True
+
         for report in reports:
+            if contract_summary and not summary_inserted and report.get('is_extension_day'):
+                append_contract_summary()
             work_items = report.get('work_items') or []
             if not work_items:
                 work_items = [{'uraian': 'Tidak ada pekerjaan terjadwal pada periode ini.', 'keterangan': ''}]
@@ -178,6 +191,12 @@ class WordExporter:
                 self._daily_add_heading(f"{sheet_name} - Dokumentasi", level=1)
                 self._daily_add_title('DOKUMENTASI LAPORAN HARIAN', self._daily_subtitle(report))
                 self._daily_add_photo_fallback()
+
+        if contract_summary and not summary_inserted and any(
+            (report.get('week_number') or 0) >= contract_summary['boundary_week']
+            for report in reports
+        ):
+            append_contract_summary()
 
         self._daily_normalize_drawing_ids()
         return self._create_daily_response(reports)
@@ -1804,6 +1823,47 @@ class WordExporter:
         run = paragraph.add_run(subtitle)
         run.font.size = Pt(8)
         run.font.color.rgb = RGBColor(90, 90, 90)
+
+    def _daily_add_contract_summary(self, summary: Dict[str, Any]):
+        """Separate unsigned page before the first additional daily report."""
+        from .cell_format import format_cell_display
+
+        def percent(value):
+            return f"{format_cell_display(value, '#,##0.00')}%"
+
+        start = summary['boundary_start']
+        end = summary['boundary_end']
+        self._daily_add_title(
+            'RANGKUMAN PROGRESS AKHIR WAKTU KERJA',
+            f"Progres dicatat per minggu; minggu batas {start:%d/%m/%Y}–{end:%d/%m/%Y}",
+        )
+        overview = self.doc.add_table(rows=3, cols=2)
+        self._daily_set_col_widths(overview, [9.0, 9.0])
+        self._daily_set_table_borders(overview, '6B7280', '4')
+        for row_index, (label, value) in enumerate((
+            ('Rencana kumulatif', summary['planned']),
+            ('Realisasi kumulatif', summary['actual']),
+            ('Deviasi', summary['deviation']),
+        )):
+            self._daily_set_cell_text(overview.cell(row_index, 0), label, bold=True)
+            self._daily_set_cell_text(overview.cell(row_index, 1), percent(value))
+
+        self.doc.add_paragraph('Pekerjaan yang belum mencapai 100%')
+        headers = ('No', 'Uraian', 'Bobot', 'Realisasi Kumulatif', 'Sisa', 'Sisa Bobot', 'Keterangan')
+        table = self.doc.add_table(rows=1, cols=len(headers))
+        self._daily_set_col_widths(table, [0.8, 5.0, 1.8, 2.7, 1.6, 2.3, 3.8])
+        for index, header in enumerate(headers):
+            self._daily_set_cell_text(table.cell(0, index), header, bold=True, size=7)
+            self._daily_set_cell_shading(table.cell(0, index), 'E5E7EB')
+        for item in summary['unfinished']:
+            cells = table.add_row().cells
+            for index, value in enumerate((
+                item['number'], item['description'], percent(item['weight']),
+                percent(item['actual']), percent(item['remaining']),
+                percent(item['remaining_weight']), item['remarks'],
+            )):
+                self._daily_set_cell_text(cells[index], value, size=7)
+        self._daily_set_table_borders(table, '6B7280', '4')
 
     def _daily_add_identity(self, project_info: Dict[str, Any], report: Dict[str, Any]):
         # Tanggal & minggu sudah di subjudul; kontraktor & konsultan di pengesahan —

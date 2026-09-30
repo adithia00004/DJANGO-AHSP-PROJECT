@@ -176,8 +176,8 @@ Aturan penempatan:
 |---|---|---|---|---|
 | E0 | REVIEW | `63ef286c` | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
 | E1 | REVIEW | `af99f8ff` | 2026-09-30 | Adapter meneruskan akhir kontrak/tambahan dan minggu batas; kolom bertanda, harian membawa flag hari tambahan; 21 tes terkait lulus |
-| E2 | REVIEW | commit ini | 2026-09-30 | Word harian menerima tanggal tambahan dan menandainya di subjudul; 14 tes render harian lulus |
-| E3 | TODO | | | |
+| E2 | REVIEW | `4d9907a7` | 2026-09-30 | Word harian menerima tanggal tambahan dan menandainya di subjudul; 14 tes render harian lulus |
+| E3 | REVIEW | commit ini | 2026-09-30 | Rangkuman berbobot PDF/Word sesudah periode batas, sebelum pengesahan PDF; uji data dan file jadi lulus |
 | E4 | TODO | | | |
 | E5 | TODO | | | |
 | E6 | TODO | | | |
@@ -195,6 +195,8 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E0 fixture | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e0 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja --settings=config.settings.test_pg --noinput --verbosity=1` | 3 lulus: tambahan satu minggu yang sama, tambahan sampai W7, tanpa tambahan. |
 | 2026-09-30 | E1 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e1 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja detail_project.tests_jadwal_monthly_report.ReportPeriodCountTests detail_project.tests_wp_export_parity.JadwalDailyDocxExportTests --settings=config.settings.test_pg --noinput --verbosity=1` | 21 lulus; metadata tipe 1/2 dan tanpa tambahan, hitung periode kanonik, serta jalur DOCX harian lama. |
 | 2026-09-30 | E2 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e2 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja.ExtensionDailyWordTests detail_project.tests_wp_export_parity.JadwalDailyDocxExportTests --settings=config.settings.test_pg --noinput --verbosity=1` | 14 lulus; DOCX W7 dapat dibuat, W6 hanya 20/09 bertanda, tipe 1 bertanda sesudah Rabu, hari di luar akhir tambahan ditolak. |
+| 2026-09-30 | E3 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e3 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja detail_project.tests_jadwal_monthly_report.ProgressSignatureLayoutTests detail_project.tests_wp_export_parity.JadwalDailyDocxExportTests --settings=config.settings.test_pg --noinput --verbosity=1` | 33 lulus: bobot 25:75 menghasilkan realisasi 62,50% dan sisa bobot 37,50%; PDF mingguan/bulanan dan DOCX harian dibuka dan urutan halaman diperiksa. |
+| 2026-09-30 | E3 single period | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e3_single ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja.ExtensionSummaryPdfTests.test_single_period_pdf_paths_place_summary_once --settings=config.settings.test_pg --noinput --verbosity=1` | 1 lulus; PDF minggu/bulan tunggal masing-masing memiliki satu Rangkuman sebelum pengesahan. |
 
 ## 8. Log temuan & keputusan tambahan
 

@@ -1426,6 +1426,10 @@ class PDFExporter(ConfigExporterBase):
         story = []
         report_type = data.get('report_type', 'rekap')
         project_info = data.get('project_info', {})
+        contract_summary = data.get('contract_summary')
+        boundary_week = contract_summary['boundary_week'] if contract_summary else None
+        boundary_month = (boundary_week + 3) // 4 if boundary_week else None
+        summary_inserted = False
         
         # =====================================================================
         # MULTI-MONTH EXPORT SUPPORT
@@ -1437,6 +1441,10 @@ class PDFExporter(ConfigExporterBase):
             for month_idx, month_entry in enumerate(months_data):
                 month = month_entry.get('month', 1)
                 month_data = month_entry.get('data', {})
+                if contract_summary and not summary_inserted and month > boundary_month:
+                    self._append_contract_end_summary(story, contract_summary, project_info)
+                    summary_inserted = True
+                    story.append(PageBreak())
                 
                 # 1. Cover Page for this month
                 period_info = month_data.get('period', {})
@@ -1454,7 +1462,8 @@ class PDFExporter(ConfigExporterBase):
                     project_info=project_info,
                     summary=exec_summary,
                     hierarchy_data=hierarchy_data,
-                    period_info=period_info
+                    period_info=period_info,
+                    include_signatures=not (contract_summary and month == boundary_month and not summary_inserted),
                 )
                 story.extend(progress_elements)
                 story.append(PageBreak())
@@ -1582,8 +1591,13 @@ class PDFExporter(ConfigExporterBase):
                                     story.append(PageBreak())
                         story.append(Spacer(1, 10*mm))
                 
+                if contract_summary and month == boundary_month and not summary_inserted:
+                    self._append_contract_end_summary(story, contract_summary, project_info)
+                    summary_inserted = True
+                    if month_idx < len(months_data) - 1:
+                        story.append(PageBreak())
                 # Return to portrait for next month's cover (except last month)
-                if month_idx < len(months_data) - 1:
+                elif month_idx < len(months_data) - 1:
                     # Clear segment before cover page
                     story.append(SegmentMarker(""))
                     story.append(NextPageTemplate('portrait'))
@@ -1599,6 +1613,10 @@ class PDFExporter(ConfigExporterBase):
             for week_idx, week_entry in enumerate(weeks_data):
                 week = week_entry.get('week', 1)
                 week_data = week_entry.get('data', {})
+                if contract_summary and not summary_inserted and week > boundary_week:
+                    self._append_contract_end_summary(story, contract_summary, project_info)
+                    summary_inserted = True
+                    story.append(PageBreak())
                 
                 # 1. Cover Page for this week
                 period_info = week_data.get('period', {})
@@ -1616,9 +1634,14 @@ class PDFExporter(ConfigExporterBase):
                     project_info=project_info,
                     summary=exec_summary,
                     hierarchy_data=hierarchy_data,
-                    period_info=period_info
+                    period_info=period_info,
+                    include_signatures=not (contract_summary and week == boundary_week and not summary_inserted),
                 )
                 story.extend(progress_elements)
+
+                if contract_summary and week == boundary_week and not summary_inserted:
+                    self._append_contract_end_summary(story, contract_summary, project_info)
+                    summary_inserted = True
                 
                 # Add page break for next week (except last week)
                 if week_idx < len(weeks_data) - 1:
@@ -1628,6 +1651,13 @@ class PDFExporter(ConfigExporterBase):
             # =====================================================================
             # SINGLE MONTH / REKAP / WEEKLY (existing logic)
             # =====================================================================
+
+            selected_period = data.get('month', 1) if report_type == 'monthly' else data.get('week', 1)
+            boundary_period = boundary_month if report_type == 'monthly' else boundary_week
+            if contract_summary and report_type in ('monthly', 'weekly') and selected_period > boundary_period:
+                self._append_contract_end_summary(story, contract_summary, project_info)
+                summary_inserted = True
+                story.append(PageBreak())
 
             
             # 1. Cover Page
@@ -1664,7 +1694,8 @@ class PDFExporter(ConfigExporterBase):
                     project_info=project_info,
                     summary=exec_summary,
                     hierarchy_data=hierarchy_data,
-                    period_info=data.get('period', {})
+                    period_info=data.get('period', {}),
+                    include_signatures=not (contract_summary and month == boundary_month and not summary_inserted),
                 )
                 story.extend(progress_elements)
                 story.append(PageBreak())
@@ -1679,10 +1710,14 @@ class PDFExporter(ConfigExporterBase):
                     project_info=project_info,
                     summary=exec_summary,
                     hierarchy_data=hierarchy_data,
-                    period_info=data.get('period', {})
+                    period_info=data.get('period', {}),
+                    include_signatures=not (contract_summary and week == boundary_week and not summary_inserted),
                 )
                 story.extend(progress_elements)
                 story.append(PageBreak())
+                if contract_summary and week == boundary_week and not summary_inserted:
+                    self._append_contract_end_summary(story, contract_summary, project_info)
+                    summary_inserted = True
                 
             # 5. Kurva S Kumulatif (for monthly - uses same approach as rekap)
             if report_type == 'monthly':
@@ -1835,6 +1870,10 @@ class PDFExporter(ConfigExporterBase):
                     # Signature is now embedded in portrait chart, no separate page needed
                 
                 story.append(PageBreak())
+
+                if contract_summary and month == boundary_month and not summary_inserted:
+                    self._append_contract_end_summary(story, contract_summary, project_info)
+                    summary_inserted = True
 
         
         # 6. Grid Pages (for rekap - Planned section - NO chart here, chart in RINGKASAN)
@@ -3187,7 +3226,8 @@ class PDFExporter(ConfigExporterBase):
         project_info: Dict[str, Any],
         summary: Dict[str, Any],
         hierarchy_data: List[Dict[str, Any]],
-        period_info: Dict[str, Any] = None
+        period_info: Dict[str, Any] = None,
+        include_signatures: bool = True,
     ) -> List:
         """
         Build combined Progress Pelaksanaan Pekerjaan page.
@@ -3554,8 +3594,8 @@ class PDFExporter(ConfigExporterBase):
             table.setStyle(TableStyle(style_cmds))
         
         # Build signature section
-        sig_section = self._build_progress_signature_section(project_info)
-        sig_inner = sig_section[0]._content if hasattr(sig_section[0], '_content') else sig_section
+        sig_section = self._build_progress_signature_section(project_info) if include_signatures else []
+        sig_inner = sig_section[0]._content if sig_section and hasattr(sig_section[0], '_content') else sig_section
         
         if len(data_rows) > MIN_ROWS_WITH_SIGNATURE:
             # SPLIT TABLE: Main table + Closing table
@@ -3614,7 +3654,8 @@ class PDFExporter(ConfigExporterBase):
         project_info: Dict[str, Any],
         summary: Dict[str, Any],
         hierarchy_data: List[Dict[str, Any]],
-        period_info: Dict[str, Any] = None
+        period_info: Dict[str, Any] = None,
+        include_signatures: bool = True,
     ) -> List:
         """
         Build Weekly Progress page (same structure as monthly, but with "Minggu" labels).
@@ -3928,8 +3969,8 @@ class PDFExporter(ConfigExporterBase):
             self._apply_row_backgrounds(style_cmds, rows_data, offset=1)
             table.setStyle(TableStyle(style_cmds))
         
-        sig_section = self._build_progress_signature_section(project_info)
-        sig_inner = sig_section[0]._content if hasattr(sig_section[0], '_content') else sig_section
+        sig_section = self._build_progress_signature_section(project_info) if include_signatures else []
+        sig_inner = sig_section[0]._content if sig_section and hasattr(sig_section[0], '_content') else sig_section
         
         if len(data_rows) > MIN_ROWS_WITH_SIGNATURE:
             split_point = len(data_rows) - MIN_ROWS_WITH_SIGNATURE
@@ -3986,6 +4027,74 @@ class PDFExporter(ConfigExporterBase):
         block = self._build_signatures(width_mm=width_mm)
         inner = list(block[0]._content) if block else []
         return [KeepTogether([Spacer(1, 10*mm)] + inner)]
+
+    def _build_contract_end_summary_page(self, summary: Dict[str, Any]) -> List:
+        """Standalone A4 portrait summary, using the same weighted values as the adapter."""
+        def percent(value):
+            return f"{format_cell_display(value, '#,##0.00')}%"
+
+        title_style = ParagraphStyle(
+            'ContractEndSummaryTitle', fontName='Helvetica-Bold', fontSize=14,
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT), alignment=TA_CENTER,
+            spaceAfter=6*mm,
+        )
+        text_style = ParagraphStyle('ContractEndSummaryText', fontName='Helvetica', fontSize=8)
+        start, end = summary['boundary_start'], summary['boundary_end']
+        elements = [
+            Spacer(1, 10*mm),
+            Paragraph('RANGKUMAN PROGRESS AKHIR WAKTU KERJA', title_style),
+            Paragraph(
+                f"Progres dicatat per minggu; minggu batas {start:%d/%m/%Y} - {end:%d/%m/%Y}",
+                text_style,
+            ),
+            Spacer(1, 6*mm),
+        ]
+        overview = Table([
+            ['Rencana kumulatif', percent(summary['planned'])],
+            ['Realisasi kumulatif', percent(summary['actual'])],
+            ['Deviasi', percent(summary['deviation'])],
+        ], colWidths=[90*mm, 90*mm])
+        overview.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#6B7280')),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.extend([overview, Spacer(1, 8*mm), Paragraph('Pekerjaan yang belum mencapai 100%', text_style)])
+
+        headers = ['No', 'Uraian', 'Bobot', 'Realisasi Kumulatif', 'Sisa', 'Sisa Bobot', 'Keterangan']
+        rows = [headers]
+        for item in summary['unfinished']:
+            rows.append([
+                str(item['number']),
+                Paragraph(escape(item['description']), text_style),
+                percent(item['weight']),
+                percent(item['actual']),
+                percent(item['remaining']),
+                percent(item['remaining_weight']),
+                item['remarks'],
+            ])
+        table = Table(rows, colWidths=[8*mm, 50*mm, 18*mm, 25*mm, 16*mm, 23*mm, 40*mm], repeatRows=1)
+        table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#6B7280')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.extend([Spacer(1, 3*mm), table])
+        return elements
+
+    def _append_contract_end_summary(self, story: List, summary: Dict[str, Any], project_info: Dict[str, Any]):
+        story.append(SegmentMarker(''))
+        story.append(NextPageTemplate('portrait'))
+        story.append(PageBreak())
+        story.extend(self._build_contract_end_summary_page(summary))
+        story.append(PageBreak())
+        story.extend(self._build_progress_signature_section(project_info))
 
     def _build_executive_summary_section(self, summary: Dict[str, Any], mode: str = 'monthly') -> List:
         """

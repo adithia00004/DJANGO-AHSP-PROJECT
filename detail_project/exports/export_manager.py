@@ -939,6 +939,8 @@ class ExportManager:
             'project_info': report_data.get('project_info', {}),
             **adapter.get_timeline_metadata(),
         }
+        if format_type in ('pdf', 'word') and report_type in ('monthly', 'weekly', 'daily'):
+            data['contract_summary'] = adapter.get_contract_end_summary()
         
         if report_type == 'rekap':
             data['planned_pages'] = report_data.get('planned_pages', [])
