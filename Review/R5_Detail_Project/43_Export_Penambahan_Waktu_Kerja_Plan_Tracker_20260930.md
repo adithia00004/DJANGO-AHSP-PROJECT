@@ -179,8 +179,8 @@ Aturan penempatan:
 | E2 | DONE | `4d9907a7` | 2026-09-30 | Word harian menerima tanggal tambahan dan menandainya di subjudul; 14 tes render harian lulus |
 | E3 | DONE | `f77ed38c` | 2026-09-30 | Rangkuman berbobot PDF/Word sesudah periode batas, sebelum pengesahan PDF; uji data dan file jadi lulus |
 | E4 | DONE | `a577f2a8` | 2026-09-30 | Garis W6/label W7 di grid, Kurva S, Gantt PDF; subjudul laporan tambahan; 32 tes lulus dan PDF tipe 2 diperiksa visual |
-| E5 | DONE | `98f9fddc` + perbaikan review (lihat E6) | 2026-09-30 | Excel: penanda minggu pada sheet berkolom waktu, subjudul Rincian tambahan. Realisasi mingguan semula hanya proyek bertambahan; owner memutuskan **semua proyek** (§8) dan diperbaiki di commit E6 |
-| E6 | DONE | (commit E6) | 2026-09-30 | Dimulai Codex (L-1, L-2, token habis), diselesaikan Claude: L-1..L-6 + perbaikan review (halaman kosong, realisasi semua proyek, `planned_map` mati) |
+| E5 | DONE | `98f9fddc` + `0851b429` | 2026-09-30 | Excel: penanda minggu pada sheet berkolom waktu, subjudul Rincian tambahan. Realisasi mingguan semula hanya proyek bertambahan; owner memutuskan **semua proyek** (§8) dan diperbaiki di commit E6 |
+| E6 | DONE | `0851b429` | 2026-09-30 | Dimulai Codex (L-1, L-2, token habis), diselesaikan Claude: L-1..L-6 + perbaikan review (halaman kosong, realisasi semua proyek, `planned_map` mati) |
 | E7 | REVIEW | — | 2026-09-30 | Suite penuh + probe 217 lulus (§7). Menunggu UAT owner §5 |
 
 Status: `TODO` / `WIP` / `REVIEW` (menunggu pemeriksaan Claude) / `DONE` / `BLOCKED`.
