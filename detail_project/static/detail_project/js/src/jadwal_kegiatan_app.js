@@ -29,6 +29,13 @@ import {
 
 // Phase 4: New Export Offscreen Rendering System
 import { exportReport } from './export/export-coordinator.js';
+import {
+  KURVA_PNG_MIN_BODY_HEIGHT,
+  buildKurvaSPngSeries,
+  progressToY,
+  wrapTextToWidth,
+} from '@modules/shared/chart-png-layout.js';
+import { findWorkPeriodEndMarker } from '@modules/shared/work-period-marker.js';
 import { renderKurvaS } from './export/core/kurva-s-renderer.js';
 import { renderGanttPaged } from './export/core/gantt-renderer.js';
 import { getCanvasPixelSize, getSafeCanvasScale } from './export/core/canvas-export-scale.js';
@@ -4175,17 +4182,32 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Render full Kurva S chart as single PNG image
-   * Table with rows + S-curve LINE OVERLAY on week grid (like PDF export)
+   * Curve data for the Kurva S PNG: exactly what the web overlay draws
+   * (bobot-weighted, weekly/monthly, progress/cost). Rebuilt from the table
+   * manager only when the overlay has not rendered yet.
+   * @private
+   */
+  _getKurvaSCurveDataForExport() {
+    const current = this.unifiedManager?.overlays?.kurva?.curveData;
+    if (current && (current.planned?.length || current.actual?.length)) {
+      return current;
+    }
+    const built = this.unifiedManager?._buildCurveData?.();
+    return built || { planned: [], actual: [] };
+  }
+
+  /**
+   * Render full Kurva S chart as single PNG image.
+   * Table rows on the left, S-curve over the period columns, drawn with the
+   * same data and Y scale as KurvaSCanvasOverlay (see chart-png-layout.js).
    * @private
    */
   async _renderKurvaSFullImage(exportState) {
     const rows = exportState.hierarchyRows || [];
-    const timeColumns = exportState.weekColumns || [];
-    const planned = exportState.plannedProgress || {};
-    const actual = exportState.actualProgress || {};
+    const series = buildKurvaSPngSeries(this._getKurvaSCurveDataForExport());
+    const columns = series.columns;
 
-    if (rows.length === 0 || timeColumns.length === 0) {
+    if (rows.length === 0 || columns.length === 0) {
       throw new Error('No data available for Kurva S chart');
     }
 
@@ -4194,233 +4216,184 @@ class JadwalKegiatanApp {
     const COL_WIDTH = 50;
     const HEADER_HEIGHT = 50;
     const LEGEND_HEIGHT = 40;
-
-    // Text wrapping settings (like PDF export)
+    const AXIS_LABEL_WIDTH = 44;
     const BASE_ROW_HEIGHT = 20;
     const LINE_HEIGHT = 11;
-    const MAX_CHARS_PER_LINE = 50;
     const FONT_SIZE = 9;
     const LABEL_PADDING = 5;
+    const PLANNED_COLOR = '#0dcaf0';
+    const ACTUAL_COLOR = '#ffc107';
 
-    // Helper: wrap text and return lines
-    const wrapText = (text, maxChars) => {
-      if (!text) return [''];
-      const words = text.split(' ');
-      const lines = [];
-      let currentLine = '';
-
-      words.forEach(word => {
-        if ((currentLine + ' ' + word).trim().length <= maxChars) {
-          currentLine = (currentLine + ' ' + word).trim();
-        } else {
-          if (currentLine) lines.push(currentLine);
-          currentLine = word.length > maxChars ? word.substring(0, maxChars) : word;
-        }
-      });
-      if (currentLine) lines.push(currentLine);
-      return lines.length > 0 ? lines : [''];
-    };
-
-    // Helper: calculate row height based on text
-    const calculateRowHeight = (text, indent) => {
-      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
-      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
-      return Math.max(BASE_ROW_HEIGHT, 6 + (lines.length * LINE_HEIGHT));
-    };
-
-    // Pre-calculate row heights
-    const rowHeights = rows.map(row => {
-      const indent = (row.level || 0) * 15;
-      const text = row.name || row.uraian || '';
-      return calculateRowHeight(text, indent);
-    });
-
-    // Calculate total height
-    const totalRowsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
-    const canvasWidth = LABEL_WIDTH + (timeColumns.length * COL_WIDTH) + 20;
-    const canvasHeight = HEADER_HEIGHT + LEGEND_HEIGHT + totalRowsHeight + 20;
-
-    // Create offscreen canvas at high resolution while keeping drawing
-    // coordinates in the existing logical layout.
     const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const isGroupRow = (row) => row.type === 'klasifikasi' || row.type === 'sub_klasifikasi';
+    const labelFont = (row) => (isGroupRow(row) ? `bold ${FONT_SIZE}px Arial` : `${FONT_SIZE}px Arial`);
+    const rowLines = rows.map((row) => {
+      const indent = (row.level || 0) * 15;
+      ctx.font = labelFont(row);
+      return wrapTextToWidth(
+        row.name || row.uraian || '',
+        LABEL_WIDTH - indent - LABEL_PADDING * 2,
+        (text) => ctx.measureText(text).width,
+      );
+    });
+    const rowHeights = rowLines.map((lines) => Math.max(BASE_ROW_HEIGHT, 6 + lines.length * LINE_HEIGHT));
+    const totalRowsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
+    const bodyHeight = Math.max(totalRowsHeight, KURVA_PNG_MIN_BODY_HEIGHT);
+
+    const chartLeft = LABEL_WIDTH;
+    const chartWidth = columns.length * COL_WIDTH;
+    const canvasWidth = chartLeft + chartWidth + AXIS_LABEL_WIDTH;
+    const bodyTop = LEGEND_HEIGHT + HEADER_HEIGHT;
+    const canvasHeight = bodyTop + bodyHeight + 20;
     const exportScale = getSafeCanvasScale(canvasWidth, canvasHeight, 3);
     const pixelSize = getCanvasPixelSize(canvasWidth, canvasHeight, exportScale);
     canvas.width = pixelSize.width;
     canvas.height = pixelSize.height;
-    const ctx = canvas.getContext('2d');
     ctx.scale(exportScale, exportScale);
 
     // Background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    // Draw legend at top
-    ctx.fillStyle = '#00CED1';
+    // Legend
+    ctx.font = '11px Arial';
+    ctx.fillStyle = PLANNED_COLOR;
     ctx.fillRect(20, 10, 20, 12);
     ctx.fillStyle = '#333';
-    ctx.font = '11px Arial';
     ctx.fillText('Rencana (Kurva S)', 45, 20);
-
-    ctx.fillStyle = '#FFD700';
+    ctx.fillStyle = ACTUAL_COLOR;
     ctx.fillRect(200, 10, 20, 12);
+    ctx.fillStyle = '#333';
     ctx.fillText('Realisasi (Kurva S)', 225, 20);
 
-    const startY = LEGEND_HEIGHT;
-
-    // Draw header row with week labels
+    // Header row with period labels
+    const headerY = LEGEND_HEIGHT;
     ctx.fillStyle = '#f0f9ff';
-    ctx.fillRect(0, startY, canvasWidth, HEADER_HEIGHT);
+    ctx.fillRect(0, headerY, canvasWidth, HEADER_HEIGHT);
     ctx.strokeStyle = '#e0e0e0';
-    ctx.strokeRect(0, startY, canvasWidth, HEADER_HEIGHT);
-
+    ctx.strokeRect(0, headerY, canvasWidth, HEADER_HEIGHT);
     ctx.fillStyle = '#1e3a5f';
     ctx.font = 'bold 10px Arial';
-    ctx.fillText('URAIAN PEKERJAAN', 10, startY + 30);
-
-    // Week headers
-    timeColumns.forEach((col, idx) => {
-      const x = LABEL_WIDTH + (idx * COL_WIDTH);
-      ctx.strokeRect(x, startY, COL_WIDTH, HEADER_HEIGHT);
-      ctx.fillStyle = '#1e3a5f';
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`W${col.week || idx + 1}`, x + COL_WIDTH / 2, startY + 30);
+    ctx.fillText('URAIAN PEKERJAAN', 10, headerY + 30);
+    ctx.font = '9px Arial';
+    ctx.textAlign = 'center';
+    columns.forEach((column, idx) => {
+      const x = chartLeft + idx * COL_WIDTH;
+      ctx.strokeRect(x, headerY, COL_WIDTH, HEADER_HEIGHT);
+      ctx.fillText(column.label, x + COL_WIDTH / 2, headerY + 30);
     });
     ctx.textAlign = 'left';
 
-    // Draw data rows with dynamic heights
-    let currentY = startY + HEADER_HEIGHT;
-    // Store Y positions for S-curve overlay
-    const rowYPositions = [];
-
+    // Table rows (labels + period cells)
+    let currentY = bodyTop;
     rows.forEach((row, rowIdx) => {
       const rowHeight = rowHeights[rowIdx];
-      rowYPositions.push({ y: currentY, height: rowHeight });
-      const isKlasifikasi = row.type === 'klasifikasi' || row.type === 'sub_klasifikasi';
-
-      // Row background
-      ctx.fillStyle = isKlasifikasi ? '#f8fafc' : (rowIdx % 2 === 0 ? '#ffffff' : '#fafafa');
-      ctx.fillRect(0, currentY, canvasWidth, rowHeight);
+      ctx.fillStyle = isGroupRow(row) ? '#f8fafc' : (rowIdx % 2 === 0 ? '#ffffff' : '#fafafa');
+      ctx.fillRect(0, currentY, chartLeft + chartWidth, rowHeight);
       ctx.strokeStyle = '#e5e7eb';
       ctx.strokeRect(0, currentY, LABEL_WIDTH, rowHeight);
 
-      // Row label with indent and text wrapping
       const indent = (row.level || 0) * 15;
-      const text = row.name || row.uraian || '';
-      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
-      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
-
-      ctx.fillStyle = isKlasifikasi ? '#1e3a5f' : '#374151';
-      ctx.font = isKlasifikasi ? `bold ${FONT_SIZE}px Arial` : `${FONT_SIZE}px Arial`;
-
-      lines.forEach((line, lineIdx) => {
-        const textY = currentY + 12 + (lineIdx * LINE_HEIGHT);
-        ctx.fillText(line, LABEL_PADDING + indent, textY);
+      ctx.fillStyle = isGroupRow(row) ? '#1e3a5f' : '#374151';
+      ctx.font = labelFont(row);
+      rowLines[rowIdx].forEach((line, lineIdx) => {
+        ctx.fillText(line, LABEL_PADDING + indent, currentY + 12 + lineIdx * LINE_HEIGHT);
       });
 
-      // Draw week cell borders (grid lines for S-curve)
-      timeColumns.forEach((col, colIdx) => {
-        const x = LABEL_WIDTH + (colIdx * COL_WIDTH);
-        ctx.strokeStyle = '#e5e7eb';
-        ctx.strokeRect(x, currentY, COL_WIDTH, rowHeight);
+      columns.forEach((_, colIdx) => {
+        ctx.strokeRect(chartLeft + colIdx * COL_WIDTH, currentY, COL_WIDTH, rowHeight);
       });
-
       currentY += rowHeight;
     });
-
-    // ============================================
-    // KURVA S OVERLAY (Lines on top of table)
-    // ============================================
-    const chartLeft = LABEL_WIDTH;
-    const chartTop = startY + HEADER_HEIGHT;
-    const chartHeight = totalRowsHeight;
-    const chartBottom = chartTop + chartHeight;
-
-    // Calculate cumulative totals per week
-    const weeklyPlannedTotal = new Array(timeColumns.length).fill(0);
-    const weeklyActualTotal = new Array(timeColumns.length).fill(0);
-    let totalBobot = 0;
-
-    rows.forEach(row => {
-      const taskId = row.id || row.pekerjaan_id;
-      if (!taskId || row.type === 'klasifikasi' || row.type === 'sub_klasifikasi') return;
-
-      totalBobot += 1;
-
-      let cumPlanned = 0;
-      let cumActual = 0;
-
-      timeColumns.forEach((col, idx) => {
-        const weekNum = col.week || idx + 1;
-        const p = (planned[taskId] && planned[taskId][weekNum]) || 0;
-        const a = (actual[taskId] && actual[taskId][weekNum]) || 0;
-        cumPlanned += p;
-        cumActual += a;
-        weeklyPlannedTotal[idx] += cumPlanned;
-        weeklyActualTotal[idx] += cumActual;
+    // Short tables get an empty body so the 0-100% scale stays readable.
+    if (bodyHeight > totalRowsHeight) {
+      const fillerHeight = bodyHeight - totalRowsHeight;
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.strokeRect(0, currentY, LABEL_WIDTH, fillerHeight);
+      columns.forEach((_, colIdx) => {
+        ctx.strokeRect(chartLeft + colIdx * COL_WIDTH, currentY, COL_WIDTH, fillerHeight);
       });
-    });
+    }
 
-    // Normalize to percentage (max = 100% * numPekerjaan)
-    const maxPossible = totalBobot * 100;
-    const plannedPoints = weeklyPlannedTotal.map(v => maxPossible > 0 ? Math.min(100, (v / maxPossible) * 100) : 0);
-    const actualPoints = weeklyActualTotal.map(v => maxPossible > 0 ? Math.min(100, (v / maxPossible) * 100) : 0);
-
-    // Helper: progress to Y coordinate (0% at bottom, 100% at top)
-    const progressToY = (progress) => chartBottom - (progress / 100 * chartHeight);
-
-    // Helper: week index to X coordinate (right edge of week column)
-    const weekToX = (weekIdx) => chartLeft + (weekIdx + 1) * COL_WIDTH;
-
-    // Draw Planned S-curve line
-    ctx.strokeStyle = '#00CED1';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(chartLeft, progressToY(0)); // Start at 0%
-    plannedPoints.forEach((val, idx) => {
-      const x = weekToX(idx);
-      const y = progressToY(val);
-      ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // Draw Planned markers (circles)
-    ctx.fillStyle = '#00CED1';
-    ctx.beginPath();
-    ctx.arc(chartLeft, progressToY(0), 4, 0, Math.PI * 2);
-    ctx.fill();
-    plannedPoints.forEach((val, idx) => {
-      const x = weekToX(idx);
-      const y = progressToY(val);
+    // Guide lines 0%..100% (same positions as the web overlay)
+    const yFor = (percent) => progressToY(percent, bodyTop, bodyHeight);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80, 80, 80, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = 'rgba(80, 80, 80, 0.7)';
+    ctx.textBaseline = 'middle';
+    for (let percent = 0; percent <= 100; percent += 10) {
+      const y = yFor(percent);
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-    });
+      ctx.moveTo(chartLeft, y);
+      ctx.lineTo(chartLeft + chartWidth, y);
+      ctx.stroke();
+      ctx.fillText(`${percent}%`, chartLeft + chartWidth + 4, y);
+    }
+    ctx.restore();
 
-    // Draw Actual S-curve line
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(chartLeft, progressToY(0)); // Start at 0%
-    actualPoints.forEach((val, idx) => {
-      const x = weekToX(idx);
-      const y = progressToY(val);
-      ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // Draw Actual markers (circles)
-    ctx.fillStyle = '#FFD700';
-    ctx.beginPath();
-    ctx.arc(chartLeft, progressToY(0), 4, 0, Math.PI * 2);
-    ctx.fill();
-    actualPoints.forEach((val, idx) => {
-      const x = weekToX(idx);
-      const y = progressToY(val);
+    // Work period end marker (only when the project has an additional period)
+    const tableManager = this.unifiedManager?.tanstackGrid;
+    const marker = tableManager
+      ? findWorkPeriodEndMarker(
+        tableManager,
+        columns.map((column, idx) => ({
+          columnId: column.key,
+          x: chartLeft + idx * COL_WIDTH,
+          width: COL_WIDTH,
+        })),
+      )
+      : null;
+    if (marker) {
+      ctx.save();
+      ctx.strokeStyle = '#dc3545';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-    });
+      ctx.moveTo(marker.x, bodyTop);
+      ctx.lineTo(marker.x, bodyTop + bodyHeight);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Curves: week 0 at the left edge, each period at its column's right edge
+    const drawSeries = (values, color) => {
+      const points = [{ x: chartLeft, y: yFor(0) }];
+      values.forEach((value, idx) => {
+        if (value === null) return;
+        points.push({ x: chartLeft + (idx + 1) * COL_WIDTH, y: yFor(value) });
+      });
+      if (points.length < 2) return;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      points.forEach((point, idx) => {
+        if (idx === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+      points.forEach((point) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    };
+    drawSeries(series.planned, PLANNED_COLOR);
+    drawSeries(series.actual, ACTUAL_COLOR);
 
     return canvas.toDataURL('image/png');
   }
