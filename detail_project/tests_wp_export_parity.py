@@ -878,7 +878,7 @@ class JadwalDailyDocxExportTests(TestCase):
         flat = " ".join(self._table_texts(signatures))
         for stale in ("Pemilik", "Owner Harian", "Kontraktor Pelaksana", "Konsultan Pengawas"):
             self.assertNotIn(stale, flat)
-        self.assertGreaterEqual(signatures.rows[1].height, Cm(2.1))  # 2.2cm, dibulatkan ke twips
+        self.assertGreaterEqual(signatures.rows[1].height, Cm(2.6))  # 2.7cm, dibulatkan ke twips
 
     def test_daily_rejects_dates_outside_project_with_user_message(self):
         from detail_project.exports.errors import ExportValidationError, export_error_response

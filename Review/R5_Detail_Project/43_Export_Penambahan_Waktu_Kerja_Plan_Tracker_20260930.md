@@ -204,6 +204,7 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E6 (Claude) | `tests_export_penambahan_waktu_kerja`, `tests_jadwal_monthly_report`, `tests_wp_export_parity` | 84 lulus. Tes baru halaman-kosong dan footer L-4 terbukti gagal saat perbaikannya dicabut |
 | 2026-09-30 | E7 (Claude) | Suite penuh working tree, `POSTGRES_TEST_DB=test_claude_final` | **931 tes; hanya 3 gagal baseline**; 40 skipped |
 | 2026-09-30 | E7 (Claude) | Probe export proyek 217 ulang | W7 saja: Rangkuman di halaman 1; header Excel "Minggu 7 / Penambahan"; realisasi W7 tampil; tanpa kata "terlambat". Frontend tidak diubah pada E6, Vitest tidak perlu diulang |
+| 2026-09-30 | UAT putaran 1 (Claude) | Suite penuh `POSTGRES_TEST_DB=test_claude_final2`; render SVG→PNG Kurva S Rekap proyek 217 (1 halaman) dan paksa 3 halaman | **937 tes; hanya 3 gagal baseline**. Kurva menyambung lintas halaman; W7 merah tua; garis batas di W6 |
 
 ## 8. Log temuan & keputusan tambahan
 
@@ -219,3 +220,4 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E6 / L-3 | Label bulan dibatasi minggu nyata di PDF (judul Kurva S bulanan, "Grafik: Minggu 1 - Minggu N", header kolom) dan label periode adapter. Padding kolom Excel bulanan (gate doc 30) sengaja tidak diubah | Claude |
 | 2026-09-30 | E6 / L-4 | Footer cover laporan mingguan kedua membawa judul "Rincian Progress Minggu ke-(n-1)": segmen tidak ditutup. Kini ditutup sebelum cover, sama seperti loop bulanan | Claude |
 | 2026-09-30 | E6 / L-5 | Deviasi Excel bulanan dibulatkan 1e-12 (sisa Decimal 2e-28 tampil "+0,00%" alih-alih "-") | Claude |
+| 2026-09-30 | UAT owner (sampel 217) | 1.1 Bagian masa tambahan berwarna **merah tua `#4a0e0e`** (halaman periode tambahan, cover-nya, Rangkuman, header kolom minggu tambahan; PDF/Word/Excel) → R-42. 1.2 Ruang tanda tangan +1 baris untuk **semua** dokumen export: 15 → 20 mm, harian 2,2 → 2,7 cm → R-23. 2.1 Kurva S Rekap yang terbagi baris menjadi **satu kurva** lintas halaman → R-43. 2.2 Baris per halaman Kurva S mengikuti tinggi halaman (proyek 217 kini 1 halaman, dulu 2). 3.1 Pengesahan Rangkuman **menempel** di halaman Rangkuman → R-38 | Owner / Claude |

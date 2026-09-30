@@ -23,10 +23,10 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 
-# Tinggi ruang tanda tangan basah (mm). Sengaja rapat atas permintaan owner:
-# cukup untuk membubuhkan tanda tangan, tanpa membuat blok terasa renggang.
-# Dipakai bersama PDF dan Word supaya keduanya tetap seragam.
-SIGNATURE_SPACE_MM = 15
+# Tinggi ruang tanda tangan basah (mm). Awalnya 15 mm (rapat, R-23); owner
+# 2026-09-30 meminta satu baris lebih tinggi untuk semua dokumen export.
+# Dipakai bersama PDF, Word, dan Excel supaya semuanya tetap seragam.
+SIGNATURE_SPACE_MM = 20
 
 
 class SignaturePresets:

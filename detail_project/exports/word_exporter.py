@@ -174,12 +174,14 @@ class WordExporter:
                     f"{sheet_name} - Laporan Harian"
                 )
                 self._daily_add_heading(heading, level=1)
+                accent = self._daily_extension_accent() if report.get('is_extension_day') else None
                 self._daily_add_title(
                     'LAPORAN HARIAN PROYEK',
                     self._daily_subtitle(report),
+                    accent=accent,
                 )
                 self._daily_add_identity(project_info, report)
-                self._daily_add_work_table(chunk, page_index, page_count)
+                self._daily_add_work_table(chunk, page_index, page_count, header_fill=accent or '374151')
                 if page_index == page_count:
                     self._daily_add_signatures()
 
@@ -189,7 +191,10 @@ class WordExporter:
             else:
                 sheet_name = report.get('sheet_name') or self._daily_sheet_label(report)
                 self._daily_add_heading(f"{sheet_name} - Dokumentasi", level=1)
-                self._daily_add_title('DOKUMENTASI LAPORAN HARIAN', self._daily_subtitle(report))
+                self._daily_add_title(
+                    'DOKUMENTASI LAPORAN HARIAN', self._daily_subtitle(report),
+                    accent=self._daily_extension_accent() if report.get('is_extension_day') else None,
+                )
                 self._daily_add_photo_fallback()
 
         if contract_summary and not summary_inserted and any(
@@ -1809,20 +1814,24 @@ class WordExporter:
         run.font.size = Pt(11 if level == 1 else 9)
         run.font.bold = True
 
-    def _daily_add_title(self, title: str, subtitle: str):
+    def _daily_add_title(self, title: str, subtitle: str, accent: str | None = None):
+        # accent (hex tanpa '#'): merah tua untuk bagian masa Penambahan Waktu
+        # Kerja (owner 2026-09-30); None = warna normal.
         paragraph = self.doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         paragraph.paragraph_format.space_after = Pt(0)
         run = paragraph.add_run(title)
         run.bold = True
         run.font.size = Pt(13)
+        if accent:
+            run.font.color.rgb = RGBColor.from_string(accent)
 
         paragraph = self.doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         paragraph.paragraph_format.space_after = Pt(4)
         run = paragraph.add_run(subtitle)
         run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(90, 90, 90)
+        run.font.color.rgb = RGBColor.from_string(accent) if accent else RGBColor(90, 90, 90)
 
     def _daily_add_contract_summary(self, summary: Dict[str, Any]):
         """Separate unsigned page before the first additional daily report."""
@@ -1836,6 +1845,7 @@ class WordExporter:
         self._daily_add_title(
             'RANGKUMAN PROGRESS AKHIR WAKTU KERJA',
             f"Progres dicatat per minggu; minggu batas {start:%d/%m/%Y}–{end:%d/%m/%Y}",
+            accent=self._daily_extension_accent(),
         )
         overview = self.doc.add_table(rows=3, cols=2)
         self._daily_set_col_widths(overview, [9.0, 9.0])
@@ -1853,8 +1863,8 @@ class WordExporter:
         table = self.doc.add_table(rows=1, cols=len(headers))
         self._daily_set_col_widths(table, [0.8, 5.0, 1.8, 2.7, 1.6, 2.3, 3.8])
         for index, header in enumerate(headers):
-            self._daily_set_cell_text(table.cell(0, index), header, bold=True, size=7)
-            self._daily_set_cell_shading(table.cell(0, index), 'E5E7EB')
+            self._daily_set_cell_text(table.cell(0, index), header, bold=True, size=7, color='FFFFFF')
+            self._daily_set_cell_shading(table.cell(0, index), self._daily_extension_accent())
         for item in summary['unfinished']:
             cells = table.add_row().cells
             for index, value in enumerate((
@@ -1904,7 +1914,12 @@ class WordExporter:
                 elif is_label:
                     self._daily_set_cell_shading(cell, 'F3F4F6')
 
-    def _daily_add_work_table(self, items: List[Dict[str, Any]], page_index: int, page_count: int):
+    @staticmethod
+    def _daily_extension_accent() -> str:
+        return UTS.EXTENSION_PRIMARY[1:].upper()
+
+    def _daily_add_work_table(self, items: List[Dict[str, Any]], page_index: int, page_count: int,
+                              header_fill: str = '374151'):
         paragraph = self.doc.add_paragraph()
         paragraph.paragraph_format.space_before = Pt(4)
         paragraph.paragraph_format.space_after = Pt(2)
@@ -1919,7 +1934,7 @@ class WordExporter:
         self._daily_set_table_borders(table, '6B7280', '4')
         for idx, header in enumerate(['No', 'Uraian Pekerjaan', 'Keterangan / Hambatan']):
             self._daily_set_cell_text(table.cell(0, idx), header, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, color='FFFFFF', size=8)
-            self._daily_set_cell_shading(table.cell(0, idx), '374151')
+            self._daily_set_cell_shading(table.cell(0, idx), header_fill)
 
         offset = ((page_index - 1) * self._daily_work_rows_per_page()) + 1
         for idx, item in enumerate(items, start=1):
@@ -1946,8 +1961,9 @@ class WordExporter:
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
         self._daily_set_col_widths(table, [9.0] * len(signatures))
-        # Ruang tanda tangan basah + stempel.
-        table.rows[1].height = Cm(2.2)
+        # Ruang tanda tangan basah + stempel (R-32: 2,2 cm; owner 2026-09-30:
+        # satu baris lebih tinggi).
+        table.rows[1].height = Cm(2.7)
         for idx, signature in enumerate(signatures):
             self._daily_set_cell_text(table.cell(0, idx), signature.get('instansi') or '', bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=8)
             table.cell(0, idx).vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.BOTTOM

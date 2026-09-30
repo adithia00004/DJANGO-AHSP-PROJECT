@@ -300,10 +300,11 @@ class ExtensionSummaryPdfTests(ExtensionSummaryFixtureMixin, TestCase):
         pages = self._pages("weekly", weeks=[6, 7])
         boundary = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-6" in page)
         summary = next(i for i, page in enumerate(pages) if "RANGKUMAN PROGRESS AKHIR WAKTU KERJA" in page)
-        signature = next(i for i, page in enumerate(pages) if i > summary and "LEMBAR PENGESAHAN" in page)
+        signature = next(i for i, page in enumerate(pages) if i >= summary and "LEMBAR PENGESAHAN" in page)
         extension = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7" in page)
         self.assertLess(boundary, summary)
-        self.assertLess(summary, signature)
+        # Pengesahan menempel pada lembar Rangkuman (owner 2026-09-30).
+        self.assertEqual(summary, signature)
         self.assertLess(signature, extension)
         self.assertNotIn("PROGRESS PELAKSANAAN PEKERJAAN", pages[summary])
         self.assertIn("62,50%", pages[summary])
@@ -323,9 +324,9 @@ class ExtensionSummaryPdfTests(ExtensionSummaryFixtureMixin, TestCase):
         pages = self._pages("monthly", months=[1, 2])
         month_two = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-2" in page)
         summary = next(i for i, page in enumerate(pages) if "RANGKUMAN PROGRESS AKHIR WAKTU KERJA" in page)
-        signature = next(i for i, page in enumerate(pages) if i > summary and "LEMBAR PENGESAHAN" in page)
+        signature = next(i for i, page in enumerate(pages) if i >= summary and "LEMBAR PENGESAHAN" in page)
         self.assertLess(month_two, summary)
-        self.assertLess(summary, signature)
+        self.assertEqual(summary, signature)
 
     def test_same_week_extension_has_summary_but_no_extension_week(self):
         response = ExportManager(self.same_week, self.owner).export_jadwal_professional(
@@ -344,8 +345,8 @@ class ExtensionSummaryPdfTests(ExtensionSummaryFixtureMixin, TestCase):
                     1,
                 )
                 summary = next(i for i, page in enumerate(pages) if "RANGKUMAN PROGRESS AKHIR WAKTU KERJA" in page)
-                signature = next(i for i, page in enumerate(pages) if i > summary and "LEMBAR PENGESAHAN" in page)
-                self.assertLess(summary, signature)
+                signature = next(i for i, page in enumerate(pages) if i >= summary and "LEMBAR PENGESAHAN" in page)
+                self.assertEqual(summary, signature)
 
     def test_before_boundary_and_without_extension_have_no_summary(self):
         before = self._pages("weekly", weeks=[5])
@@ -574,3 +575,100 @@ class ExtensionExportPolishTests(ExtensionSummaryFixtureMixin, TestCase):
             for row in rincian.iter_rows() for cell in row if cell.value == 'Deviasi'
         )
         self.assertTrue(deviation == 0 or abs(deviation) >= 1e-12, deviation)
+
+
+class ExtensionOwnerFeedbackTests(ExtensionSummaryFixtureMixin, TestCase):
+    """Owner review 2026-09-30: merah tua, satu kurva Rekap, pengesahan menempel."""
+
+    # UTS.EXTENSION_PRIMARY #4a0e0e as a ReportLab fill operator component.
+    DARK_RED_PDF = b".290196 .054902 .054902"
+
+    def test_pdf_additional_week_page_uses_dark_red_but_boundary_week_does_not(self):
+        from detail_project.tests_jadwal_monthly_report import pdf_page_streams
+        content = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            'pdf', report_type='weekly', weeks=[6, 7],
+        ).content
+        streams = pdf_page_streams(content)
+        texts = pdf_page_texts(content)
+        week_six = next(i for i, t in enumerate(texts) if 'PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-6' in t)
+        week_seven = next(i for i, t in enumerate(texts) if 'PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7' in t)
+        summary = next(i for i, t in enumerate(texts) if 'RANGKUMAN PROGRESS AKHIR WAKTU KERJA' in t)
+        self.assertNotIn(self.DARK_RED_PDF, streams[week_six])
+        self.assertIn(self.DARK_RED_PDF, streams[week_seven])
+        self.assertIn(self.DARK_RED_PDF, streams[summary])
+
+    def test_word_additional_day_title_is_dark_red(self):
+        document = Document(BytesIO(ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            'word', report_type='daily', daily_mode='day', days=[41, 42],
+        ).content))
+        colors_by_subtitle = {}
+        paragraphs = document.paragraphs
+        for index, paragraph in enumerate(paragraphs[:-1]):
+            if paragraph.text == 'LAPORAN HARIAN PROYEK':
+                run = paragraph.runs[0]
+                color = run.font.color.rgb if run.font.color and run.font.color.type else None
+                colors_by_subtitle[paragraphs[index + 1].text] = str(color) if color else None
+        contract_day = next(v for k, v in colors_by_subtitle.items() if k.startswith('Sabtu, 19 September'))
+        additional_day = next(v for k, v in colors_by_subtitle.items() if k.startswith('Minggu, 20 September'))
+        self.assertNotEqual(contract_day, '4A0E0E')
+        self.assertEqual(additional_day, '4A0E0E')
+
+    def test_excel_additional_header_and_rincian_title_are_dark_red(self):
+        workbook = load_workbook(BytesIO(ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            'xlsx', report_type='weekly', weeks=[6, 7],
+        ).content))
+        master = workbook['Data Master']
+        self.assertTrue(master['N11'].fill.fgColor.rgb.endswith('4A0E0E'))
+        self.assertFalse(master['M11'].fill.fgColor.rgb.endswith('4A0E0E'))
+        self.assertTrue(workbook['Rincian Progress W7']['A1'].font.color.rgb.endswith('4A0E0E'))
+        self.assertFalse(workbook['Rincian Progress W6']['A1'].font.color.rgb.endswith('4A0E0E'))
+
+    def test_signature_space_is_one_line_taller(self):
+        from detail_project.exports.signature_config import SIGNATURE_SPACE_MM
+        self.assertEqual(SIGNATURE_SPACE_MM, 20)
+
+
+class RekapKurvaSingleCurveTests(TestCase):
+    """2.1: the Rekap Kurva S split over pages is ONE curve, not one per page."""
+
+    ROW_HEIGHT = 17  # calculate_row_height() for a one-line name
+
+    def _pages(self, rows, budget, points):
+        config = ExportManager(None)._create_config_simple(
+            'Jadwal', page_orientation='landscape', page_size='A3',
+        )
+        return PDFExporter(config)._build_kurva_s_paginated(
+            [{'name': f'Pekerjaan {i}', 'volume': '1', 'satuan': 'm2', 'level': 3,
+              'week_planned': [], 'week_actual': []} for i in range(rows)],
+            [{'week': w + 1, 'planned': p, 'actual': 0, 'range': ''} for w, p in enumerate(points)],
+            total_weeks=len(points),
+            max_table_height=budget,
+        )
+
+    def test_curve_continues_across_row_pages(self):
+        from reportlab.graphics.shapes import Circle, Line
+        from detail_project.exports.table_styles import UnifiedTableStyles as UTS
+        planned = UTS.get_planned_color()
+        # 10 rows, 5 rows per page -> 2 pages; 50% sits exactly on the page break.
+        pages = self._pages(10, 5 * self.ROW_HEIGHT, [50, 100])
+        self.assertEqual(len(pages), 2)
+
+        def shapes(page, kind, attr):
+            return [s for s in page.contents if isinstance(s, kind) and getattr(s, attr) == planned]
+
+        # The 0% start marker (left edge of the week area) appears ONCE, on the
+        # last page; the old code started a new 0-100% curve on every page.
+        start_markers = [
+            c for page in pages for c in shapes(page, Circle, 'fillColor')
+            if abs(c.cx - UTS.STATIC_TOTAL) < 0.01
+        ]
+        self.assertEqual(len(start_markers), 1)
+        self.assertTrue(any(abs(c.cx - UTS.STATIC_TOTAL) < 0.01 for c in shapes(pages[1], Circle, 'fillColor')))
+        # Both pages carry part of the same line.
+        self.assertTrue(shapes(pages[0], Line, 'strokeColor'))
+        self.assertTrue(shapes(pages[1], Line, 'strokeColor'))
+
+    def test_rows_fill_the_available_height(self):
+        # 2.2: rows per page follow the height budget, not a fixed 25-row cap.
+        pages = self._pages(60, 50 * self.ROW_HEIGHT, [100])
+        self.assertEqual(len(pages), 2)

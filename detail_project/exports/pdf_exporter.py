@@ -1449,6 +1449,7 @@ class PDFExporter(ConfigExporterBase):
                 # 1. Cover Page for this month
                 period_info = month_data.get('period', {})
                 period_info['month'] = month
+                period_info['is_extension_period'] = bool(contract_summary and month > boundary_month)
                 cover_elements = self._build_cover_page('monthly', project_info, period_info)
                 story.extend(cover_elements)
                 story.append(PageBreak())
@@ -1626,6 +1627,7 @@ class PDFExporter(ConfigExporterBase):
                 story.append(SegmentMarker(""))
                 period_info = week_data.get('period', {})
                 period_info['week'] = week
+                period_info['is_extension_period'] = bool(contract_summary and week > boundary_week)
                 cover_elements = self._build_cover_page('weekly', project_info, period_info)
                 story.extend(cover_elements)
                 story.append(PageBreak())
@@ -1675,6 +1677,9 @@ class PDFExporter(ConfigExporterBase):
                     period_info['month'] = data.get('month', 1)
                 else:
                     period_info['week'] = data.get('week', 1)
+                period_info['is_extension_period'] = bool(
+                    contract_summary and selected_period > boundary_period
+                )
                 cover_elements = self._build_cover_page(report_type, project_info, period_info)
             
             story.extend(cover_elements)
@@ -2019,6 +2024,9 @@ class PDFExporter(ConfigExporterBase):
                         total_weeks=len(kurva_s_data),
                         max_rows_per_page=25,
                         weekly_columns=data.get('weekly_columns') or [],
+                        # Tinggi tersedia: frame halaman dikurangi judul halaman,
+                        # header tabel, legenda, dan judul seksi (halaman pertama).
+                        max_table_height=doc.height - 70 - 24 - 30,
                     )
                     
                     for idx, page_drawing in enumerate(kurva_pages):
@@ -2734,7 +2742,10 @@ class PDFExporter(ConfigExporterBase):
             if column.get('is_boundary_week'):
                 edge = static_cols + week_index
                 style_commands.append(('LINEAFTER', (edge, 0), (edge, -1), 2.5, colors.HexColor('#DC3545')))
-        
+            if column.get('is_extension_week'):
+                col = static_cols + week_index
+                style_commands.append(('BACKGROUND', (col, 0), (col, 0), colors.HexColor(UTS.EXTENSION_PRIMARY)))
+
         table.setStyle(TableStyle(style_commands))
         
         return table
@@ -3103,6 +3114,9 @@ class PDFExporter(ConfigExporterBase):
         # "LAPORAN BULAN ke-X" or "LAPORAN MINGGU ke-X" or "LAPORAN REKAPITULASI"
         # ==============================================
         title_text = "LAPORAN"
+        # Cover laporan masa Penambahan Waktu Kerja: judul merah tua.
+        accent = (UTS.EXTENSION_PRIMARY if (period_info or {}).get('is_extension_period')
+                  else UTS.PRIMARY_LIGHT)
         if report_type == 'monthly':
             month_num = period_info.get('month', 1) if period_info else 1
             title_text = f"LAPORAN BULAN ke-{month_num}"
@@ -3116,14 +3130,14 @@ class PDFExporter(ConfigExporterBase):
             'CoverTitle',
             fontSize=22,
             fontName='Helvetica-Bold',
-            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            textColor=colors.HexColor(accent),
             alignment=TA_CENTER,
             leading=28,
         )
         frame_content.append(Paragraph(f"<b>{title_text}</b>", title_style))
         frame_content.append(Spacer(1, 6*mm))
         frame_content.append(HRFlowable(
-            width=60*mm, thickness=1, color=colors.HexColor(UTS.PRIMARY_LIGHT), hAlign='CENTER',
+            width=60*mm, thickness=1, color=colors.HexColor(accent), hAlign='CENTER',
         ))
         frame_content.append(Spacer(1, 8*mm))
 
@@ -3134,7 +3148,7 @@ class PDFExporter(ConfigExporterBase):
             'ProjectName',
             fontSize=16,
             fontName='Helvetica-Bold',
-            textColor=colors.HexColor('#1a365d'),
+            textColor=colors.HexColor(UTS.EXTENSION_PRIMARY if (period_info or {}).get('is_extension_period') else '#1a365d'),
             alignment=TA_CENTER,
             leading=20,
         )
@@ -3282,6 +3296,10 @@ class PDFExporter(ConfigExporterBase):
             period_info: Period date information
         """
         elements = []
+        # Bagian masa tambahan memakai merah tua; masa kontrak tetap navy.
+        accent = UTS.EXTENSION_PRIMARY if is_extension_period else UTS.PRIMARY_LIGHT
+        accent_dark = UTS.EXTENSION_PRIMARY if is_extension_period else UTS.PRIMARY_DARK
+        header_bg = UTS.EXTENSION_PRIMARY if is_extension_period else None
         
         # ==============================================
         # PAGE TITLE (with top margin to avoid header collision)
@@ -3291,7 +3309,7 @@ class PDFExporter(ConfigExporterBase):
             'PageTitle',
             fontSize=16,
             fontName='Helvetica-Bold',
-            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            textColor=colors.HexColor(accent),
             alignment=TA_CENTER,
             spaceAfter=8*mm,
         )
@@ -3302,7 +3320,7 @@ class PDFExporter(ConfigExporterBase):
         if is_extension_period:
             elements.append(Paragraph('Penambahan Waktu Kerja', ParagraphStyle(
                 'AdditionalWorkSubtitle', fontName='Helvetica-Bold', fontSize=10,
-                alignment=TA_CENTER, textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                alignment=TA_CENTER, textColor=colors.HexColor(accent),
             )))
         elements.append(Spacer(1, 5*mm))
         
@@ -3314,7 +3332,7 @@ class PDFExporter(ConfigExporterBase):
             'SectionTitle',
             fontSize=10,
             fontName='Helvetica-Bold',
-            textColor=colors.HexColor(UTS.PRIMARY_DARK),
+            textColor=colors.HexColor(accent_dark),
             spaceAfter=2*mm,
         )
         
@@ -3621,7 +3639,7 @@ class PDFExporter(ConfigExporterBase):
         # Common table styling function - using helpers
         def apply_table_style(table, rows_data):
             # Start with base style from helper
-            style_cmds = self._get_base_table_style(with_header=True)
+            style_cmds = self._get_base_table_style(with_header=True, header_bg=header_bg)
             
             # Add table-specific styles
             style_cmds.extend([
@@ -3716,6 +3734,10 @@ class PDFExporter(ConfigExporterBase):
             period_info: Period date information
         """
         elements = []
+        # Bagian masa tambahan memakai merah tua; masa kontrak tetap navy.
+        accent = UTS.EXTENSION_PRIMARY if is_extension_period else UTS.PRIMARY_LIGHT
+        accent_dark = UTS.EXTENSION_PRIMARY if is_extension_period else UTS.PRIMARY_DARK
+        header_bg = UTS.EXTENSION_PRIMARY if is_extension_period else None
         
         # ==============================================
         # PAGE TITLE (with top margin to avoid header collision)
@@ -3725,7 +3747,7 @@ class PDFExporter(ConfigExporterBase):
             'PageTitle',
             fontSize=16,
             fontName='Helvetica-Bold',
-            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            textColor=colors.HexColor(accent),
             alignment=TA_CENTER,
             spaceAfter=8*mm,
         )
@@ -3736,7 +3758,7 @@ class PDFExporter(ConfigExporterBase):
         if is_extension_period:
             elements.append(Paragraph('Penambahan Waktu Kerja', ParagraphStyle(
                 'AdditionalWorkSubtitle', fontName='Helvetica-Bold', fontSize=10,
-                alignment=TA_CENTER, textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                alignment=TA_CENTER, textColor=colors.HexColor(accent),
             )))
         elements.append(Spacer(1, 5*mm))
         
@@ -3748,7 +3770,7 @@ class PDFExporter(ConfigExporterBase):
             'SectionTitle',
             fontSize=10,
             fontName='Helvetica-Bold',
-            textColor=colors.HexColor(UTS.PRIMARY_DARK),
+            textColor=colors.HexColor(accent_dark),
             spaceAfter=2*mm,
         )
         
@@ -4007,7 +4029,7 @@ class PDFExporter(ConfigExporterBase):
         MIN_ROWS_WITH_SIGNATURE = 5
         
         def apply_table_style(table, rows_data):
-            style_cmds = self._get_base_table_style(with_header=True)
+            style_cmds = self._get_base_table_style(with_header=True, header_bg=header_bg)
             style_cmds.extend([
                 ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8f4f8')),
                 ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
@@ -4083,7 +4105,7 @@ class PDFExporter(ConfigExporterBase):
 
         title_style = ParagraphStyle(
             'ContractEndSummaryTitle', fontName='Helvetica-Bold', fontSize=14,
-            textColor=colors.HexColor(UTS.PRIMARY_LIGHT), alignment=TA_CENTER,
+            textColor=colors.HexColor(UTS.EXTENSION_PRIMARY), alignment=TA_CENTER,
             spaceAfter=6*mm,
         )
         text_style = ParagraphStyle('ContractEndSummaryText', fontName='Helvetica', fontSize=8)
@@ -4126,7 +4148,8 @@ class PDFExporter(ConfigExporterBase):
         table = Table(rows, colWidths=[8*mm, 50*mm, 18*mm, 25*mm, 16*mm, 23*mm, 40*mm], repeatRows=1)
         table.setStyle(TableStyle([
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#6B7280')),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.EXTENSION_PRIMARY)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 7),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -4147,7 +4170,8 @@ class PDFExporter(ConfigExporterBase):
             story.append(NextPageTemplate('portrait'))
             story.append(PageBreak())
         story.extend(self._build_contract_end_summary_page(summary))
-        story.append(PageBreak())
+        # Pengesahan menempel pada lembar Rangkuman, seperti laporan mingguan
+        # biasa (owner 2026-09-30): tanpa pemutus halaman di antaranya.
         story.extend(self._build_progress_signature_section(project_info))
 
     def _build_executive_summary_section(self, summary: Dict[str, Any], mode: str = 'monthly') -> List:
@@ -5024,7 +5048,9 @@ class PDFExporter(ConfigExporterBase):
             for i, column in enumerate(page_time_columns):
                 if column.get('is_boundary_week'):
                     style_commands.append(('LINEAFTER', (3 + i, 0), (3 + i, 0), 2.5, colors.HexColor('#DC3545')))
-            
+                if column.get('is_extension_week'):
+                    style_commands.append(('BACKGROUND', (3 + i, 0), (3 + i, 0), colors.HexColor(UTS.EXTENSION_PRIMARY)))
+
             # Merge week columns in data rows for bar display (col 3 to end)
             # Column indices: 0=Uraian, 1=Volume, 2=Satuan, 3+=Weeks
             for row_idx in range(1, len(table_data)):
@@ -5408,6 +5434,9 @@ class PDFExporter(ConfigExporterBase):
                 x = left_margin + static_total + (i * week_width) + week_width/2  # Add left_margin offset
                 # Adaptive font size based on week_width
                 week_font_size = 6 if week_width >= 15 else 5
+                if col.get('is_extension_week'):
+                    drawing.add(Rect(x - week_width/2, header_y, week_width, header_height,
+                                     fillColor=colors.HexColor(UTS.EXTENSION_PRIMARY), strokeColor=None))
                 drawing.add(String(x, header_y + 6, f'W{week_num}',
                                   fontSize=week_font_size, fontName='Helvetica-Bold', 
                                   fillColor=header_text, textAnchor='middle'))
@@ -5849,8 +5878,11 @@ class PDFExporter(ConfigExporterBase):
                 if wk > last_real_week:
                     continue  # L-3: no header for a week the project does not have
                 x = static_total + (i * week_width) + week_width/2
-                drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
                 column = weekly_columns[wk - 1] if weekly_columns and wk <= len(weekly_columns) else {}
+                if column.get('is_extension_week'):
+                    drawing.add(Rect(x - week_width/2, header_y, week_width, header_height,
+                                     fillColor=colors.HexColor(UTS.EXTENSION_PRIMARY), strokeColor=None))
+                drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
                 if column.get('is_extension_week'):
                     drawing.add(String(x, header_y + 1, 'Penambahan', fontSize=3.5,
                                        fontName='Helvetica', fillColor=header_text, textAnchor='middle'))
@@ -6305,6 +6337,7 @@ class PDFExporter(ConfigExporterBase):
         row_height: float = 14,
         max_rows_per_page: int = 30,
         weekly_columns: List[Dict] = None,
+        max_table_height: float | None = None,
     ) -> List[Drawing]:
         """
         Build paginated Kurva S visualization with freeze columns.
@@ -6400,10 +6433,27 @@ class PDFExporter(ConfigExporterBase):
             end = min(start + max_weeks_per_page, num_weeks)
             week_chunks.append((start, end))
         
+        # Owner 2026-09-30: satu kurva untuk SELURUH tabel, seperti web. Baris
+        # dipotong per halaman, tetapi skala 0-100% memakai tinggi gabungan semua
+        # baris; tiap halaman hanya menggambar potongan kurva di rentang barisnya.
+        all_row_heights = [calculate_row_height(row.get('name', '')) for row in pekerjaan_rows]
+        total_rows_height = sum(all_row_heights) or 1
+
         row_chunks = []
-        for start in range(0, num_rows, max_rows_per_page):
-            end = min(start + max_rows_per_page, num_rows)
-            row_chunks.append((start, end))
+        if max_table_height:
+            # Isi halaman sampai tinggi yang tersedia (bukan jumlah baris tetap).
+            start = 0
+            while start < num_rows:
+                used, end = 0, start
+                while end < num_rows and (end == start or used + all_row_heights[end] <= max_table_height):
+                    used += all_row_heights[end]
+                    end += 1
+                row_chunks.append((start, end))
+                start = end
+        else:
+            for start in range(0, num_rows, max_rows_per_page):
+                end = min(start + max_rows_per_page, num_rows)
+                row_chunks.append((start, end))
         
         pages = []
         total_pages = len(week_chunks) * len(row_chunks)
@@ -6437,7 +6487,7 @@ class PDFExporter(ConfigExporterBase):
                     total_table_width = width  # Expand to exact page width
                 
                 # Calculate dynamic table height based on text wrapping
-                row_heights = [calculate_row_height(row.get('name', '')) for row in page_rows]
+                row_heights = all_row_heights[row_start:row_end]
                 header_row_height = 24  # Increased for 2-line week headers (WX + date range)
                 table_height = header_row_height + sum(row_heights)
                 total_height = table_height + 70  # Header + legend
@@ -6485,9 +6535,12 @@ class PDFExporter(ConfigExporterBase):
                     week_data = page_kurva_data[i] if i < len(page_kurva_data) else {}
                     date_range = week_data.get('range', '')
                     
+                    column = weekly_columns[week_num - 1] if weekly_columns and week_num <= len(weekly_columns) else {}
+                    if column.get('is_extension_week'):
+                        drawing.add(Rect(x - week_width/2, header_y, week_width, header_row_height,
+                                         fillColor=colors.HexColor(UTS.EXTENSION_PRIMARY), strokeColor=None))
                     # Use WHF for consistent week header drawing
                     WHF.draw_on_canvas(drawing, x, header_y + 4, week_num, date_range, header_text_color)
-                    column = weekly_columns[week_num - 1] if weekly_columns and week_num <= len(weekly_columns) else {}
                     if column.get('is_extension_week'):
                         drawing.add(String(x, header_y + 1, 'Penambahan', fontSize=4,
                                            fontName='Helvetica', fillColor=header_text_color,
@@ -6611,79 +6664,55 @@ class PDFExporter(ConfigExporterBase):
                 # KURVA S OVERLAY
                 # ============================================
                 
-                # Y-axis mapping: 0% at bottom, 100% at top
-                chart_top = header_y
-                chart_bottom = table_bottom
-                chart_height = chart_top - chart_bottom
-                
-                def progress_to_y(progress):
-                    return chart_bottom + (progress / 100.0) * chart_height
-                
-                # X-axis mapping: Week node on RIGHT edge of week column (grid line)
-                # W0 = left edge of week area (grid line between freeze and W1)
+                # Global Y mapping (0% = bottom of the LAST row of the table,
+                # 100% = top of the FIRST row). Offsets are measured from the top
+                # of the whole table; this page shows [page_top, page_bottom].
+                page_top = sum(all_row_heights[:row_start])
+                page_bottom = page_top + sum(row_heights)
+
+                def progress_to_offset(progress):
+                    progress = max(0.0, min(100.0, float(progress or 0)))
+                    return total_rows_height * (1 - progress / 100.0)
+
+                def offset_to_y(offset):
+                    return header_y - (offset - page_top)
+
                 def week_to_x(week_idx):
                     """Week index 0 = right edge of week 1 column, etc."""
                     return freeze_width + (week_idx + 1) * week_width  # Right edge of column
-                
-                # Draw Planned curve (only weeks in this page)
-                planned_points = []
-                
-                # On page 1: Start from 0% at left edge
-                # On page 2+: Start from previous page's last value at left edge
-                if week_start == 0:
-                    # First page: start at 0%
-                    planned_points.append((freeze_width, progress_to_y(0)))
-                else:
-                    # Subsequent pages: start at the value from the week BEFORE this page's range
-                    # This is the last week of the previous page (week_start - 1)
-                    prev_week_idx = week_start - 1
-                    if prev_week_idx >= 0 and prev_week_idx < len(kurva_s_data):
-                        prev_planned = kurva_s_data[prev_week_idx].get('planned', 0) or 0
-                        planned_points.append((freeze_width, progress_to_y(prev_planned)))
-                
-                for i, data in enumerate(page_kurva_data):
-                    x = week_to_x(i)  # Position at right edge of each week column
-                    y = progress_to_y(data.get('planned', 0) or 0)
-                    planned_points.append((x, y))
-                
-                # Draw planned lines with professional styling
-                for j in range(len(planned_points) - 1):
-                    drawing.add(Line(planned_points[j][0], planned_points[j][1],
-                                    planned_points[j+1][0], planned_points[j+1][1],
-                                    strokeColor=planned_color, strokeWidth=line_width))
-                
-                # Draw planned markers (circles)
-                for x, y in planned_points:
-                    drawing.add(Circle(x, y, marker_radius, fillColor=planned_color,
-                                      strokeColor=colors.white, strokeWidth=1))
-                
-                # Draw Actual curve
-                actual_points = []
-                
-                # Same logic for actual curve
-                if week_start == 0:
-                    actual_points.append((freeze_width, progress_to_y(0)))
-                else:
-                    prev_week_idx = week_start - 1
-                    if prev_week_idx >= 0 and prev_week_idx < len(kurva_s_data):
-                        prev_actual = kurva_s_data[prev_week_idx].get('actual', 0) or 0
-                        actual_points.append((freeze_width, progress_to_y(prev_actual)))
-                
-                for i, data in enumerate(page_kurva_data):
-                    x = week_to_x(i)
-                    y = progress_to_y(data.get('actual', 0) or 0)
-                    actual_points.append((x, y))
-                
-                # Draw actual lines with professional styling
-                for j in range(len(actual_points) - 1):
-                    drawing.add(Line(actual_points[j][0], actual_points[j][1],
-                                    actual_points[j+1][0], actual_points[j+1][1],
-                                    strokeColor=actual_color, strokeWidth=line_width))
-                
-                # Draw actual markers (circles)
-                for x, y in actual_points:
-                    drawing.add(Circle(x, y, marker_radius, fillColor=actual_color,
-                                      strokeColor=colors.white, strokeWidth=1))
+
+                def draw_series(key, color):
+                    if week_start == 0:
+                        points = [(freeze_width, progress_to_offset(0))]
+                    else:
+                        prev = kurva_s_data[week_start - 1].get(key, 0) if week_start - 1 < len(kurva_s_data) else 0
+                        points = [(freeze_width, progress_to_offset(prev))]
+                    for i, data in enumerate(page_kurva_data):
+                        points.append((week_to_x(i), progress_to_offset(data.get(key, 0))))
+
+                    # Segments clipped to this page's rows (Drawing has no clip).
+                    for (x1, o1), (x2, o2) in zip(points, points[1:]):
+                        if o1 == o2:
+                            if not (page_top <= o1 <= page_bottom):
+                                continue
+                            t_lo, t_hi = 0.0, 1.0
+                        else:
+                            t_a = (page_top - o1) / (o2 - o1)
+                            t_b = (page_bottom - o1) / (o2 - o1)
+                            t_lo, t_hi = max(0.0, min(t_a, t_b)), min(1.0, max(t_a, t_b))
+                            if t_lo >= t_hi:
+                                continue
+                        xa, oa = x1 + (x2 - x1) * t_lo, o1 + (o2 - o1) * t_lo
+                        xb, ob = x1 + (x2 - x1) * t_hi, o1 + (o2 - o1) * t_hi
+                        drawing.add(Line(xa, offset_to_y(oa), xb, offset_to_y(ob),
+                                         strokeColor=color, strokeWidth=line_width))
+                    for x, offset in points:
+                        if page_top - 0.01 <= offset <= page_bottom + 0.01:
+                            drawing.add(Circle(x, offset_to_y(offset), marker_radius, fillColor=color,
+                                               strokeColor=colors.white, strokeWidth=1))
+
+                draw_series('planned', planned_color)
+                draw_series('actual', actual_color)
                 
                 # ============================================
                 # LEGEND (at bottom) with professional styling

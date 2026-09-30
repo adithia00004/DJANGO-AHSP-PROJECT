@@ -145,6 +145,8 @@ COLORS = {
     'TOTAL_BG': 'FCE7F3',       # Light pink
     'BORDER': '999999',
     'PRIMARY': '2D5A8E',
+    # Masa Penambahan Waktu Kerja (owner 2026-09-30): merah tua hampir hitam.
+    'EXTENSION': '4A0E0E',
 }
 
 # Standard dimensions for consistent sizing
@@ -188,7 +190,8 @@ class ExcelExporter(ConfigExporterBase):
             column_number = start_col + offset
             header = ws.cell(row=header_row, column=column_number)
             if column.get('is_extension_week'):
-                header.value = f"{header.value}\nPenambahan"
+                header.fill = PatternFill('solid', fgColor=COLORS['EXTENSION'])
+                header.value =f"{header.value}\nPenambahan"
                 alignment = copy(header.alignment)
                 alignment.wrap_text = True
                 header.alignment = alignment
@@ -3334,6 +3337,9 @@ class ExcelExporter(ConfigExporterBase):
             ssot_ranges: Dict with cell references from _build_ssot_sheet
             executive_summary: Summary data for header section
         """
+        # Rincian periode Penambahan Waktu Kerja: judul & header merah tua.
+        primary_color = COLORS['EXTENSION'] if is_extension_period else COLORS['PRIMARY']
+        header_bg_color = COLORS['EXTENSION'] if is_extension_period else COLORS['HEADER_BG']
         border = self._get_thin_border()
         ssot_name = ssot_ranges['sheet_name']  # 'Data Master'
         
@@ -3345,21 +3351,21 @@ class ExcelExporter(ConfigExporterBase):
         ws.merge_cells(f'A{current_row}:I{current_row}')
         title_cell = ws[f'A{current_row}']
         title_cell.value = f'LAPORAN BULAN KE-{month}'
-        title_cell.font = Font(size=16, bold=True, color=COLORS['PRIMARY'])
+        title_cell.font = Font(size=16, bold=True, color=primary_color)
         title_cell.alignment = Alignment(horizontal='center')
         ws.row_dimensions[current_row].height = 30
         if is_extension_period:
             ws['A2'] = 'Penambahan Waktu Kerja'
-            ws['A2'].font = Font(bold=True, color=COLORS['PRIMARY'])
+            ws['A2'].font = Font(bold=True, color=primary_color)
         current_row += 2
         
         # ================================================================
         # IDENTITAS PROJECT (Formula references to SSOT)
         # ================================================================
         ws[f'A{current_row}'] = 'IDENTITAS PROJECT'
-        ws[f'A{current_row}'].font = Font(bold=True, size=11, color=COLORS['PRIMARY'])
+        ws[f'A{current_row}'].font = Font(bold=True, size=11, color=primary_color)
         ws[f'F{current_row}'] = 'RINGKASAN PROGRESS'
-        ws[f'F{current_row}'].font = Font(bold=True, size=11, color=COLORS['PRIMARY'])
+        ws[f'F{current_row}'].font = Font(bold=True, size=11, color=primary_color)
         current_row += 1
         
         # Left: Identitas (formulas)
@@ -3481,7 +3487,7 @@ class ExcelExporter(ConfigExporterBase):
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=current_row, column=col, value=header)
             cell.font = Font(bold=True, color='FFFFFF')
-            cell.fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            cell.fill = PatternFill('solid', fgColor=header_bg_color)
             cell.border = border
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
         
@@ -3600,7 +3606,7 @@ class ExcelExporter(ConfigExporterBase):
         
         # Fill TOTAL row
         for col in range(1, 11):
-            ws.cell(row=current_row, column=col).fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            ws.cell(row=current_row, column=col).fill = PatternFill('solid', fgColor=header_bg_color)
             if col >= 2:
                 ws.cell(row=current_row, column=col).font = Font(bold=True, color='FFFFFF')
         
@@ -4033,6 +4039,9 @@ class ExcelExporter(ConfigExporterBase):
         
         Note: Klasifikasi/Sub-klasifikasi rows only show No and Uraian, other columns are blank.
         """
+        # Rincian periode Penambahan Waktu Kerja: judul & header merah tua.
+        primary_color = COLORS['EXTENSION'] if is_extension_period else COLORS['PRIMARY']
+        header_bg_color = COLORS['EXTENSION'] if is_extension_period else COLORS['HEADER_BG']
         border = self._get_thin_border()
         ssot_name = 'Data Master'
         current_row = 1
@@ -4043,11 +4052,11 @@ class ExcelExporter(ConfigExporterBase):
         ws.merge_cells(f'A{current_row}:J{current_row}')
         title_cell = ws[f'A{current_row}']
         title_cell.value = f'LAPORAN PROGRESS MINGGU KE-{week}'
-        title_cell.font = Font(size=14, bold=True, color=COLORS['PRIMARY'])
+        title_cell.font = Font(size=14, bold=True, color=primary_color)
         title_cell.alignment = Alignment(horizontal='center')
         if is_extension_period:
             ws['A2'] = 'Penambahan Waktu Kerja'
-            ws['A2'].font = Font(bold=True, color=COLORS['PRIMARY'])
+            ws['A2'].font = Font(bold=True, color=primary_color)
         current_row += 2
 
         # ==============================================
@@ -4162,7 +4171,7 @@ class ExcelExporter(ConfigExporterBase):
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=current_row, column=col, value=header)
             cell.font = Font(bold=True, color='FFFFFF')
-            cell.fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            cell.fill = PatternFill('solid', fgColor=header_bg_color)
             cell.border = border
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
         
@@ -4334,7 +4343,7 @@ class ExcelExporter(ConfigExporterBase):
         for column_number, label in enumerate(actual_headers, start=1):
             cell = ws.cell(current_row, column_number, label)
             cell.font = Font(bold=True, color='FFFFFF')
-            cell.fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            cell.fill = PatternFill('solid', fgColor=header_bg_color)
             cell.border = border
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
         ws.row_dimensions[current_row].height = 36

@@ -110,6 +110,9 @@ class UnifiedTableStyles:
     PRIMARY = '#1e3a5f'             # Deep navy blue (main brand)
     PRIMARY_LIGHT = '#2c5282'       # Lighter navy (hover/accent)
     PRIMARY_DARK = '#1a365d'        # Darker navy (legacy compat)
+    # Masa Penambahan Waktu Kerja (owner 2026-09-30): merah tua hampir hitam
+    # untuk judul & header bagian tambahan; bagian masa kontrak tetap navy.
+    EXTENSION_PRIMARY = '#4a0e0e'
     
     # Header colors (unified for all tables)
     HEADER_BG = '#1e3a5f'           # Unified header background
