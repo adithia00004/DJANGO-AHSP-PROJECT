@@ -126,11 +126,11 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 
 ### Langkah 1.7 — Frontend — REVIEW 2026-09-30
 
-- Isi yang dikerjakan: API kolom mengirim metadata minggu batas/tambahan dari helper server; tombol hanya tampil di mode Realisasi; dialog tanggal menjalankan preview sebelum commit dan meminta pilihan bila planned akan ditata. Grid memberi label, arsiran, divider, dan penguncian minggu tambahan di mode Rencana. Kurva S dan Gantt menampilkan garis vertikal akhir waktu kerja.
-- File diubah: template Jadwal, `views_api_tahapan.py`, `timeline_utils.py`, `jadwal_kegiatan_app.js`, DataLoader, TimeColumnGenerator, TanStack grid, overlay Kurva S/Gantt, tes JS/Python, bundle `dist/`.
+- Isi yang dikerjakan: API kolom mengirim metadata minggu batas/tambahan dari helper server; tombol hanya tampil di mode Realisasi; dialog tanggal menjalankan preview sebelum commit dan meminta pilihan bila planned akan ditata. Grid memberi label, arsiran, divider, dan penguncian minggu tambahan di mode Rencana. Kurva S dan Gantt menampilkan garis vertikal akhir waktu kerja. PNG Kurva S kini dirender langsung pada ukuran piksel target; unduhan PNG penuh memakai skala adaptif 3×.
+- File diubah: template Jadwal, `views_api_tahapan.py`, `timeline_utils.py`, `jadwal_kegiatan_app.js`, DataLoader, TimeColumnGenerator, TanStack grid, overlay Kurva S/Gantt, `canvas-export-scale.js`, `kurva-s-renderer.js`, tes JS/Python, bundle `dist/`.
 - Uji baru / diubah: metadata API dan halaman, lock planned vs actual, tanggal lokal, penanda grafik, perpanjangan/pengurangan, progres/catatan di luar rentang.
 - Hasil uji (perintah + angka): PostgreSQL 46 tes gabungan lulus; suite halaman/API 13 tes lulus; Vitest penuh 33 file, 408 lulus dan 25 skipped; `npm run build` berhasil.
-- Commit: `d87390af`; perbaikan review `6b506eed`.
+- Commit: `d87390af`; perbaikan review `6b506eed`; kualitas PNG `c10656c4` + bundle `584ccef4`.
 - Temuan di luar rencana (→ §8): minggu yang akan dipendekkan bisa berisi catatan walau progresnya nol; perubahan kini ditahan agar catatan tidak hilang (D-13).
 - Catatan untuk langkah berikutnya: kode siap UAT; checklist manual §6 belum dijalankan.
 
@@ -224,6 +224,8 @@ dampak, dan keputusan (kerjakan sekarang / catat / tunda).
 | 2026-09-30 | Review fixes | PostgreSQL: `tests_timeline_repair_ui` + `tests_additional_plan_guard` | 27 tes lulus | Tiga regresi repair, target tambahan, tanggal mulai yang dimanipulasi, dan resolusi planned yang aman |
 | 2026-09-30 | Review gate | Runner penuh PostgreSQL terisolasi `test_twk_reviewfix_full_20260930`; `detail_project` + `dashboard` | 894 tes: **3 gagal baseline**, 40 skipped | Tidak ada kegagalan baru. Tiga yang gagal sama dengan §3: `test_shared_signature_has_bounded_query_count`, `test_query_budget_constant_no_n_plus_1`, `test_template_does_not_auto_reload_pending_jobs_on_open` |
 | 2026-09-30 | Review fixes | `npm run test:frontend -- --reporter=dot` | 33 file; 408 lulus, 25 skipped | Berhasil setelah perubahan target payload timeline repair |
+| 2026-09-30 | Export PNG Kurva S | Uji skala ekspor + kontrak renderer | 6 tes lulus; Vitest penuh 38 file, 428 lulus, 25 skipped | DPI tidak lagi dicapai dengan membesarkan chart kecil; renderer membuat plot pada resolusi target; unduhan penuh dibatasi maksimal 64 MP |
+| 2026-09-30 | Export PNG Kurva S | `npm run build` di worktree bersih dari WIP lain | Berhasil | Bundle `jadwal-kegiatan-BUExKZfW.js` sesuai source yang di-commit; peringatan ukuran chunk >500 kB tetap ada |
 | 2026-09-30 | Review fixes | PostgreSQL: `tests_timeline_repair_ui` + `tests_additional_plan_guard` | 27 tes lulus | Termasuk preview/commit repair tanpa mengubah kontrak pada proyek bertambahan, reject tanggal mulai, dan satu-satunya resolusi yang aman |
 | 2026-09-30 | Review gate final | Runner penuh serial PostgreSQL; database `test_twk_reviewfix_full_20260930`; `detail_project` + `dashboard` | **894 tes; 3 gagal baseline, 40 skipped** | Sama persis dengan tiga kegagalan §3; tidak ada kegagalan baru. Runner berakhir non-zero hanya karena tiga guard baseline |
 | 2026-09-30 | Review gate final | `npm run test:frontend -- --reporter=dot` | 33 file; 408 lulus, 25 skipped | Lulus setelah perubahan repair payload |
