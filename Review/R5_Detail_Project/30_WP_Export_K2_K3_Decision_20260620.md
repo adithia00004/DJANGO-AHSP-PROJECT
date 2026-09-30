@@ -375,6 +375,8 @@ Pola sama 2A untuk `_build_weekly_rincian_sheet`:
 
 **Sisa: 2C Professional Kurva** (rewrite S-curve berbobot penuh — terberat, tanpa mirror) → **2D Parity gate** → kunci 6/6.
 
+**Revisi 2026-09-30 (doc 43 K-12 dan I-1):** kontrak "planned-only" pada §8.3 **tetap berlaku untuk proyek tanpa masa tambahan**. Pada proyek dengan masa tambahan, Excel mingguan mempertahankan ringkasan dan kolom H-J rencana, lalu menambah blok realisasi kumulatif/minggu ini serta rincian realisasi berbobot per pekerjaan. Nilai resmi blok baru berasal dari backend `Data Master`; formula di Rincian tetap hanya mirror 1:1. Gate `JadwalMonthlyValueOnlyTests.test_weekly_rincian_is_values_with_mirror_only_formulas` menjaga proyek biasa, sedangkan `ExtensionExcelMarkerTests` menjaga realisasi masa tambahan.
+
 ### 8.4 RENCANA 2C — Professional Kurva (AUDIT MENYELURUH, read-only 2026-06-21)
 
 **Arsitektur (temuan audit):**

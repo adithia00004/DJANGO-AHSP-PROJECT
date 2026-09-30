@@ -12,6 +12,7 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from docx import Document
+from openpyxl import load_workbook
 
 from dashboard.models import Project
 from detail_project.exports.errors import ExportValidationError
@@ -455,3 +456,51 @@ class ExtensionPdfMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
         month_three = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-3" in page)
         self.assertLess(summary, month_three)
         self.assertIn("Penambahan Waktu Kerja", pages[month_three])
+
+
+class ExtensionExcelMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
+    def _workbook(self, report_type, **selection):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "xlsx", report_type=report_type, **selection,
+        )
+        return load_workbook(BytesIO(response.content), data_only=False)
+
+    def test_week_columns_mark_w6_edge_and_w7_header(self):
+        for workbook, locations in (
+            (self._workbook('rekap'), [('Input Progress-Gantt', 1, 9, 10), ('Kurva S', 3, 13, 14)]),
+            (self._workbook('monthly', months=[2]), [('Data Master', 11, 13, 14), ('Kurva S M2', 3, 13, 14)]),
+            (self._workbook('weekly', weeks=[7]), [('Data Master', 11, 13, 14)]),
+        ):
+            for name, row, boundary_col, extension_col in locations:
+                with self.subTest(sheet=name):
+                    sheet = workbook[name]
+                    self.assertEqual(sheet.cell(row, boundary_col).border.right.style, 'medium')
+                    self.assertIn('Penambahan', sheet.cell(row, extension_col).value)
+                    self.assertGreaterEqual(sheet.row_dimensions[row].height, 36)
+
+    def test_weekly_rincian_displays_weighted_actual_without_changing_planned(self):
+        workbook = self._workbook('weekly', weeks=[7])
+        sheet = workbook['Rincian Progress W7']
+        row_for = lambda label: next(
+            row for row in range(1, sheet.max_row + 1)
+            if sheet.cell(row, 1).value == label
+        )
+        self.assertEqual(sheet.cell(row_for('Progress Minggu Ini'), 6).value, 0)
+        self.assertAlmostEqual(sheet.cell(row_for('Realisasi Minggu Ini'), 6).value, 0.375)
+        self.assertAlmostEqual(sheet.cell(row_for('Realisasi Kumulatif s.d. Minggu Ini'), 6).value, 1.0)
+        total_row = row_for('TOTAL REALISASI')
+        self.assertAlmostEqual(sheet.cell(total_row, 9).value, 0.375)
+        self.assertAlmostEqual(sheet.cell(total_row, 10).value, 1.0)
+        headers = [sheet.cell(row, 9).value for row in range(1, total_row)]
+        self.assertIn('Realisasi Minggu Ini', headers)
+
+    def test_rincian_subtitle_only_for_full_additional_period(self):
+        weekly = self._workbook('weekly', weeks=[6, 7])
+        self.assertIsNone(weekly['Rincian Progress W6']['A2'].value)
+        self.assertEqual(weekly['Rincian Progress W7']['A2'].value, 'Penambahan Waktu Kerja')
+
+        self.next_week.tanggal_akhir_tambahan = date(2026, 10, 11)
+        self.next_week.save(update_fields=['tanggal_akhir_tambahan'])
+        monthly = self._workbook('monthly', months=[2, 3])
+        self.assertIsNone(monthly['Rincian Progress M2']['A2'].value)
+        self.assertEqual(monthly['Rincian Progress M3']['A2'].value, 'Penambahan Waktu Kerja')

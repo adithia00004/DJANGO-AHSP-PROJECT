@@ -459,7 +459,7 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.assertTrue(any(abs(v - (1 / 60)) < 1e-9 for v in col_i), col_i)  # P-002: 1/3×5%
         self.assertTrue(any(abs(v - (7 / 60)) < 1e-9 for v in col_i), col_i)  # TOTAL (weighted)
 
-        # Summary is planned-only by the existing weekly-report contract.
+        # I-1: proyek tanpa masa tambahan mempertahankan bentuk planned-only.
         self.assertAlmostEqual(
             self._value_for_label(rincian, "Progress Kumulatif s.d. Minggu Lalu", 5).value,
             0,
@@ -484,6 +484,11 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.assertAlmostEqual(rincian.cell(total_row, 8).value, 0.00, places=9)
         self.assertAlmostEqual(rincian.cell(total_row, 9).value, 7 / 60, places=9)
         self.assertAlmostEqual(rincian.cell(total_row, 10).value, 7 / 60, places=9)
+
+        self.assertFalse(any(
+            cell.value == "REALISASI MINGGU KE-1"
+            for row in rincian.iter_rows() for cell in row
+        ))
 
     @staticmethod
     def _assert_no_formulas(ws):

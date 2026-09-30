@@ -10,6 +10,7 @@ Requirements: openpyxl
 """
 
 from io import BytesIO
+from copy import copy
 import logging
 from typing import Any, Dict, List
 from decimal import Decimal
@@ -177,6 +178,27 @@ class ExcelExporter(ConfigExporterBase):
         """Get standard thin border."""
         side = Side(style='thin', color=COLORS['BORDER'])
         return Border(top=side, bottom=side, left=side, right=side)
+
+    def _mark_extension_week_columns(self, ws, weekly_columns, header_row, start_col, last_row):
+        """Show the canonical boundary on week-column sheets without changing values."""
+        if not any(col.get('is_boundary_week') or col.get('is_extension_week') for col in weekly_columns):
+            return
+        boundary_side = Side(style='medium', color='DC3545')
+        for offset, column in enumerate(weekly_columns):
+            column_number = start_col + offset
+            header = ws.cell(row=header_row, column=column_number)
+            if column.get('is_extension_week'):
+                header.value = f"{header.value}\nPenambahan"
+                alignment = copy(header.alignment)
+                alignment.wrap_text = True
+                header.alignment = alignment
+                ws.row_dimensions[header_row].height = max(ws.row_dimensions[header_row].height or 0, 36)
+            if column.get('is_boundary_week'):
+                for row_number in range(header_row, last_row + 1):
+                    cell = ws.cell(row=row_number, column=column_number)
+                    border = copy(cell.border)
+                    border.right = boundary_side
+                    cell.border = border
 
     def export(self, data: Dict[str, Any]):
         """Standard export method for non-Jadwal exports."""
@@ -1834,6 +1856,7 @@ class ExcelExporter(ConfigExporterBase):
                 ws.cell(row=current_row, column=1).border = border
                 current_row += 1
 
+        self._mark_extension_week_columns(ws, weekly_columns, header_row, week_start_col, current_row - 1)
         logger.debug("[ExcelExporter] Input Progress-Gantt sheet created with %s pekerjaan", len(gantt_ranges['pekerjaan_rows']))
         return gantt_ranges
 
@@ -2373,6 +2396,7 @@ class ExcelExporter(ConfigExporterBase):
             
             logger.debug("[ExcelExporter] Chart: %s weeks, %s pek, anchor=%s, size=%.1fx%.1fcm", total_week_cols, num_pekerjaan, chart_anchor, chart.width, chart.height)
 
+        self._mark_extension_week_columns(ws, weekly_columns, header_row, week_start_col, total_row)
         logger.debug("[ExcelExporter] Kurva S sheet created with %s pekerjaan", len(pekerjaan_row_data))
         return kurva_ranges
 
@@ -2514,7 +2538,8 @@ class ExcelExporter(ConfigExporterBase):
                 ws_rincian, 
                 month=m,
                 ssot_ranges=ssot_ranges,
-                executive_summary=exec_summary
+                executive_summary=exec_summary,
+                is_extension_period=bool(data.get('boundary_week') and m > (data['boundary_week'] + 3) // 4),
             )
     
             # ================================================================
@@ -3288,11 +3313,12 @@ class ExcelExporter(ConfigExporterBase):
             },
         }
 
+        self._mark_extension_week_columns(ws, weekly_columns, header_row, num_fixed_cols + 1, total_row)
         logger.debug("[ExcelExporter] SSOT Data Master sheet created: %s rows, %s weeks", len(pekerjaan_rows), len(week_col_map))
         return ssot_ranges
 
     def _build_monthly_rincian_sheet(self, ws, month: int, ssot_ranges: Dict, 
-                                      executive_summary: Dict) -> None:
+                                      executive_summary: Dict, is_extension_period: bool = False) -> None:
         """
         Build "Rincian Progress MX" sheet with formula references to SSOT.
         
@@ -3317,6 +3343,9 @@ class ExcelExporter(ConfigExporterBase):
         title_cell.font = Font(size=16, bold=True, color=COLORS['PRIMARY'])
         title_cell.alignment = Alignment(horizontal='center')
         ws.row_dimensions[current_row].height = 30
+        if is_extension_period:
+            ws['A2'] = 'Penambahan Waktu Kerja'
+            ws['A2'].font = Font(bold=True, color=COLORS['PRIMARY'])
         current_row += 2
         
         # ================================================================
@@ -3961,7 +3990,9 @@ class ExcelExporter(ConfigExporterBase):
                 week=w,
                 ssot_ranges=ssot_ranges,
                 project_info=project_info,
-                executive_summary=executive_summary
+                executive_summary=executive_summary,
+                is_extension_period=bool(data.get('boundary_week') and w > data['boundary_week']),
+                include_actual=bool(data.get('additional_end')),
             )
             logger.debug("[ExcelExporter] Created sheet: Rincian Progress W%s", w)
 
@@ -3982,7 +4013,8 @@ class ExcelExporter(ConfigExporterBase):
         return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     def _build_weekly_rincian_sheet(self, ws, week: int, ssot_ranges: Dict, project_info: Dict,
-                                      executive_summary: Dict = None):
+                                      executive_summary: Dict = None, is_extension_period: bool = False,
+                                      include_actual: bool = False):
         """
         Build Rincian Progress sheet for weekly report.
         
@@ -4007,6 +4039,9 @@ class ExcelExporter(ConfigExporterBase):
         title_cell.value = f'LAPORAN PROGRESS MINGGU KE-{week}'
         title_cell.font = Font(size=14, bold=True, color=COLORS['PRIMARY'])
         title_cell.alignment = Alignment(horizontal='center')
+        if is_extension_period:
+            ws['A2'] = 'Penambahan Waktu Kerja'
+            ws['A2'].font = Font(bold=True, color=COLORS['PRIMARY'])
         current_row += 2
 
         # ==============================================
@@ -4263,6 +4298,86 @@ class ExcelExporter(ConfigExporterBase):
             ws.cell(row=total_row, column=col).number_format = '0.00%'
         
         current_row = total_row + 3
+
+        if not include_actual:
+            # I-1: output proyek tanpa masa tambahan tetap planned-only.
+            self._write_signature_block(ws, current_row, first_col=1, last_col=10)
+            for letter, width in (
+                ('A', 5), ('B', 40), ('C', 10), ('D', 8), ('E', 14),
+                ('F', 14), ('G', 10), ('H', 13), ('I', 13), ('J', 13),
+            ):
+                ws.column_dimensions[letter].width = width
+            logger.debug("[ExcelExporter] Rincian Progress W%s sheet created with planned values", week)
+            return
+
+        # K-12: realisasi mingguan memakai nilai kanonik backend dari Data
+        # Master. Kolom H-J rencana di atas tetap utuh.
+        project_actual = project_weekly.get('actual', {})
+        project_cumul_actual = project_weekly.get('cumul_actual', {})
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=10)
+        ws.cell(current_row, 1, f'REALISASI MINGGU KE-{week}').font = Font(bold=True, size=11)
+        current_row += 1
+        for label, value in (
+            ('Realisasi Kumulatif s.d. Minggu Lalu', project_cumul_actual.get(prev_week, Decimal('0')) if prev_week > 0 else Decimal('0')),
+            ('Realisasi Minggu Ini', project_actual.get(week, Decimal('0'))),
+            ('Realisasi Kumulatif s.d. Minggu Ini', project_cumul_actual.get(week, Decimal('0'))),
+        ):
+            ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=4)
+            ws.cell(current_row, 1, label).font = Font(bold=True)
+            ws.cell(current_row, 5, ':')
+            ws.merge_cells(start_row=current_row, start_column=6, end_row=current_row, end_column=7)
+            cell = ws.cell(current_row, 6, float(value))
+            cell.number_format = '0.00%'
+            current_row += 1
+
+        current_row += 1
+        actual_headers = [
+            'No', 'Uraian Pekerjaan', 'Volume', 'Satuan', 'Harga Satuan',
+            'Total Harga', 'Bobot (%)', 'Realisasi s.d. Minggu Lalu',
+            'Realisasi Minggu Ini', 'Realisasi s.d. Minggu Ini',
+        ]
+        for column_number, label in enumerate(actual_headers, start=1):
+            cell = ws.cell(current_row, column_number, label)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.row_dimensions[current_row].height = 36
+        current_row += 1
+
+        actual_totals = [Decimal('0'), Decimal('0'), Decimal('0')]
+        for pek in pekerjaan_rows:
+            if pek['type'] != 'pekerjaan':
+                continue
+            ssot_row = pek['planned_row']
+            for column_number in range(1, 8):
+                letter = get_column_letter(column_number)
+                cell = ws.cell(current_row, column_number, f"='{ssot_name}'!{letter}{ssot_row}")
+                cell.border = border
+                if column_number == 7:
+                    cell.number_format = '0.00%'
+            bobot = bobot_by_row.get(ssot_row, Decimal('0'))
+            actual_weeks = weekly_values.get(ssot_row, {}).get('actual', {})
+            values = (
+                bobot * sum((actual_weeks.get(wk, Decimal('0')) for wk in range(1, prev_week + 1)), Decimal('0')),
+                bobot * actual_weeks.get(week, Decimal('0')),
+                bobot * sum((actual_weeks.get(wk, Decimal('0')) for wk in range(1, week + 1)), Decimal('0')),
+            )
+            for index, value in enumerate(values):
+                actual_totals[index] += value
+                cell = ws.cell(current_row, 8 + index, float(value))
+                cell.number_format = '0.00%;-0.00%;"-"'
+                cell.border = border
+            current_row += 1
+
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=7)
+        ws.cell(current_row, 1, 'TOTAL REALISASI').font = Font(bold=True)
+        for index, value in enumerate(actual_totals):
+            cell = ws.cell(current_row, 8 + index, float(value))
+            cell.number_format = '0.00%'
+            cell.font = Font(bold=True)
+            cell.border = border
+        current_row += 3
         
         # ==============================================
         # LEMBAR PENGESAHAN — blok baku (R-37), sama dengan bulanan
