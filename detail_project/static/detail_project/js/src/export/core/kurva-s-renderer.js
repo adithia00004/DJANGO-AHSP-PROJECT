@@ -6,6 +6,7 @@
  */
 
 import uPlot from 'uplot';
+import { getCanvasPixelSize, getSafeCanvasScale } from './canvas-export-scale.js';
 
 /**
  * Preload fonts untuk consistent text metrics
@@ -127,57 +128,78 @@ export async function renderKurvaS(config) {
 
   // DPI scaling
   const BASE_DPI = 96;
-  const SCALE = dpi / BASE_DPI;
-  const physicalWidth = Math.round(width * SCALE);
-  const physicalHeight = Math.round(height * SCALE);
+  const SCALE = getSafeCanvasScale(width, height, dpi / BASE_DPI);
+  const pixelSize = getCanvasPixelSize(width, height, SCALE);
+  const physicalWidth = pixelSize.width;
+  const physicalHeight = pixelSize.height;
 
   // Create hidden container
   const hiddenContainer = document.createElement('div');
+  hiddenContainer.className = 'kurva-s-export-container';
   hiddenContainer.style.cssText = `
     position: fixed;
     left: -99999px;
     top: -99999px;
-    width: ${width}px;
-    height: ${height}px;
+    width: ${physicalWidth}px;
+    height: ${physicalHeight}px;
     visibility: hidden;
     pointer-events: none;
     background-color: ${backgroundColor};
   `;
+  const chartStyle = document.createElement('style');
+  chartStyle.textContent = `
+    .kurva-s-export-container .u-title { font-size: ${Math.round(18 * SCALE)}px !important; }
+    .kurva-s-export-container .u-legend { font-size: ${Math.round(14 * SCALE)}px !important; }
+    .kurva-s-export-container .u-series > * { padding: ${Math.round(4 * SCALE)}px !important; }
+  `;
+  hiddenContainer.appendChild(chartStyle);
   document.body.appendChild(hiddenContainer);
 
   try {
     // uPlot options
     const opts = {
-      width,
-      height,
+      width: physicalWidth,
+      height: physicalHeight,
       title: granularity === 'monthly' ? 'Kurva S Monthly Progressive' : 'Kurva S Weekly',
       series: [
         {}, // X-axis (indices)
         {
           label: 'Planned',
           stroke: '#00CED1', // cyan
-          width: 2,
-          points: { show: true, size: 4, fill: '#00CED1' }
+          width: 2 * SCALE,
+          points: { show: true, size: 4 * SCALE, width: SCALE, fill: '#00CED1' }
         },
         {
           label: 'Actual',
           stroke: '#FFD700', // yellow
-          width: 2,
-          points: { show: true, size: 4, fill: '#FFD700' }
+          width: 2 * SCALE,
+          points: { show: true, size: 4 * SCALE, width: SCALE, fill: '#FFD700' }
         }
       ],
       axes: [
         {
           // X-axis
+          font: `${Math.round(12 * SCALE)}px Arial`,
+          labelFont: `bold ${Math.round(12 * SCALE)}px Arial`,
+          space: 50 * SCALE,
+          gap: 5 * SCALE,
+          size: 50 * SCALE,
+          labelSize: 30 * SCALE,
           values: (u, vals) => vals.map(v => labels[v] || ''),
-          grid: { show: true },
-          ticks: { show: true }
+          grid: { show: true, width: SCALE },
+          ticks: { show: true, size: 10 * SCALE, width: SCALE }
         },
         {
           // Y-axis (%)
+          font: `${Math.round(12 * SCALE)}px Arial`,
+          labelFont: `bold ${Math.round(12 * SCALE)}px Arial`,
+          space: 50 * SCALE,
+          gap: 5 * SCALE,
+          size: 50 * SCALE,
+          labelSize: 30 * SCALE,
           values: (u, vals) => vals.map(v => `${v.toFixed(1)}%`),
-          grid: { show: true },
-          ticks: { show: true }
+          grid: { show: true, width: SCALE },
+          ticks: { show: true, size: 10 * SCALE, width: SCALE }
         }
       ],
       legend: {
@@ -215,7 +237,8 @@ export async function renderKurvaS(config) {
       throw new Error('[KurvaSRenderer] Canvas tidak ditemukan');
     }
 
-    // Scale canvas untuk DPI
+    // Canvas sumber sudah dirender pada ukuran target. Salin ke ukuran PNG
+    // target (uPlot dapat memakai DPR layar yang lebih tinggi dari 1).
     const scaledCanvas = document.createElement('canvas');
     scaledCanvas.width = physicalWidth;
     scaledCanvas.height = physicalHeight;
@@ -226,11 +249,11 @@ export async function renderKurvaS(config) {
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, physicalWidth, physicalHeight);
 
-    // Scale context
-    ctx.scale(SCALE, SCALE);
-
-    // Draw original canvas
-    ctx.drawImage(canvas, 0, 0, width, height);
+    // Hindari memperbesar chart 96-DPI setelah render; gambar sumber yang sudah
+    // dirender berukuran fisik hanya diperkecil bila DPR layar lebih tinggi.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, physicalWidth, physicalHeight);
 
     // Convert to PNG dataURL
     const dataURL = scaledCanvas.toDataURL('image/png');

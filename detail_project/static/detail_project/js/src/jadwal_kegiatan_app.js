@@ -31,6 +31,7 @@ import {
 import { exportReport } from './export/export-coordinator.js';
 import { renderKurvaS } from './export/core/kurva-s-renderer.js';
 import { renderGanttPaged } from './export/core/gantt-renderer.js';
+import { getCanvasPixelSize, getSafeCanvasScale } from './export/core/canvas-export-scale.js';
 
 /**
  * Initialize Jadwal Kegiatan Grid Application
@@ -4239,11 +4240,15 @@ class JadwalKegiatanApp {
     const canvasWidth = LABEL_WIDTH + (timeColumns.length * COL_WIDTH) + 20;
     const canvasHeight = HEADER_HEIGHT + LEGEND_HEIGHT + totalRowsHeight + 20;
 
-    // Create offscreen canvas
+    // Create offscreen canvas at high resolution while keeping drawing
+    // coordinates in the existing logical layout.
     const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    const exportScale = getSafeCanvasScale(canvasWidth, canvasHeight, 3);
+    const pixelSize = getCanvasPixelSize(canvasWidth, canvasHeight, exportScale);
+    canvas.width = pixelSize.width;
+    canvas.height = pixelSize.height;
     const ctx = canvas.getContext('2d');
+    ctx.scale(exportScale, exportScale);
 
     // Background
     ctx.fillStyle = '#ffffff';
