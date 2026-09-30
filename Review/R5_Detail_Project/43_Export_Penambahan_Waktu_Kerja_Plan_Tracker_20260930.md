@@ -174,14 +174,14 @@ Aturan penempatan:
 
 | Langkah | Status | Commit | Tanggal | Catatan |
 |---|---|---|---|---|
-| E0 | REVIEW | `63ef286c` | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
-| E1 | REVIEW | `af99f8ff` | 2026-09-30 | Adapter meneruskan akhir kontrak/tambahan dan minggu batas; kolom bertanda, harian membawa flag hari tambahan; 21 tes terkait lulus |
-| E2 | REVIEW | `4d9907a7` | 2026-09-30 | Word harian menerima tanggal tambahan dan menandainya di subjudul; 14 tes render harian lulus |
-| E3 | REVIEW | `f77ed38c` | 2026-09-30 | Rangkuman berbobot PDF/Word sesudah periode batas, sebelum pengesahan PDF; uji data dan file jadi lulus |
-| E4 | REVIEW | `a577f2a8` | 2026-09-30 | Garis W6/label W7 di grid, Kurva S, Gantt PDF; subjudul laporan tambahan; 32 tes lulus dan PDF tipe 2 diperiksa visual |
-| E5 | REVIEW | commit ini | 2026-09-30 | Excel: penanda minggu pada sheet berkolom waktu, subjudul Rincian tambahan, realisasi mingguan hanya proyek bertambahan; gate 10 tes lulus |
-| E6 | TODO | | | |
-| E7 | TODO | | | |
+| E0 | DONE | `63ef286c` | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
+| E1 | DONE | `af99f8ff` | 2026-09-30 | Adapter meneruskan akhir kontrak/tambahan dan minggu batas; kolom bertanda, harian membawa flag hari tambahan; 21 tes terkait lulus |
+| E2 | DONE | `4d9907a7` | 2026-09-30 | Word harian menerima tanggal tambahan dan menandainya di subjudul; 14 tes render harian lulus |
+| E3 | DONE | `f77ed38c` | 2026-09-30 | Rangkuman berbobot PDF/Word sesudah periode batas, sebelum pengesahan PDF; uji data dan file jadi lulus |
+| E4 | DONE | `a577f2a8` | 2026-09-30 | Garis W6/label W7 di grid, Kurva S, Gantt PDF; subjudul laporan tambahan; 32 tes lulus dan PDF tipe 2 diperiksa visual |
+| E5 | DONE | `98f9fddc` + perbaikan review (lihat E6) | 2026-09-30 | Excel: penanda minggu pada sheet berkolom waktu, subjudul Rincian tambahan. Realisasi mingguan semula hanya proyek bertambahan; owner memutuskan **semua proyek** (§8) dan diperbaiki di commit E6 |
+| E6 | DONE | (commit E6) | 2026-09-30 | Dimulai Codex (L-1, L-2, token habis), diselesaikan Claude: L-1..L-6 + perbaikan review (halaman kosong, realisasi semua proyek, `planned_map` mati) |
+| E7 | REVIEW | — | 2026-09-30 | Suite penuh + probe 217 lulus (§7). Menunggu UAT owner §5 |
 
 Status: `TODO` / `WIP` / `REVIEW` (menunggu pemeriksaan Claude) / `DONE` / `BLOCKED`.
 Setiap langkah = satu commit kode + catatan bukti uji di bawah.
@@ -199,6 +199,11 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E3 single period | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e3_single ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja.ExtensionSummaryPdfTests.test_single_period_pdf_paths_place_summary_once --settings=config.settings.test_pg --noinput --verbosity=1` | 1 lulus; PDF minggu/bulan tunggal masing-masing memiliki satu Rangkuman sebelum pengesahan. |
 | 2026-09-30 | E4 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e4 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja detail_project.tests_jadwal_monthly_report.ProgressSignatureLayoutTests --settings=config.settings.test_pg --noinput --verbosity=1` | 32 lulus; PDF hasil dibuka untuk grid Rencana/Realisasi, Kurva S rekap/bulanan, Gantt, laporan minggu tambahan dan pengesahan. Garis W6 dan label W7 tampak pada render tipe 2. |
 | 2026-09-30 | E5 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e5 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja.ExtensionExcelMarkerTests detail_project.tests_wp_export_parity.JadwalMonthlyValueOnlyTests --settings=config.settings.test_pg --noinput --verbosity=1` | 10 lulus; XLSX hasil dibuka untuk Data Master, Kurva S, Input Progress-Gantt, Rincian W6/W7; realisasi W7 37,50% pada fixture dan rencana lama tetap; gate no-formula-recompute hijau. |
+| 2026-09-30 | Review E0-E5 (Claude) | Snapshot `git archive HEAD` (tanpa WIP) di container, `POSTGRES_TEST_DB=test_claude_review_head`, suite penuh `detail_project` + `dashboard` | 920 tes; hanya 3 gagal baseline; 40 skipped |
+| 2026-09-30 | Review E0-E5 (Claude) | Probe export nyata proyek 217 (semua laporan × format, transaksi di-rollback) | Urutan halaman, Rangkuman, penanda, realisasi Excel sesuai §3. Temuan: halaman 1 kosong pada PDF mingguan yang hanya berisi masa tambahan (lihat §8) |
+| 2026-09-30 | E6 (Claude) | `tests_export_penambahan_waktu_kerja`, `tests_jadwal_monthly_report`, `tests_wp_export_parity` | 84 lulus. Tes baru halaman-kosong dan footer L-4 terbukti gagal saat perbaikannya dicabut |
+| 2026-09-30 | E7 (Claude) | Suite penuh working tree, `POSTGRES_TEST_DB=test_claude_final` | **931 tes; hanya 3 gagal baseline**; 40 skipped |
+| 2026-09-30 | E7 (Claude) | Probe export proyek 217 ulang | W7 saja: Rangkuman di halaman 1; header Excel "Minggu 7 / Penambahan"; realisasi W7 tampil; tanpa kata "terlambat". Frontend tidak diubah pada E6, Vitest tidak perlu diulang |
 
 ## 8. Log temuan & keputusan tambahan
 
@@ -208,3 +213,9 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E4 / X-8 | Kurva S browser tidak digandakan pada PDF Rekap: exporter sengaja melewati lampiran dengan judul Kurva S dan tetap menggambar Kurva S server. PDF dengan/tanpa lampiran browser berjumlah halaman dan segmen Kurva S sama. Tidak ada perubahan X-8. | Codex |
 | 2026-09-30 | E4 / L-3 | QA visual PDF Bulan 2 proyek 7 minggu masih menulis "Minggu 5 - 8" dan menampilkan W8 kosong. Ini temuan L-3 yang sudah direncanakan untuk E6, bukan akibat penanda E4. | Codex |
 | 2026-09-30 | E5 / I-1 | K-12 ditafsirkan untuk proyek dengan masa tambahan saja. Bila diterapkan pada semua proyek, Excel mingguan proyek tanpa tambahan berubah dan melanggar invariant I-1 §2. Gate doc 30 untuk proyek biasa tetap planned-only; proyek bertambahan mendapat blok realisasi. | Codex |
+| 2026-09-30 | Review E3 | PDF mingguan/bulanan yang **hanya** berisi masa tambahan (K-8) diawali halaman kosong: `_append_contract_end_summary` selalu memberi `PageBreak` walau belum ada isi. Diperbaiki: tanpa pemutus halaman bila Rangkuman membuka dokumen; tes `test_extension_only_starts_with_summary_before_weekly_cover` diperketat | Claude |
+| 2026-09-30 | Review E5 | Owner memutuskan realisasi Excel mingguan untuk **semua proyek** (membatalkan tafsiran E5 "hanya proyek bertambahan"). Gate doc 30 §8.3, R-14, R-40 diperbarui | Owner / Claude |
+| 2026-09-30 | E6 / L-2 | Owner menyetujui revisi R-7: label Indonesia ("Input Progres Rencana/Realisasi", "Minggu N", "Bulan N", "Realisasi"). Singkatan kolom rapat "W7" dan nama sheet Excel yang dirujuk formula tetap | Owner / Claude |
+| 2026-09-30 | E6 / L-3 | Label bulan dibatasi minggu nyata di PDF (judul Kurva S bulanan, "Grafik: Minggu 1 - Minggu N", header kolom) dan label periode adapter. Padding kolom Excel bulanan (gate doc 30) sengaja tidak diubah | Claude |
+| 2026-09-30 | E6 / L-4 | Footer cover laporan mingguan kedua membawa judul "Rincian Progress Minggu ke-(n-1)": segmen tidak ditutup. Kini ditutup sebelum cover, sama seperti loop bulanan | Claude |
+| 2026-09-30 | E6 / L-5 | Deviasi Excel bulanan dibulatkan 1e-12 (sisa Decimal 2e-28 tampil "+0,00%" alih-alih "-") | Claude |

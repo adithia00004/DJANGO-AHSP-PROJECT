@@ -729,8 +729,8 @@ class SectionHeaderFormatter:
     FONT_COLOR = '#000000'  # Black for all section headers
     
     # Section type labels (as requested by user)
-    LABEL_INPUT_PLANNED = 'Input Progress Planned'
-    LABEL_INPUT_ACTUAL = 'Input Progress Actual'
+    LABEL_INPUT_PLANNED = 'Input Progres Rencana'
+    LABEL_INPUT_ACTUAL = 'Input Progres Realisasi'
     LABEL_KURVA_S = 'KURVA S'
     LABEL_GANTT = 'Gantt Chart'
     
@@ -748,8 +748,8 @@ class SectionHeaderFormatter:
             week_end: Optional end week
             
         Returns:
-            "Input Progress Planned - Halaman 1/3 (Minggu 1-18)" or
-            "Input Progress Actual - Halaman 1/3 (Minggu 1-18)"
+            "Input Progres Rencana - Halaman 1/3 (Minggu 1-18)" or
+            "Input Progres Realisasi - Halaman 1/3 (Minggu 1-18)"
         """
         label = cls.LABEL_INPUT_PLANNED if progress_type.upper() == 'PLANNED' else cls.LABEL_INPUT_ACTUAL
         

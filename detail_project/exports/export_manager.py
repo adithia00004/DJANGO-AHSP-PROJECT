@@ -987,8 +987,8 @@ class ExportManager:
             
             # Include cover page sections
             data['sections'] = [
-                'Grid View - Rencana (Planned)',
-                'Grid View - Realisasi (Actual)',
+                'Grid View - Rencana',
+                'Grid View - Realisasi',
                 'Kurva S Progress Kumulatif',
                 'Gantt Chart'
             ]

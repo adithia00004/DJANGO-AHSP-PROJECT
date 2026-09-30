@@ -315,6 +315,9 @@ class ExtensionSummaryPdfTests(ExtensionSummaryFixtureMixin, TestCase):
         summary = next(i for i, page in enumerate(pages) if "RANGKUMAN PROGRESS AKHIR WAKTU KERJA" in page)
         week_seven = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7" in page)
         self.assertLess(summary, week_seven)
+        # The summary opens the document: no blank page before it.
+        self.assertEqual(summary, 0)
+        self.assertTrue(all(page.strip() for page in pages))
 
     def test_monthly_boundary_summary_follows_month_report(self):
         pages = self._pages("monthly", months=[1, 2])
@@ -504,3 +507,70 @@ class ExtensionExcelMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
         monthly = self._workbook('monthly', months=[2, 3])
         self.assertIsNone(monthly['Rincian Progress M2']['A2'].value)
         self.assertEqual(monthly['Rincian Progress M3']['A2'].value, 'Penambahan Waktu Kerja')
+
+
+class ExtensionExportPolishTests(ExtensionSummaryFixtureMixin, TestCase):
+    def test_rekap_excel_cover_budget_matches_owner_and_pdf(self):
+        manager = ExportManager(self.next_week, self.owner)
+        workbook = load_workbook(BytesIO(manager.export_jadwal_professional(
+            'xlsx', report_type='rekap',
+        ).content), data_only=False)
+        excel_budget = workbook['Cover']['D17'].value
+        pdf_cover = pdf_page_texts(manager.export_jadwal_professional(
+            'pdf', report_type='rekap',
+        ).content)[0]
+        self.assertEqual(excel_budget, 'Rp 1.000.000')
+        self.assertIn(excel_budget, pdf_cover)
+
+    def test_visible_period_and_actual_labels_are_indonesian(self):
+        adapter = JadwalPekerjaanExportAdapter(self.next_week)
+        self.assertEqual(adapter.get_rekap_report_data()['weekly_columns'][6]['label'], 'Minggu 7')
+        workbook = load_workbook(BytesIO(ExportManager(
+            self.next_week, self.owner,
+        ).export_jadwal_professional('xlsx', report_type='monthly', months=[2]).content))
+        # Data Master keeps the compact "W7" header (narrow week columns, same
+        # abbreviation as the PDF tables); full labels use "Minggu N".
+        self.assertEqual(workbook['Data Master']['N11'].value, 'W7\nPenambahan')
+        rincian = workbook['Rincian Progress M2']
+        self.assertTrue(any(cell.value == 'Realisasi Bulan Ini' for row in rincian for cell in row))
+        pdf_pages = pdf_page_texts(ExportManager(
+            self.next_week, self.owner,
+        ).export_jadwal_professional('pdf', report_type='weekly', weeks=[7]).content)
+        progress_page = next(page for page in pdf_pages if 'PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7' in page)
+        self.assertIn('Realisasi Minggu Ini', progress_page)
+        self.assertNotIn('Actual Minggu Ini', progress_page)
+
+    def test_month_labels_stop_at_the_last_real_week(self):
+        # L-3: a 7-week project's month 2 is W5-W7, never "5 - 8" or an empty W8.
+        adapter = JadwalPekerjaanExportAdapter(self.next_week)
+        self.assertEqual(adapter.get_monthly_comparison_data(2)['period']['weeks'], 'W5-W7')
+        text = "\n".join(pdf_page_texts(ExportManager(
+            self.next_week, self.owner,
+        ).export_jadwal_professional('pdf', report_type='monthly', months=[2]).content))
+        self.assertIn('BULAN 2 (Minggu 5 - 7)', text)
+        self.assertIn('Minggu 1 - Minggu 7', text)
+        self.assertNotIn('Minggu 8', text)
+        self.assertNotIn('W8', text)
+
+    def test_second_weekly_cover_footer_does_not_repeat_previous_section(self):
+        # L-4: W5's cover used to carry "Rincian Progress Minggu ke-4" in its footer.
+        pages = pdf_page_texts(ExportManager(
+            self.next_week, self.owner,
+        ).export_jadwal_professional('pdf', report_type='weekly', weeks=[4, 5]).content)
+        cover_five = next(
+            page for page in pages
+            if 'LAPORAN MINGGU ke-5' in page and 'PROGRESS PELAKSANAAN' not in page
+        )
+        self.assertNotIn('Minggu ke-4', cover_five)
+
+    def test_monthly_excel_deviation_has_no_float_residue(self):
+        # L-5: 100% vs 100% used to be stored as 2e-28 and shown as "+0.00%".
+        workbook = load_workbook(BytesIO(ExportManager(
+            self.next_week, self.owner,
+        ).export_jadwal_professional('xlsx', report_type='monthly', months=[2]).content))
+        rincian = workbook['Rincian Progress M2']
+        deviation = next(
+            rincian.cell(cell.row, 8).value
+            for row in rincian.iter_rows() for cell in row if cell.value == 'Deviasi'
+        )
+        self.assertTrue(deviation == 0 or abs(deviation) >= 1e-12, deviation)

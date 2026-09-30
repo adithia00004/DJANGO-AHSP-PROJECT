@@ -265,7 +265,7 @@ class MonthlyPdfRenderTests(_MonthlyFixtureMixin, TestCase):
         # Bug lama: Ringkasan 94.31% vs TOTAL tabel 0.11% di halaman yang sama.
         text = "\n".join(self._monthly_pdf_pages(3))
         lines = text.splitlines()
-        akumulasi = lines[lines.index("Akumulasi Actual") + 2]
+        akumulasi = lines[lines.index("Akumulasi Realisasi") + 2]
         total_row = lines[lines.index("TOTAL") + 1:lines.index("TOTAL") + 6]
         # TOTAL: [total harga, bobot, kum. lalu, progress ini, kum. ini]
         self.assertEqual(akumulasi, "100.00%")

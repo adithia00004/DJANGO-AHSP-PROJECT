@@ -128,7 +128,6 @@ class JadwalPekerjaanExportAdapter:
 
         base_rows, _ = self._build_base_rows()
         _, _, bobot_map = self._get_bobot_maps(base_rows)
-        planned_map, _ = self._build_progress_map()
         actual_map = self._build_actual_progress_map()
         planned_total, actual_total = self._build_weighted_totals(
             bobot_map, set(range(1, boundary + 1))
@@ -306,7 +305,7 @@ class JadwalPekerjaanExportAdapter:
                 {
                     "id": f"week-{week_number:03d}",
                     "field": f"week_{week_number:03d}",
-                    "label": f"Week {week_number}",
+                    "label": f"Minggu {week_number}",
                     "range": self._format_range_label(start_date, end_date),
                     "week_number": week_number,
                     "start_date": start_date,
@@ -341,7 +340,7 @@ class JadwalPekerjaanExportAdapter:
                 {
                     "id": f"week-{week_number:03d}",
                     "field": f"week_{week_number:03d}",
-                    "label": f"Week {week_number}",
+                    "label": f"Minggu {week_number}",
                     "range": self._format_range_label(week_start, week_end),
                     "week_number": week_number,
                     "start_date": week_start,
@@ -354,7 +353,7 @@ class JadwalPekerjaanExportAdapter:
                 {
                     "id": "week-001",
                     "field": "week_001",
-                    "label": "Week 1",
+                    "label": "Minggu 1",
                     "range": self._format_range_label(project_start, project_start),
                     "week_number": 1,
                     "start_date": project_start,
@@ -379,8 +378,8 @@ class JadwalPekerjaanExportAdapter:
                 {
                     "id": f"month-{block_index:02d}",
                     "field": f"month_{block_index:02d}",
-                    "label": f"Month {block_index}",
-                    "range": f"Week {start_week}-{end_week}",
+                    "label": f"Bulan {block_index}",
+                    "range": f"Minggu {start_week}-{end_week}",
                     "child_weeks": child_weeks,
                 }
             )
@@ -390,8 +389,8 @@ class JadwalPekerjaanExportAdapter:
                 {
                     "id": "month-01",
                     "field": "month_01",
-                    "label": "Month 1",
-                    "range": "Week 1-4",
+                    "label": "Bulan 1",
+                    "range": "Minggu 1-4",
                     "child_weeks": [col.get("week_number") for col in weekly_columns[:4] if col.get("week_number")] or [1],
                 }
             )
@@ -882,7 +881,7 @@ class JadwalPekerjaanExportAdapter:
             "period": {
                 "start_date": period_start,
                 "end_date": period_end,
-                "weeks": f"W{current_start_week}-W{current_end_week}"
+                "weeks": f"W{current_start_week}-W{min(current_end_week, len(weekly_columns) or current_end_week)}"
             },
             "current_data": current_data,
             "previous_data": previous_data,

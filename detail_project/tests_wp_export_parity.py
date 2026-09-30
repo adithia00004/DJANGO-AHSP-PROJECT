@@ -402,7 +402,7 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         # Values are in a 2:1 ratio, so weights are 2/3 and 1/3.
         # Planned per week=(2/3*15% + 1/3*5%)=7/60; actual=(2/3*10% + 1/3*20%)=2/15.
         self.assertAlmostEqual(self._value_for_label(rincian, "Rencana Bulan Ini").value, 7 / 30, places=9)
-        self.assertAlmostEqual(self._value_for_label(rincian, "Actual Bulan Ini").value, 4 / 15, places=9)
+        self.assertAlmostEqual(self._value_for_label(rincian, "Realisasi Bulan Ini").value, 4 / 15, places=9)
 
         # Cumulative remains a pure SSOT mirror through the padded W7-W8 columns.
         cumulative = self._value_for_label(rincian, "Kumulatif s.d Ini")
@@ -459,7 +459,8 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.assertTrue(any(abs(v - (1 / 60)) < 1e-9 for v in col_i), col_i)  # P-002: 1/3×5%
         self.assertTrue(any(abs(v - (7 / 60)) < 1e-9 for v in col_i), col_i)  # TOTAL (weighted)
 
-        # I-1: proyek tanpa masa tambahan mempertahankan bentuk planned-only.
+        # Ringkasan rencana tetap nilai planned (K-12 menambah blok realisasi
+        # terpisah, tidak mengubah angka rencana).
         self.assertAlmostEqual(
             self._value_for_label(rincian, "Progress Kumulatif s.d. Minggu Lalu", 5).value,
             0,
@@ -485,10 +486,26 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.assertAlmostEqual(rincian.cell(total_row, 9).value, 7 / 60, places=9)
         self.assertAlmostEqual(rincian.cell(total_row, 10).value, 7 / 60, places=9)
 
-        self.assertFalse(any(
+        # K-12 (owner 2026-09-30): realisasi tampil untuk SEMUA proyek, juga
+        # proyek tanpa masa tambahan. Actual/minggu = 2/3*10% + 1/3*20% = 2/15.
+        self.assertTrue(any(
             cell.value == "REALISASI MINGGU KE-1"
             for row in rincian.iter_rows() for cell in row
         ))
+        self.assertAlmostEqual(
+            self._value_for_label(rincian, "Realisasi Kumulatif s.d. Minggu Lalu", 5).value, 0, places=9,
+        )
+        self.assertAlmostEqual(
+            self._value_for_label(rincian, "Realisasi Minggu Ini", 5).value, 2 / 15, places=9,
+        )
+        self.assertAlmostEqual(
+            self._value_for_label(rincian, "Realisasi Kumulatif s.d. Minggu Ini", 5).value, 2 / 15, places=9,
+        )
+        actual_total_row = next(
+            r for r in range(1, rincian.max_row + 1)
+            if rincian.cell(row=r, column=1).value == "TOTAL REALISASI"
+        )
+        self.assertAlmostEqual(rincian.cell(actual_total_row, 9).value, 2 / 15, places=9)
 
     @staticmethod
     def _assert_no_formulas(ws):

@@ -1,7 +1,19 @@
 # R5.12 - Review Export System (Multi-format)
 
 **Status:** `[ ]` BELUM DIREVIEW
-**Terakhir diperbarui:** -
+**Terakhir diperbarui:** 2026-09-30 (catatan jalur, lihat di bawah)
+
+> **Catatan 2026-09-30 (doc 42 L-6).** Tabel "Informasi Umum" di bawah menyebut file
+> lama. Untuk **Jadwal Pekerjaan**, jalur aktif kini:
+> - UI: modal export di `kelola_tahapan_grid_modern.html` → `jadwal_kegiatan_app.handleExport`.
+>   PDF/Word langsung ke server; Excel lewat `export/export-coordinator.js` →
+>   `export/reports/*-report.js` lalu tetap ke server (ExcelJS browser tidak dipakai UI).
+> - Server: `POST /detail_project/api/project/<id>/export/jadwal-pekerjaan/professional/` →
+>   `ExportManager.export_jadwal_professional` → `JadwalPekerjaanExportAdapter` →
+>   `PDFExporter` / `ExcelExporter` / `WordExporter` (harian, template DOCX).
+> - Peta lengkap, hasil uji nyata, dan keputusan: `42_Export_Jadwal_Kondisi_Saat_Ini_20260930.md`;
+>   pekerjaan Penambahan Waktu Kerja: `43_Export_Penambahan_Waktu_Kerja_Plan_Tracker_20260930.md`.
+> - Keputusan tampilan: `docs/DESIGN_REGISTRY_EXPORT.md`.
 
 ---
 

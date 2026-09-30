@@ -1495,7 +1495,7 @@ class PDFExporter(ConfigExporterBase):
                         spaceAfter=5*mm,
                     )
                     story.append(Paragraph(
-                        f"<b>RINGKASAN PROGRESS KURVA S (Grafik: Minggu 1 - Minggu {cumulative_end_week})</b>", 
+                        f"<b>RINGKASAN PROGRESS KURVA S (Grafik: Minggu 1 - Minggu {min(cumulative_end_week, total_project_weeks or cumulative_end_week)})</b>", 
                         section_title
                     ))
                     story.append(Spacer(1, 5*mm))
@@ -1620,7 +1620,10 @@ class PDFExporter(ConfigExporterBase):
                     summary_inserted = True
                     story.append(PageBreak())
                 
-                # 1. Cover Page for this week
+                # 1. Cover Page for this week. Close the previous week's
+                # "Rincian Progress" segment first (L-4), as the monthly loop does,
+                # so this cover's footer does not carry the previous title.
+                story.append(SegmentMarker(""))
                 period_info = week_data.get('period', {})
                 period_info['week'] = week
                 cover_elements = self._build_cover_page('weekly', project_info, period_info)
@@ -1753,7 +1756,7 @@ class PDFExporter(ConfigExporterBase):
                         spaceAfter=5*mm,
                     )
                     story.append(Paragraph(
-                        f"<b>RINGKASAN PROGRESS KURVA S (Grafik: Minggu 1 - Minggu {cumulative_end_week})</b>", 
+                        f"<b>RINGKASAN PROGRESS KURVA S (Grafik: Minggu 1 - Minggu {min(cumulative_end_week, total_project_weeks or cumulative_end_week)})</b>", 
                         section_title
                     ))
                     story.append(Spacer(1, 5*mm))
@@ -1896,7 +1899,7 @@ class PDFExporter(ConfigExporterBase):
                         fontName='Helvetica-Bold',
                         spaceAfter=5*mm,
                     )
-                    story.append(Paragraph("<b>BAGIAN 1: GRID VIEW - RENCANA (PLANNED)</b>", section_title))
+                    story.append(Paragraph("<b>BAGIAN 1: GRID VIEW - RENCANA</b>", section_title))
                     story.append(Spacer(1, 5*mm))
                 
                 # Page title (simple, no project identity - that's on cover page)
@@ -1907,7 +1910,7 @@ class PDFExporter(ConfigExporterBase):
                     textColor=colors.HexColor(SHF.FONT_COLOR),
                     spaceAfter=3*mm,
                 )
-                story.append(Paragraph(page.get('title', 'Input Progress Planned'), page_title_style))
+                story.append(Paragraph(page.get('title', 'Input Progres Rencana'), page_title_style))
                 story.append(Spacer(1, 3*mm))
                 
                 # Build table
@@ -1926,7 +1929,7 @@ class PDFExporter(ConfigExporterBase):
                         fontName='Helvetica-Bold',
                         spaceAfter=5*mm,
                     )
-                    story.append(Paragraph("<b>BAGIAN 2: GRID VIEW - REALISASI (ACTUAL)</b>", section_title))
+                    story.append(Paragraph("<b>BAGIAN 2: GRID VIEW - REALISASI</b>", section_title))
                     story.append(Spacer(1, 5*mm))
                 
                 # Page title (simple, no project identity)
@@ -1937,7 +1940,7 @@ class PDFExporter(ConfigExporterBase):
                     textColor=colors.HexColor(SHF.FONT_COLOR),
                     spaceAfter=3*mm,
                 )
-                story.append(Paragraph(page.get('title', 'Input Progress Actual'), page_title_style))
+                story.append(Paragraph(page.get('title', 'Input Progres Realisasi'), page_title_style))
                 story.append(Spacer(1, 3*mm))
                 
                 table = self._build_table(page)
@@ -2604,7 +2607,7 @@ class PDFExporter(ConfigExporterBase):
             if is_week:
                 # Parse week header like "Week 1 (01/01 - 07/01)" or "W1 (01/01-07/01)"
                 # Match both "Week X" and "WX" formats
-                match = re.match(r'(Week\s*\d+|W\d+)\s*\(?([^)]*)\)?', str(header_text), re.IGNORECASE)
+                match = re.match(r'(Week\s*\d+|Minggu\s*\d+|W\d+)\s*\(?([^)]*)\)?', str(header_text), re.IGNORECASE)
                 if match:
                     week_full = match.group(1)  # "Week 1" or "W1"
                     date_range = match.group(2).strip() if match.group(2) else ''
@@ -3378,9 +3381,9 @@ class PDFExporter(ConfigExporterBase):
         
         ringkasan_data = [
             ['Rencana Bulan Ini', ':', f"{summary.get('target_period', 0):.2f}%"],
-            ['Actual Bulan Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
+            ['Realisasi Bulan Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
             ['Akumulasi Rencana', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
-            ['Akumulasi Actual', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
+            ['Akumulasi Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
             ['Deviasi', ':', deviation_para],  # Colored deviation
         ]
         
@@ -3813,9 +3816,9 @@ class PDFExporter(ConfigExporterBase):
         # Weekly labels: "Minggu Ini" instead of "Bulan Ini"
         ringkasan_data = [
             ['Rencana Minggu Ini', ':', f"{summary.get('target_period', 0):.2f}%"],
-            ['Actual Minggu Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
+            ['Realisasi Minggu Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
             ['Akumulasi Rencana', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
-            ['Akumulasi Actual', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
+            ['Akumulasi Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
             ['Deviasi', ':', deviation_para],  # Colored deviation
         ]
         
@@ -4134,9 +4137,15 @@ class PDFExporter(ConfigExporterBase):
         return elements
 
     def _append_contract_end_summary(self, story: List, summary: Dict[str, Any], project_info: Dict[str, Any]):
+        # At the front of the document (only additional periods selected) the
+        # first page is already portrait; breaking here would leave page 1 blank.
+        starts_document = not any(
+            not isinstance(item, (SegmentMarker, NextPageTemplate, PageBreak)) for item in story
+        )
         story.append(SegmentMarker(''))
-        story.append(NextPageTemplate('portrait'))
-        story.append(PageBreak())
+        if not starts_document:
+            story.append(NextPageTemplate('portrait'))
+            story.append(PageBreak())
         story.extend(self._build_contract_end_summary_page(summary))
         story.append(PageBreak())
         story.extend(self._build_progress_signature_section(project_info))
@@ -4619,8 +4628,8 @@ class PDFExporter(ConfigExporterBase):
         legend.fontName = 'Helvetica'
         legend.alignment = 'right'
         legend.colorNamePairs = [
-            (colors.HexColor(UTS.PLANNED_COLOR), 'Planned'),
-            (colors.HexColor(UTS.ACTUAL_COLOR), 'Actual'),
+            (colors.HexColor(UTS.PLANNED_COLOR), 'Rencana'),
+            (colors.HexColor(UTS.ACTUAL_COLOR), 'Realisasi'),
         ]
         drawing.add(legend)
         
@@ -4652,8 +4661,8 @@ class PDFExporter(ConfigExporterBase):
         
         # Build table data
         header_row = [''] + [f"W{d.get('week', i+1)}" for i, d in enumerate(sampled_data)]
-        planned_row = ['Planned'] + [f"{d.get('planned', 0):.1f}%" for d in sampled_data]
-        actual_row = ['Actual'] + [f"{d.get('actual', 0):.1f}%" for d in sampled_data]
+        planned_row = ['Rencana'] + [f"{d.get('planned', 0):.1f}%" for d in sampled_data]
+        actual_row = ['Realisasi'] + [f"{d.get('actual', 0):.1f}%" for d in sampled_data]
         
         table_data = [header_row, planned_row, actual_row]
         
@@ -5033,9 +5042,9 @@ class PDFExporter(ConfigExporterBase):
             if page_idx == num_pages - 1:
                 legend_drawing = Drawing(360, 20)
                 legend_drawing.add(Rect(10, 8, 40, 8, fillColor=planned_color, strokeColor=None))
-                legend_drawing.add(String(55, 9, 'Planned (Rencana)', fontSize=8, fontName='Helvetica'))
+                legend_drawing.add(String(55, 9, 'Rencana', fontSize=8, fontName='Helvetica'))
                 legend_drawing.add(Rect(180, 8, 40, 8, fillColor=actual_color, strokeColor=None))
-                legend_drawing.add(String(225, 9, 'Actual (Realisasi)', fontSize=8, fontName='Helvetica'))
+                legend_drawing.add(String(225, 9, 'Realisasi', fontSize=8, fontName='Helvetica'))
                 
                 all_elements.append(Spacer(1, 5*mm))
                 all_elements.append(legend_drawing)
@@ -5167,9 +5176,9 @@ class PDFExporter(ConfigExporterBase):
         
         legend_y = table_bottom - 20
         drawing.add(Rect(width/2 - 100, legend_y, 10, 8, fillColor=colors.HexColor(UTS.PLANNED_COLOR)))
-        drawing.add(String(width/2 - 87, legend_y + 1, 'Planned', fontSize=7, fontName='Helvetica'))
+        drawing.add(String(width/2 - 87, legend_y + 1, 'Rencana', fontSize=7, fontName='Helvetica'))
         drawing.add(Rect(width/2, legend_y, 10, 8, fillColor=colors.HexColor(UTS.ACTUAL_COLOR)))
-        drawing.add(String(width/2 + 13, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica'))
+        drawing.add(String(width/2 + 13, legend_y + 1, 'Realisasi', fontSize=7, fontName='Helvetica'))
         
         return drawing
 
@@ -5684,6 +5693,10 @@ class PDFExporter(ConfigExporterBase):
         week_start = (month - 1) * 4  # 0-indexed
         week_end = week_start + 4
         weeks_this_month = [week_start + 1, week_start + 2, week_start + 3, week_start + 4]
+        # L-3: the layout keeps 4 fixed week columns, but labels stop at the
+        # project's real last week (a 7-week project's month 2 is W5-W7).
+        last_real_week = len(weekly_columns) if weekly_columns else weeks_this_month[-1]
+        last_label_week = min(weeks_this_month[-1], last_real_week)
         
         total_rows = len(hierarchy_rows)
         if total_rows == 0:
@@ -5796,7 +5809,7 @@ class PDFExporter(ConfigExporterBase):
             # === Title (first page only) ===
             if is_first_page:
                 drawing.add(String(total_table_width / 2, page_total_height - 15,
-                                  f'KURVA S - BULAN {month} (Minggu {weeks_this_month[0]} - {weeks_this_month[3]})',
+                                  f'KURVA S - BULAN {month} (Minggu {weeks_this_month[0]} - {last_label_week})',
                                   fontSize=12, fontName='Helvetica-Bold',
                                   textAnchor='middle', fillColor=colors.HexColor(UTS.PRIMARY_LIGHT)))
             
@@ -5833,6 +5846,8 @@ class PDFExporter(ConfigExporterBase):
             
             # Week headers
             for i, wk in enumerate(weeks_this_month):
+                if wk > last_real_week:
+                    continue  # L-3: no header for a week the project does not have
                 x = static_total + (i * week_width) + week_width/2
                 drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
                 column = weekly_columns[wk - 1] if weekly_columns and wk <= len(weekly_columns) else {}
@@ -6276,9 +6291,9 @@ class PDFExporter(ConfigExporterBase):
         # Legend (at bottom)
         legend_y = table_bottom - 18
         drawing.add(Rect(width/2 - 100, legend_y, 10, 8, fillColor=colors.HexColor(UTS.PLANNED_COLOR)))
-        drawing.add(String(width/2 - 87, legend_y + 1, 'Planned', fontSize=7, fontName='Helvetica'))
+        drawing.add(String(width/2 - 87, legend_y + 1, 'Rencana', fontSize=7, fontName='Helvetica'))
         drawing.add(Rect(width/2, legend_y, 10, 8, fillColor=colors.HexColor(UTS.ACTUAL_COLOR)))
-        drawing.add(String(width/2 + 13, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica'))
+        drawing.add(String(width/2 + 13, legend_y + 1, 'Realisasi', fontSize=7, fontName='Helvetica'))
         
         return drawing
     
@@ -6676,10 +6691,10 @@ class PDFExporter(ConfigExporterBase):
                 legend_y = table_bottom - 18
                 # Planned legend
                 drawing.add(Circle(width/2 - 75, legend_y + 4, 4, fillColor=planned_color, strokeColor=colors.white, strokeWidth=0.5))
-                drawing.add(String(width/2 - 68, legend_y + 1, 'Planned', fontSize=7, fontName='Helvetica-Bold'))
+                drawing.add(String(width/2 - 68, legend_y + 1, 'Rencana', fontSize=7, fontName='Helvetica-Bold'))
                 # Actual legend
                 drawing.add(Circle(width/2 + 15, legend_y + 4, 4, fillColor=actual_color, strokeColor=colors.white, strokeWidth=0.5))
-                drawing.add(String(width/2 + 22, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica-Bold'))
+                drawing.add(String(width/2 + 22, legend_y + 1, 'Realisasi', fontSize=7, fontName='Helvetica-Bold'))
 
                 for i in range(weeks_in_page):
                     week_num = week_start + i + 1

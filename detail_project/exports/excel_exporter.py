@@ -1617,7 +1617,12 @@ class ExcelExporter(ConfigExporterBase):
         lokasi = project_info.get('lokasi', '-')
         pemilik = project_info.get('nama_client', project_info.get('owner', '-'))
         sumber_dana = project_info.get('sumber_dana', '-')
-        anggaran = kurva_ranges.get('total_harga', 0)
+        # Cover must show the owner's budget, as the PDF cover does. The
+        # adapter already formats this value in id-ID at the export boundary.
+        anggaran = project_info.get('anggaran', 0)
+        if isinstance(anggaran, (int, float, Decimal)):
+            from .cell_format import format_cell_display
+            anggaran = format_cell_display(anggaran, '#,##0')
         
         from datetime import date
         
@@ -1625,7 +1630,7 @@ class ExcelExporter(ConfigExporterBase):
             ('Lokasi', lokasi),
             ('Pemilik', pemilik),
             ('Sumber Dana', sumber_dana),
-            ('Anggaran', f"Rp {anggaran:,.0f}" if anggaran else 'Rp 0'),
+            ('Anggaran', f"Rp {anggaran}" if anggaran else 'Rp 0'),
             ('Tanggal Export', date.today().strftime('%d/%m/%Y')),
             ('Jumlah Pekerjaan', f"{kurva_ranges.get('pekerjaan_count', 0)} item"),
         ]
@@ -2629,7 +2634,7 @@ class ExcelExporter(ConfigExporterBase):
         # Ringkasan data (right side)
         ringkasan_data = [
             ('Rencana Bulan Ini', f"{executive_summary.get('target_period', 0):.2f}%"),
-            ('Actual Bulan Ini', f"{executive_summary.get('actual_period', 0):.2f}%"),
+            ('Realisasi Bulan Ini', f"{executive_summary.get('actual_period', 0):.2f}%"),
             ('Kumulatif Bulan Lalu', f"{executive_summary.get('cumulative_prev', 0):.2f}%"),
             ('Kumulatif s.d Ini', f"{executive_summary.get('cumulative_current', 0):.2f}%"),
             ('Deviasi', f"{executive_summary.get('deviation_cumulative', 0):+.2f}%"),
@@ -3397,7 +3402,7 @@ class ExcelExporter(ConfigExporterBase):
         ws[f'B{current_row}'] = ':'
         ws[f'C{current_row}'] = f"='{ssot_name}'!{identitas['lokasi']}"
         
-        ws[f'F{current_row}'] = 'Actual Bulan Ini'
+        ws[f'F{current_row}'] = 'Realisasi Bulan Ini'
         ws[f'F{current_row}'].font = Font(bold=True)
         ws[f'G{current_row}'] = ':'
         # Actual Bulan Ini = Σ project actual weekly for this month (Python value)
@@ -3456,6 +3461,9 @@ class ExcelExporter(ConfigExporterBase):
                 project_weekly.get('cumul_actual', {}).get(effective_month_end_week, Decimal('0'))
                 - project_weekly.get('cumul_planned', {}).get(effective_month_end_week, Decimal('0'))
             )
+        # L-5: Decimal division leaves residues like 2e-28 that print as
+        # "+0.00%" instead of "-"; round far below display precision.
+        dev_value = dev_value.quantize(Decimal('1e-12'))
         ws[f'H{current_row}'] = float(dev_value)
         ws[f'H{current_row}'].number_format = '+0.00%;-0.00%;"-"'
         current_row += 2
@@ -3992,7 +4000,6 @@ class ExcelExporter(ConfigExporterBase):
                 project_info=project_info,
                 executive_summary=executive_summary,
                 is_extension_period=bool(data.get('boundary_week') and w > data['boundary_week']),
-                include_actual=bool(data.get('additional_end')),
             )
             logger.debug("[ExcelExporter] Created sheet: Rincian Progress W%s", w)
 
@@ -4013,8 +4020,7 @@ class ExcelExporter(ConfigExporterBase):
         return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     def _build_weekly_rincian_sheet(self, ws, week: int, ssot_ranges: Dict, project_info: Dict,
-                                      executive_summary: Dict = None, is_extension_period: bool = False,
-                                      include_actual: bool = False):
+                                      executive_summary: Dict = None, is_extension_period: bool = False):
         """
         Build Rincian Progress sheet for weekly report.
         
@@ -4299,19 +4305,8 @@ class ExcelExporter(ConfigExporterBase):
         
         current_row = total_row + 3
 
-        if not include_actual:
-            # I-1: output proyek tanpa masa tambahan tetap planned-only.
-            self._write_signature_block(ws, current_row, first_col=1, last_col=10)
-            for letter, width in (
-                ('A', 5), ('B', 40), ('C', 10), ('D', 8), ('E', 14),
-                ('F', 14), ('G', 10), ('H', 13), ('I', 13), ('J', 13),
-            ):
-                ws.column_dimensions[letter].width = width
-            logger.debug("[ExcelExporter] Rincian Progress W%s sheet created with planned values", week)
-            return
-
-        # K-12: realisasi mingguan memakai nilai kanonik backend dari Data
-        # Master. Kolom H-J rencana di atas tetap utuh.
+        # K-12 (owner 2026-09-30: semua proyek): realisasi mingguan memakai
+        # nilai kanonik backend dari Data Master. Kolom H-J rencana tetap utuh.
         project_actual = project_weekly.get('actual', {})
         project_cumul_actual = project_weekly.get('cumul_actual', {})
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=10)
