@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status keseluruhan | **TAHAP 1 REVIEW** — laporan blocker sudah diperbaiki; suite penuh kembali ke 3 kegagalan baseline. UAT manual dan keputusan D-11 masih menunggu. Lihat §4, §6, dan §9 |
+| Status keseluruhan | **TAHAP 1 REVIEW** — laporan blocker sudah diperbaiki; suite penuh 2026-09-30: **944 tes, 0 gagal** (3 kegagalan baseline lama sudah diperbaiki: kebocoran Silk ke setelan tes + tes sumber usang). D-11 diputuskan & diimplementasikan (2026-09-30). UAT otomatis 16/16 skenario lulus; tersisa cek visual owner (U-1, U-2, U-5 Kurva S, U-6 pesan, U-16). Lihat §4, §6, dan §9 |
 | Tanggal dibuat | 2026-09-29 |
 | Rencana implementasi | [`40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md`](40_Tambahan_Waktu_Kerja_Implementation_Plan_20260929.md) |
 | Rancangan | [`docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md`](../../docs/RENCANA_JADWAL_MELEWATI_AKHIR_KONTRAK.md) v9 |
@@ -140,22 +140,22 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 
 | # | Skenario | Hasil yang diharapkan | Hasil | Tanggal |
 |---|---|---|---|---|
-| U-1 | Buka Jadwal mode Rencana | Tombol "Perpanjang Waktu Kerja" tidak tampil | | |
-| U-2 | Mode Realisasi, ada editan belum disimpan, tekan tombol | Dialog tidak terbuka; pesan "Simpan atau batalkan…" | | |
-| U-3 | Akhir waktu kerja Rabu, isi tambahan Jumat minggu yang sama | Terdeteksi tipe 1; tidak ada kolom baru; header minggu batas "Waktu kerja berakhir Rab" | | |
-| U-4 | Akhir waktu kerja 30 Sep, isi tambahan 31 Des | Terdeteksi tipe 2; kolom M27–M39 "Penambahan"; grid tetap di mode Realisasi | | |
-| U-5 | Isi realisasi (persen, volume, biaya) di minggu tambahan, simpan | Tersimpan; Kurva S realisasi berlanjut melewati garis "Akhir Waktu Kerja" | | |
-| U-6 | Pindah ke mode Rencana | Minggu tambahan terkunci & berlabel; minggu batas tidak terkunci; klik sel terkunci memunculkan pesan | | |
-| U-7 | Pendekkan tambahan melewati minggu yang berisi realisasi | Ditolak dengan pesan minggu terkait | | |
-| U-8 | Hapus tambahan tanpa realisasi di masa tambahan | Masa waktu kerja kembali ke akhir waktu kerja | | |
-| U-9 | Edit Project: akhir waktu kerja 30 Sep → 31 Okt, tambahan 31 Des | Tambahan tetap 31 Des | | |
-| U-10 | Edit Project: akhir waktu kerja → 15 Jan (melewati tambahan) | Tambahan dikosongkan; masa s.d. 15 Jan | | |
-| U-11 | Edit Project: akhir waktu kerja dimajukan, ada rencana di minggu yang menjadi minggu tambahan | Dialog; "Pindahkan rencana" hanya memindah rencana; realisasi & biaya tetap | | |
-| U-12 | Edit Massal dengan kasus U-11 | Proyek dilewati & dilaporkan | | |
-| U-13 | Backup → restore proyek bertambahan | Tambahan, semua minggu, biaya aktual & catatan kembali utuh | | |
-| U-14 | Duplikasi proyek bertambahan dengan "salin jadwal" | Progres & tambahan ikut tersalin | | |
-| U-15 | Dua tab: perpanjang di tab A, lalu di tab B | Tab B ditolak; diminta memuat ulang | | |
-| U-16 | Proyek tanpa tambahan | Tidak ada perbedaan dari sebelum fitur (selain tombol di mode Realisasi) | | |
+| U-1 | Buka Jadwal mode Rencana | Tombol "Perpanjang Waktu Kerja" tidak tampil | Otomatis sebagian: kode `_syncWorkExtensionButtonVisibility` + tes sumber `jadwal_batch_b`. **Cek visual owner** | 2026-09-30 |
+| U-2 | Mode Realisasi, ada editan belum disimpan, tekan tombol | Dialog tidak terbuka; pesan "Simpan atau batalkan…" | Otomatis sebagian: pesan penjaga ada (`jadwal_batch_b`). **Cek visual owner** | 2026-09-30 |
+| U-3 | Akhir waktu kerja Rabu, isi tambahan Jumat minggu yang sama | Terdeteksi tipe 1; tidak ada kolom baru; header minggu batas "Waktu kerja berakhir Rab" | PASS otomatis (API preview: `tipe_1`, minggu 7→7) | 2026-09-30 |
+| U-4 | Akhir waktu kerja 30 Sep, isi tambahan 31 Des | Terdeteksi tipe 2; kolom M27–M39 "Penambahan"; grid tetap di mode Realisasi | PASS otomatis (API: `tipe_2`, minggu 7→21; commit menyimpan 31/12; mulai/selesai/durasi tetap) | 2026-09-30 |
+| U-5 | Isi realisasi (persen, volume, biaya) di minggu tambahan, simpan | Tersimpan; Kurva S realisasi berlanjut melewati garis "Akhir Waktu Kerja" | PASS otomatis (realisasi 5% tersimpan di M10 lewat API). Kurva S: **cek visual owner** | 2026-09-30 |
+| U-6 | Pindah ke mode Rencana | Minggu tambahan terkunci & berlabel; minggu batas tidak terkunci; klik sel terkunci memunculkan pesan | PASS otomatis sisi server (`planned_in_extension`) + tes grid `tanstack-grid-manager` (kunci hanya mode Rencana). Pesan klik: **cek visual owner** | 2026-09-30 |
+| U-7 | Pendekkan tambahan melewati minggu yang berisi realisasi | Ditolak dengan pesan minggu terkait | PASS otomatis (ditolak `actual_out_of_window`, minggu 7) | 2026-09-30 |
+| U-8 | Hapus tambahan tanpa realisasi di masa tambahan | Masa waktu kerja kembali ke akhir waktu kerja | PASS otomatis (tambahan dihapus; masa kerja = akhir waktu kerja) | 2026-09-30 |
+| U-9 | Edit Project: akhir waktu kerja 30 Sep → 31 Okt, tambahan 31 Des | Tambahan tetap 31 Des | PASS otomatis (form Edit Project: selesai 30/09, tambahan 31/12 tetap) | 2026-09-30 |
+| U-10 | Edit Project: akhir waktu kerja → 15 Jan (melewati tambahan) | Tambahan dikosongkan; masa s.d. 15 Jan | PASS otomatis (selesai 15/01/2027; tambahan dikosongkan) | 2026-09-30 |
+| U-11 | Edit Project: akhir waktu kerja dimajukan, ada rencana di minggu yang menjadi minggu tambahan | Dialog; "Pindahkan rencana" hanya memindah rencana; realisasi & biaya tetap | PASS otomatis (dialog tanpa simpan; "pindahkan rencana" → rencana ke minggu batas, realisasi & biaya tetap) | 2026-09-30 |
+| U-12 | Edit Massal dengan kasus U-11 | Proyek dilewati & dilaporkan | PASS otomatis (Edit Massal: proyek dilewati, `needs_decision`) | 2026-09-30 |
+| U-13 | Backup → restore proyek bertambahan | Tambahan, semua minggu, biaya aktual & catatan kembali utuh | PASS otomatis (backup→restore: tambahan & semua baris/biaya/catatan identik) | 2026-09-30 |
+| U-14 | Duplikasi proyek bertambahan dengan "salin jadwal" | Progres & tambahan ikut tersalin | PASS otomatis (duplikasi tanggal sama: tambahan & progres tersalin; D-11: tanggal kontrak baru → tanpa tambahan) | 2026-09-30 |
+| U-15 | Dua tab: perpanjang di tab A, lalu di tab B | Tab B ditolak; diminta memuat ulang | PASS otomatis (revisi usang → 409) | 2026-09-30 |
+| U-16 | Proyek tanpa tambahan | Tidak ada perbedaan dari sebelum fitur (selain tombol di mode Realisasi) | PASS otomatis via suite penuh (I-1). **Cek visual owner** sekilas | 2026-09-30 |
 
 ---
 
@@ -173,7 +173,7 @@ Setiap langkah diisi dengan format berikut saat dikerjakan.
 | 2026-09-29 | D-8 | Konsolidasi pinggiran (Tahap 0) sebelum fitur | Owner | Doc 40 §3 |
 | 2026-09-29 | D-9 | G0-1: WIP owner dibiarkan; branch kerja dari HEAD `e0a4cb71` | Owner | Gate 0 |
 | 2026-09-29 | D-10 | G0-5: duplikasi dengan tanggal mulai baru mempertahankan nomor minggu; luapan tidak disalin & dilaporkan | Owner | Langkah 0.3 |
-| 2026-09-29 | D-11 | Implementasi saat ini mempertahankan jarak hari tambahan saat duplikasi dengan tanggal kontrak baru; **menunggu konfirmasi owner** apakah tambahan seharusnya dikosongkan untuk proyek baru | Implementasi 1.2 | W-1b; jangan ubah perilaku sampai owner memilih |
+| 2026-09-30 | D-11 | **Diputuskan owner: tambahan TIDAK disalin** saat duplikasi dengan tanggal kontrak baru; duplikasi tanggal sama tetap menyalin; minggu progres yang tidak muat tidak disalin & dilaporkan (G0-5). Diimplementasikan Claude (`services.py` DeepCopyService) + tes `tests_progress_transfer_roundtrip` | Owner / Claude | W-1b |
 | 2026-09-29 | D-12 | Perubahan hari batas yang mengurangi jumlah minggu dan akan menyembunyikan baris progres di luar rentang baru ditolak; tidak ada baris yang dihapus | Implementasi 1.6 | Invariant I-3; 409 pada kedua API; pengguna perlu menyesuaikan timeline terlebih dahulu |
 | 2026-09-30 | D-13 | Pemendekan tambahan ditolak bila minggu yang akan dikeluarkan masih memiliki catatan, termasuk baris dengan nilai progres nol | Implementasi 1.7 | Catatan tidak lagi hilang saat resolusi timeline; catatan harus dipindahkan atau dihapus terlebih dahulu |
 | 2026-09-30 | D-14 | Repair timeline tanpa perubahan tanggal tetap menganalisis baris mingguan basi; target tambahan melarang perubahan tanggal mulai; resolusi yang akan menaruh planned pada minggu tambahan tidak ditawarkan | Review Codex | Memperbaiki temuan blocker/major/minor; tanpa mengubah tanggal kontrak |

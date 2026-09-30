@@ -158,15 +158,15 @@ Aturan penempatan:
 
 | # | Skenario | Diharapkan | Hasil |
 |---|---|---|---|
-| U-1 | Harian minggu 7 proyek 217 | Berhasil; halaman 21/09 bertanda PWK; Rangkuman di depan | |
-| U-2 | Harian minggu 6 proyek 217 | 14–19/09 normal, Rangkuman, lalu 20/09 bertanda PWK | |
-| U-3 | Mingguan W6+W7 PDF | [W6] [Rangkuman] [W7 bertanda PWK] | |
-| U-4 | Bulanan M1+M2 PDF | [M1] [M2] [Rangkuman]; kolom W7 berlabel "Penambahan", garis di tepi W6 | |
-| U-5 | Rekap PDF & Excel | Garis batas di W6, label "Penambahan" di W7, tanpa Rangkuman di Excel | |
-| U-6 | Mingguan Excel W7 | Realisasi 9,45% tampil | |
-| U-7 | Proyek tanpa tambahan | Tidak ada perbedaan dari sebelum fase ini | |
-| U-8 | Proyek tipe 1 | Mingguan/bulanan hanya menambah Rangkuman; harian menandai hari tambahan | |
-| U-9 | Semua file | Tidak ada kata "terlambat/keterlambatan" | |
+| U-1 | Harian minggu 7 proyek 217 | Berhasil; halaman 21/09 bertanda PWK; Rangkuman di depan | PASS otomatis (DOCX minggu 7: Rangkuman di depan, 21/09 bertanda PWK) |
+| U-2 | Harian minggu 6 proyek 217 | 14–19/09 normal, Rangkuman, lalu 20/09 bertanda PWK | PASS otomatis (14–19/09 normal, Rangkuman, 20/09 bertanda PWK) |
+| U-3 | Mingguan W6+W7 PDF | [W6] [Rangkuman] [W7 bertanda PWK] | PASS otomatis (W6 → Rangkuman+pengesahan satu halaman → W7 bertanda PWK) |
+| U-4 | Bulanan M1+M2 PDF | [M1] [M2] [Rangkuman]; kolom W7 berlabel "Penambahan", garis di tepi W6 | PASS otomatis (Rangkuman setelah Bulan 2; W7 "Penambahan"; "Minggu 5 - 7") |
+| U-5 | Rekap PDF & Excel | Garis batas di W6, label "Penambahan" di W7, tanpa Rangkuman di Excel | PASS otomatis (label "Penambahan" W7; Excel tanpa Rangkuman — tes `ExtensionExcelMarkerTests`) |
+| U-6 | Mingguan Excel W7 | Realisasi 9,45% tampil | PASS otomatis (realisasi W7 9,45%) |
+| U-7 | Proyek tanpa tambahan | Tidak ada perbedaan dari sebelum fase ini | PASS via tes (`..._without_extension_have_no_summary`, tanpa penanda). Catatan: Excel mingguan kini menampilkan realisasi untuk SEMUA proyek (keputusan owner K-12) |
+| U-8 | Proyek tipe 1 | Mingguan/bulanan hanya menambah Rangkuman; harian menandai hari tambahan | PASS via tes fixture tipe 1 (`test_same_week_extension_*`) |
+| U-9 | Semua file | Tidak ada kata "terlambat/keterlambatan" | PASS otomatis (tanpa kata "terlambat" di PDF/DOCX) |
 
 ---
 
@@ -181,7 +181,7 @@ Aturan penempatan:
 | E4 | DONE | `a577f2a8` | 2026-09-30 | Garis W6/label W7 di grid, Kurva S, Gantt PDF; subjudul laporan tambahan; 32 tes lulus dan PDF tipe 2 diperiksa visual |
 | E5 | DONE | `98f9fddc` + `0851b429` | 2026-09-30 | Excel: penanda minggu pada sheet berkolom waktu, subjudul Rincian tambahan. Realisasi mingguan semula hanya proyek bertambahan; owner memutuskan **semua proyek** (§8) dan diperbaiki di commit E6 |
 | E6 | DONE | `0851b429` | 2026-09-30 | Dimulai Codex (L-1, L-2, token habis), diselesaikan Claude: L-1..L-6 + perbaikan review (halaman kosong, realisasi semua proyek, `planned_map` mati) |
-| E7 | REVIEW | — | 2026-09-30 | Suite penuh + probe 217 lulus (§7). Menunggu UAT owner §5 |
+| E7 | DONE | — | 2026-09-30 | Suite penuh + probe 217 lulus; UAT otomatis 9/9 (§5). Tersisa cek visual owner atas sampel `sample_export_217_v2` |
 
 Status: `TODO` / `WIP` / `REVIEW` (menunggu pemeriksaan Claude) / `DONE` / `BLOCKED`.
 Setiap langkah = satu commit kode + catatan bukti uji di bawah.
@@ -205,6 +205,7 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E7 (Claude) | Suite penuh working tree, `POSTGRES_TEST_DB=test_claude_final` | **931 tes; hanya 3 gagal baseline**; 40 skipped |
 | 2026-09-30 | E7 (Claude) | Probe export proyek 217 ulang | W7 saja: Rangkuman di halaman 1; header Excel "Minggu 7 / Penambahan"; realisasi W7 tampil; tanpa kata "terlambat". Frontend tidak diubah pada E6, Vitest tidak perlu diulang |
 | 2026-09-30 | UAT putaran 1 (Claude) | Suite penuh `POSTGRES_TEST_DB=test_claude_final2`; render SVG→PNG Kurva S Rekap proyek 217 (1 halaman) dan paksa 3 halaman | **937 tes; hanya 3 gagal baseline**. Kurva menyambung lintas halaman; W7 merah tua; garis batas di W6 |
+| 2026-09-30 | Lanjutan D-11 + butir 6-10 (Claude) | Suite penuh `POSTGRES_TEST_DB=test_claude_final4`; Vitest; UAT otomatis (salinan 217, rollback) | **944 tes, 0 gagal** (pertama kali tanpa kegagalan baseline); Vitest 39 file lulus; UAT 24/24 |
 
 ## 8. Log temuan & keputusan tambahan
 
@@ -221,3 +222,4 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E6 / L-4 | Footer cover laporan mingguan kedua membawa judul "Rincian Progress Minggu ke-(n-1)": segmen tidak ditutup. Kini ditutup sebelum cover, sama seperti loop bulanan | Claude |
 | 2026-09-30 | E6 / L-5 | Deviasi Excel bulanan dibulatkan 1e-12 (sisa Decimal 2e-28 tampil "+0,00%" alih-alih "-") | Claude |
 | 2026-09-30 | UAT owner (sampel 217) | 1.1 Bagian masa tambahan berwarna **merah tua `#4a0e0e`** (halaman periode tambahan, cover-nya, Rangkuman, header kolom minggu tambahan; PDF/Word/Excel) → R-42. 1.2 Ruang tanda tangan +1 baris untuk **semua** dokumen export: 15 → 20 mm, harian 2,2 → 2,7 cm → R-23. 2.1 Kurva S Rekap yang terbagi baris menjadi **satu kurva** lintas halaman → R-43. 2.2 Baris per halaman Kurva S mengikuti tinggi halaman (proyek 217 kini 1 halaman, dulu 2). 3.1 Pengesahan Rangkuman **menempel** di halaman Rangkuman → R-38 | Owner / Claude |
+| 2026-09-30 | Lanjutan (butir 6-10) | 6: PNG Gantt ikut mode bulanan (blok 4 minggu, label M1.., sama dengan web) — `aggregateGanttToMonths`. 7: Kurva S Rekap PDF selebar halaman bila semua minggu muat satu halaman (lebar tetap R-1 tetap berlaku saat minggu terbagi) → R-45. 8: Word laporan bulanan & mingguan diaktifkan (cover, progres, Rangkuman, pengesahan; tanpa grafik R-9; Rekap Word tetap mati) → R-44. 9: endpoint export Jadwal generik lama (CSV/PDF/Word/Excel) + modul JS mati `shared/export-coordinator.js`/`chart-exporter.js` dihapus; `ExportManager.export_jadwal_pekerjaan` tetap (dipakai rute async). 10: 3 kegagalan baseline diperbaiki — 2 tes jumlah query gagal karena Silk bocor ke setelan tes (EXPLAIN tiap query), 1 tes sumber usang terhadap keputusan WP-P2d (UF-010) | Owner / Claude |
