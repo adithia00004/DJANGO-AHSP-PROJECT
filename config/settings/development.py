@@ -82,10 +82,16 @@ if using_pgbouncer:
     print("WARNING: Django Silk DISABLED - incompatible with PgBouncer transaction pooling")
 
 if SILK_ENABLED:
-    INSTALLED_APPS += ["silk"]
+    # Build NEW lists: `+=`/`.insert()` would mutate the list objects shared
+    # with base.py. config/settings/__init__.py imports this module whenever the
+    # settings package is imported (also for config.settings.test), so an
+    # in-place change leaked Silk into the test settings and made it issue an
+    # EXPLAIN after every query in the suite (2026-09-30).
+    INSTALLED_APPS = [*INSTALLED_APPS, "silk"]
     
     # Insert Silk middleware after security middleware but before most others
     # Position matters for accurate profiling
+    MIDDLEWARE = list(MIDDLEWARE)
     MIDDLEWARE.insert(
         MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,
         "silk.middleware.SilkyMiddleware"

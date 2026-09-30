@@ -26,15 +26,13 @@ class SaveSyncUiRegressionGuardsTests(SimpleTestCase):
         self.assertIn("dp:sync-led-ack", self.template_ahsp_js_source)
 
     def test_template_does_not_auto_reload_pending_jobs_on_open(self):
+        # WP-P2d (UF-010): penjadwal auto-reload massal DIHAPUS; job basi
+        # dimuat ulang secara lazy saat dipilih (selaras template_ahsp_lain.test.js).
         source = self.template_ahsp_js_source
-        self.assertIn(
-            "function scheduleAutoReloadPendingJobs(reason = 'open')",
-            source,
-        )
-        self.assertNotIn("scheduleAutoReloadPendingJobs('page-open');", source)
+        self.assertNotIn("function scheduleAutoReloadPendingJobs", source)
+        self.assertNotIn("scheduleAutoReloadPendingJobs(", source)
         self.assertIn("jobNeedsReload(id)", source)
         self.assertIn("const needsFetch =", source)
-        self.assertIn("scheduleAutoReloadPendingJobs('source-change-sync');", source)
         self.assertIn("resolveReloadJob(id);", source)
 
     def test_template_active_header_uses_ascii_empty_placeholder(self):
@@ -401,24 +399,12 @@ class FormulaUiRegressionGuardsTests(SimpleTestCase):
         )
 
     def test_template_does_not_auto_reload_pending_jobs_on_open(self):
-        self.assertIn(
-            "function scheduleAutoReloadPendingJobs(reason = 'open')",
-            self.template_ahsp_js_source,
-        )
-        self.assertNotIn(
-            "scheduleAutoReloadPendingJobs('page-open');",
-            self.template_ahsp_js_source,
-        )
+        # WP-P2d (UF-010): lihat catatan pada kelas di atas.
+        self.assertNotIn("function scheduleAutoReloadPendingJobs", self.template_ahsp_js_source)
+        self.assertNotIn("scheduleAutoReloadPendingJobs(", self.template_ahsp_js_source)
         self.assertIn("jobNeedsReload(id)", self.template_ahsp_js_source)
         self.assertIn("const needsFetch =", self.template_ahsp_js_source)
-        self.assertIn(
-            "scheduleAutoReloadPendingJobs('source-change-sync');",
-            self.template_ahsp_js_source,
-        )
-        self.assertIn(
-            "resolveReloadJob(id);",
-            self.template_ahsp_js_source,
-        )
+        self.assertIn("resolveReloadJob(id);", self.template_ahsp_js_source)
 
     def test_template_active_header_uses_ascii_empty_placeholder(self):
         self.assertIn(
