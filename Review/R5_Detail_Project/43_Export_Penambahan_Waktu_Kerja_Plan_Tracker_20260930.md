@@ -174,7 +174,7 @@ Aturan penempatan:
 
 | Langkah | Status | Commit | Tanggal | Catatan |
 |---|---|---|---|---|
-| E0 | TODO | | | |
+| E0 | REVIEW | commit ini | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
 | E1 | TODO | | | |
 | E2 | TODO | | | |
 | E3 | TODO | | | |
@@ -190,7 +190,9 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 
 | Tanggal | Langkah | Perintah | Hasil |
 |---|---|---|---|
-| | | | |
+| 2026-09-30 | E0 baseline backend | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_20260930 ahsp_web python manage.py test detail_project dashboard --settings=config.settings.test_pg --noinput --verbosity=1` | 894 tes; 3 gagal baseline yang sama dengan doc 41 §3; 40 skipped. DB terisolasi dibuat dan dihancurkan. |
+| 2026-09-30 | E0 baseline frontend | `npm run test:frontend -- --reporter=dot --silent` | 39 file; 431 lulus, 25 skipped. |
+| 2026-09-30 | E0 fixture | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e0 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja --settings=config.settings.test_pg --noinput --verbosity=1` | 3 lulus: tambahan satu minggu yang sama, tambahan sampai W7, tanpa tambahan. |
 
 ## 8. Log temuan & keputusan tambahan
 
