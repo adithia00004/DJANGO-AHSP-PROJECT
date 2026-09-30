@@ -1208,15 +1208,20 @@ class ExportManager:
 
         logger.debug("Data prepared in %.2fs, %s attachments", time.time() - start_time, len(attachments or []))
         
-        # Legacy Word exports are still disabled; daily DOCX is template-based
-        # and does not render charts/images server-side.
-        if format_type == 'word' and report_type != 'daily':
+        # Word: harian (template DOCX) serta bulanan/mingguan (owner 2026-09-30,
+        # tanpa grafik R-9). Rekap Word tetap dimatikan.
+        if format_type == 'word' and report_type not in ('daily', 'monthly', 'weekly'):
             raise ValueError("Word export is currently disabled. Please use PDF or Excel format.")
         
         exporter = exporter_class(config)
         
         # For PDF, Excel, and daily Word, use special professional export methods
-        if format_type == 'word' and report_type == 'daily' and hasattr(exporter, 'export_daily_professional'):
+        if format_type == 'word' and report_type in ('monthly', 'weekly'):
+            export_start = time.time()
+            result = exporter.export_professional(data)
+            logger.info("%s Word exporter finished in %.2fs; total %.2fs", report_type, time.time() - export_start, time.time() - start_time)
+            return result
+        elif format_type == 'word' and report_type == 'daily' and hasattr(exporter, 'export_daily_professional'):
             export_start = time.time()
             result = exporter.export_daily_professional(data)
             logger.info("Daily Word exporter finished in %.2fs; total %.2fs", time.time() - export_start, time.time() - start_time)

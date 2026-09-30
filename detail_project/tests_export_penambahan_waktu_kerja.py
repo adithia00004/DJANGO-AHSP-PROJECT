@@ -672,3 +672,66 @@ class RekapKurvaSingleCurveTests(TestCase):
         # 2.2: rows per page follow the height budget, not a fixed 25-row cap.
         pages = self._pages(60, 50 * self.ROW_HEIGHT, [100])
         self.assertEqual(len(pages), 2)
+
+    def test_single_week_chunk_fills_the_page_width(self):
+        # Butir 7: semua minggu muat satu halaman -> tabel Kurva S selebar halaman
+        # (dulu kolom minggu tetap sempit dan separuh halaman kosong).
+        from detail_project.exports.table_styles import TableLayoutCalculator
+        config = ExportManager(None)._create_config_simple(
+            'Jadwal', page_orientation='landscape', page_size='A3',
+        )
+        pages = self._pages(4, 40 * self.ROW_HEIGHT, [20, 50, 80, 100])
+        self.assertAlmostEqual(pages[0].width, TableLayoutCalculator(config).table_width, delta=1)
+
+
+class WordProgressReportTests(ExtensionSummaryFixtureMixin, TestCase):
+    """Butir 8: laporan bulanan & mingguan Word, susunan sama dengan PDF."""
+
+    def _document(self, project, report_type, **selection):
+        response = ExportManager(project, self.owner).export_jadwal_professional(
+            'word', report_type=report_type, **selection,
+        )
+        return Document(BytesIO(response.content))
+
+    @staticmethod
+    def _text(document):
+        parts = [p.text for p in document.paragraphs]
+        for table in document.tables:
+            for row in table.rows:
+                parts.extend(cell.text for cell in row.cells)
+        return "\n".join(parts)
+
+    def test_weekly_word_without_extension_has_progress_and_signature(self):
+        text = self._text(self._document(self.without_extension, 'weekly', weeks=[6]))
+        self.assertIn('LAPORAN MINGGU ke-6', text)
+        self.assertIn('PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-6', text)
+        self.assertIn('Rencana Minggu Ini', text)
+        self.assertIn('LEMBAR PENGESAHAN', text)
+        self.assertNotIn('RANGKUMAN PROGRESS AKHIR WAKTU KERJA', text)
+        self.assertNotIn('Status', text)
+
+    def test_weekly_word_places_summary_between_boundary_and_additional_week(self):
+        document = self._document(self.next_week, 'weekly', weeks=[6, 7])
+        text = self._text(document)
+        week_six = text.index('PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-6')
+        summary = text.index('RANGKUMAN PROGRESS AKHIR WAKTU KERJA')
+        week_seven = text.index('PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7')
+        self.assertLess(week_six, summary)
+        self.assertLess(summary, week_seven)
+        self.assertIn('Penambahan Waktu Kerja', text[week_seven:])
+        self.assertNotIn('terlambat', text.lower())
+        # W7: Pekerjaan B bobot 75% x realisasi 50% = 37,50% minggu ini.
+        self.assertIn('37,50%', text[week_seven:])
+        title = next(p for p in document.paragraphs if p.text == 'PROGRESS PELAKSANAAN PEKERJAAN MINGGU KE-7')
+        self.assertEqual(str(title.runs[0].font.color.rgb), '4A0E0E')
+
+    def test_monthly_word_summary_follows_boundary_month(self):
+        text = self._text(self._document(self.next_week, 'monthly', months=[1, 2]))
+        month_two = text.index('PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-2')
+        summary = text.index('RANGKUMAN PROGRESS AKHIR WAKTU KERJA')
+        self.assertLess(month_two, summary)
+        self.assertIn('LAPORAN BULAN ke-1', text)
+
+    def test_rekap_word_stays_disabled(self):
+        with self.assertRaises(ValueError):
+            ExportManager(self.next_week, self.owner).export_jadwal_professional('word', report_type='rekap')

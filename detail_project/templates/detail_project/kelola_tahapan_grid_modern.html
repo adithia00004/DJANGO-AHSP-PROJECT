@@ -644,7 +644,7 @@
             </div>
             <div class="alert alert-warning mt-2 py-2 px-3 small" id="professionalFormatNote" style="display: none;">
               <i class="bi bi-info-circle"></i>
-              Format Word khusus aktif untuk laporan harian. Format Excel memakai template spreadsheet sesuai jenis laporan yang dipilih.
+              Format Word tersedia untuk laporan harian, bulanan, dan mingguan (tanpa grafik Kurva S/Gantt). Format Excel memakai template spreadsheet sesuai jenis laporan yang dipilih.
             </div>
           </div>
 
@@ -1169,13 +1169,16 @@
             selectedFormat = 'word';
           }
         } else {
+          // Word tersedia untuk laporan bulanan & mingguan (tanpa grafik, R-9);
+          // Rekap tetap PDF/Excel saja.
+          const wordAllowed = selectedReportType === 'monthly' || selectedReportType === 'weekly';
           if (formatPdf) formatPdf.disabled = false;
           if (formatExcel) formatExcel.disabled = false;
-          if (formatWord) formatWord.disabled = true;
+          if (formatWord) formatWord.disabled = !wordAllowed;
           if (formatPdfLabel) formatPdfLabel.classList.remove('disabled');
           if (formatExcelLabel) formatExcelLabel.classList.remove('disabled');
-          if (formatWordLabel) formatWordLabel.classList.add('disabled');
-          if (formatWord?.checked && formatPdf) {
+          if (formatWordLabel) formatWordLabel.classList.toggle('disabled', !wordAllowed);
+          if (!wordAllowed && formatWord?.checked && formatPdf) {
             formatPdf.checked = true;
             selectedFormat = 'pdf';
           }

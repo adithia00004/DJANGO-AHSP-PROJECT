@@ -804,84 +804,82 @@ class WordExporter:
         return response
     
     def export_monthly(self, data: Dict[str, Any]) -> HttpResponse:
-        """
-        Export Laporan Bulanan to Word document.
-        
-        Structure:
-        1. Cover Page
-        2. Progress Pelaksanaan Page
-        3. Kurva S Monthly (Landscape)
-        4. Kurva S Portrait
-        5. Signature Section
-        
-        Args:
-            data: Export data for monthly report
-                
-        Returns:
-            HttpResponse with .docx file
-        """
-        self.doc = Document()
-        self._setup_page_layout('A4', 'portrait')
-        
-        project_info = data.get('project_info', {})
-        month = data.get('month', 1)
-        period_info = data.get('period', {})
-        
-        # 1. Cover Page
-        self._build_cover_page('monthly', project_info, period_info)
-        self.doc.add_page_break()
-        
-        # 2. Progress Pelaksanaan
-        exec_summary = data.get('executive_summary', {})
-        hierarchy_data = data.get('hierarchy_progress', [])
-        self._build_progress_page(month, project_info, exec_summary, hierarchy_data, 'monthly')
-        self.doc.add_page_break()
-        
-        # 3. Kurva S Monthly (switch to landscape)
-        kurva_s_data = data.get('kurva_s_data', [])
-        if kurva_s_data:
-            self._add_section_break('landscape')
-            self._build_section_header(f'RINGKASAN PROGRESS KURVA S (Bulan ke-{month})')
-            self._build_kurva_s_section(kurva_s_data, data)
-        
-        # 4. Signature Section
-        self._add_section_break('portrait')
-        self._build_signature_section(project_info)
-        
-        return self._create_response(f'laporan_bulan_{month}')
-    
+        """Laporan Bulanan (Word): cover + progres pelaksanaan + pengesahan per bulan."""
+        return self._export_progress_report(data, 'monthly')
+
     def export_weekly(self, data: Dict[str, Any]) -> HttpResponse:
-        """
-        Export Laporan Mingguan to Word document.
-        
-        Structure:
-        1. Cover Page
-        2. Weekly Progress Page
-        
-        Args:
-            data: Export data for weekly report
-                
-        Returns:
-            HttpResponse with .docx file
+        """Laporan Mingguan (Word): cover + progres pelaksanaan + pengesahan per minggu."""
+        return self._export_progress_report(data, 'weekly')
+
+    def _export_progress_report(self, data: Dict[str, Any], mode: str) -> HttpResponse:
+        """Word laporan bulanan/mingguan, susunan sama dengan PDF (owner 2026-09-30).
+
+        Per periode: cover, halaman progres pelaksanaan (identitas, ringkasan,
+        rincian per pekerjaan), pengesahan (R-37). Gantt/Kurva S tidak dirender
+        di Word (R-9). Rangkuman Progress Akhir Waktu Kerja ditempatkan seperti
+        PDF (R-38): sesudah periode batas, atau di depan bila hanya periode
+        tambahan yang dipilih; pengesahan menempel pada lembar Rangkuman.
         """
         self.doc = Document()
         self._setup_page_layout('A4', 'portrait')
-        
-        project_info = data.get('project_info', {})
-        week = data.get('week', 1)
-        period_info = data.get('period', {})
-        
-        # 1. Cover Page
-        self._build_cover_page('weekly', project_info, period_info)
-        self.doc.add_page_break()
-        
-        # 2. Weekly Progress Page
-        exec_summary = data.get('executive_summary', {})
-        hierarchy_data = data.get('hierarchy_progress', [])
-        self._build_progress_page(week, project_info, exec_summary, hierarchy_data, 'weekly')
-        
-        return self._create_response(f'laporan_minggu_{week}')
-    
+
+        project_info = data.get('project_info', {}) or {}
+        period_key = 'month' if mode == 'monthly' else 'week'
+        entries = data.get('months_data' if mode == 'monthly' else 'weeks_data') or [
+            {period_key: data.get(period_key) or 1, 'data': data}
+        ]
+        entries = sorted(entries, key=lambda entry: entry.get(period_key) or 1)
+
+        contract_summary = data.get('contract_summary')
+        boundary_week = contract_summary.get('boundary_week') if contract_summary else None
+        if boundary_week:
+            boundary = (boundary_week + 3) // 4 if mode == 'monthly' else boundary_week
+        else:
+            boundary = None
+        state = {'first': True, 'summary_inserted': False}
+
+        def new_page():
+            if not state['first']:
+                self.doc.add_page_break()
+            state['first'] = False
+
+        def add_summary():
+            new_page()
+            self._daily_add_contract_summary(contract_summary)
+            self.doc.add_paragraph()
+            self._build_signature_section(project_info)
+            state['summary_inserted'] = True
+
+        for entry in entries:
+            period = entry.get(period_key) or 1
+            period_data = entry.get('data') or {}
+            is_extension = bool(boundary and period > boundary)
+            if contract_summary and boundary and not state['summary_inserted'] and period > boundary:
+                add_summary()
+
+            new_page()
+            period_info = dict(period_data.get('period') or {})
+            period_info[period_key] = period
+            period_info['is_extension_period'] = is_extension
+            self._build_cover_page(mode, project_info, period_info)
+            self.doc.add_page_break()
+            self._build_progress_page(
+                period, project_info,
+                period_data.get('executive_summary') or {},
+                period_data.get('hierarchy_progress') or [],
+                mode, is_extension=is_extension,
+            )
+            if contract_summary and boundary and not state['summary_inserted'] and period == boundary:
+                # Pengesahan periode batas dipindah ke lembar Rangkuman (R-38).
+                add_summary()
+            else:
+                self.doc.add_paragraph()
+                self._build_signature_section(project_info)
+
+        label = 'bulan' if mode == 'monthly' else 'minggu'
+        periods = '_'.join(str(entry.get(period_key) or 1) for entry in entries)
+        return self._create_response(f'laporan_{label}_{periods}')
+
     # =========================================================================
     # PAGE LAYOUT SETUP
     # =========================================================================
@@ -1088,67 +1086,64 @@ class WordExporter:
     # COVER PAGE
     # =========================================================================
     
-    def _build_cover_page(self, report_type: str, project_info: Dict[str, Any], 
+    def _build_cover_page(self, report_type: str, project_info: Dict[str, Any],
                           period_info: Dict[str, Any] = None):
+        """Cover laporan: judul, nama proyek, periode, identitas (setara cover PDF R-36).
+
+        Laporan periode Penambahan Waktu Kerja memakai judul merah tua (R-42).
         """
-        Build cover page with title and project identity.
-        
-        Args:
-            report_type: 'rekap', 'monthly', or 'weekly'
-            project_info: Project information dict
-            period_info: Period info for monthly/weekly reports
-        """
-        # Title based on report type
+        period_info = period_info or {}
         if report_type == 'rekap':
-            title = 'REKAP LAPORAN JADWAL PEKERJAAN'
+            title = 'LAPORAN REKAPITULASI'
         elif report_type == 'monthly':
-            month = period_info.get('month', 1) if period_info else 1
-            title = f'LAPORAN BULAN KE-{month}'
+            title = f"LAPORAN BULAN ke-{period_info.get('month', 1)}"
         else:  # weekly
-            week = period_info.get('week', 1) if period_info else 1
-            title = f'LAPORAN MINGGU KE-{week}'
-        
-        # Add spacing at top
+            title = f"LAPORAN MINGGU ke-{period_info.get('week', 1)}"
+        accent = UTS.EXTENSION_PRIMARY if period_info.get('is_extension_period') else UTS.PRIMARY_LIGHT
+
         for _ in range(3):
             self.doc.add_paragraph()
-        
-        # Main title
+
         title_para = self.doc.add_paragraph()
         title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title_run = title_para.add_run(title)
         title_run.bold = True
         title_run.font.size = Pt(24)
-        title_run.font.color.rgb = RGBColor.from_string(UTS.PRIMARY_LIGHT[1:])
-        
-        # Subtitle - Project name
-        project_name = project_info.get('nama_project', self.config.project_name)
+        title_run.font.color.rgb = RGBColor.from_string(accent[1:])
+
+        project_name = (
+            project_info.get('nama') or project_info.get('nama_project') or self.config.project_name
+        )
         if project_name:
             subtitle_para = self.doc.add_paragraph()
             subtitle_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            subtitle_run = subtitle_para.add_run(project_name)
+            subtitle_run = subtitle_para.add_run(str(project_name))
             subtitle_run.bold = True
-            subtitle_run.font.size = Pt(18)
-        
-        # Spacing
+            subtitle_run.font.size = Pt(16)
+
+        start, end = period_info.get('start_date'), period_info.get('end_date')
+        if start and end and hasattr(start, 'strftime') and hasattr(end, 'strftime'):
+            period_para = self.doc.add_paragraph()
+            period_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            period_run = period_para.add_run(f"Periode: {start:%d/%m/%Y} - {end:%d/%m/%Y}")
+            period_run.font.size = Pt(11)
+            period_run.font.color.rgb = RGBColor(90, 90, 90)
+
         self.doc.add_paragraph()
         self.doc.add_paragraph()
-        
-        # Project identity table
+
         identity_rows = build_identity_rows(self.config)
         if identity_rows:
             table = self.doc.add_table(rows=len(identity_rows), cols=3)
             table.alignment = WD_TABLE_ALIGNMENT.CENTER
-            
             for i, row_data in enumerate(identity_rows):
-                row = table.rows[i]
                 for j, cell_text in enumerate(row_data):
-                    cell = row.cells[j]
+                    cell = table.rows[i].cells[j]
                     cell.text = str(cell_text)
-                    # Style
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = Pt(11)
-    
+
     # =========================================================================
     # TABLE OF CONTENTS
     # =========================================================================
@@ -1620,69 +1615,119 @@ class WordExporter:
     
     def _build_progress_page(self, period: int, project_info: Dict[str, Any],
                              summary: Dict[str, Any], hierarchy_data: List[Dict],
-                             mode: str = 'monthly'):
+                             mode: str = 'monthly', is_extension: bool = False):
+        """Halaman Progres Pelaksanaan (Word), kolom & angka sama dengan PDF.
+
+        Identitas, ringkasan (rencana/realisasi periode, akumulasi, deviasi),
+        lalu rincian per pekerjaan: bobot, kumulatif lalu, progres periode ini,
+        kumulatif ini (semua sudah tertimbang bobot oleh adapter).
         """
-        Build progress page for monthly/weekly reports.
-        
-        Args:
-            period: Month or week number
-            project_info: Project information
-            summary: Executive summary data
-            hierarchy_data: Hierarchy progress data
-            mode: 'monthly' or 'weekly'
-        """
-        period_label = 'Bulan' if mode == 'monthly' else 'Minggu'
-        
-        # Section title
-        self._build_section_header(f'PROGRESS PELAKSANAAN - {period_label} ke-{period}')
-        
-        # Summary table
-        if summary:
-            self._build_summary_table(summary)
-            self.doc.add_paragraph()
-        
-        # Hierarchy progress table
-        if hierarchy_data:
-            self._build_hierarchy_progress_table(hierarchy_data)
-    
-    def _build_summary_table(self, summary: Dict[str, Any]):
-        """Build executive summary table."""
-        table = self.doc.add_table(rows=4, cols=2)
-        table.style = 'Table Grid'
-        
-        data = [
-            ('Progress Rencana', f"{summary.get('planned_progress', 0):.2f}%"),
-            ('Progress Realisasi', f"{summary.get('actual_progress', 0):.2f}%"),
-            ('Deviasi', f"{summary.get('deviation', 0):.2f}%"),
-            ('Status', summary.get('status', '-')),
+        from .cell_format import format_cell_display
+
+        label = 'Bulan' if mode == 'monthly' else 'Minggu'
+        accent = (UTS.EXTENSION_PRIMARY if is_extension else UTS.PRIMARY_LIGHT)[1:].upper()
+        prefix = 'progress_bulan' if mode == 'monthly' else 'progress_minggu'
+
+        def pct(value, signed=False):
+            text = format_cell_display(value or 0, '#,##0.00')
+            if signed and (value or 0) > 0:
+                text = f'+{text}'
+            return f'{text}%'
+
+        self._daily_add_title(
+            f'PROGRESS PELAKSANAAN PEKERJAAN {label.upper()} KE-{period}',
+            'Penambahan Waktu Kerja' if is_extension else '',
+            accent=accent,
+        )
+
+        # Identitas + ringkasan dalam satu tabel dua blok.
+        identity = [
+            ('Nama Project', self._project_value(project_info, 'nama', 'nama_project', default=self.config.project_name)),
+            ('Pemilik', self._project_value(project_info, 'nama_client', default='-')),
+            ('Sumber Dana', self._project_value(project_info, 'sumber_dana', default='-')),
+            ('Lokasi', self._project_value(project_info, 'lokasi', default='-')),
         ]
-        
-        for idx, (label, value) in enumerate(data):
-            table.rows[idx].cells[0].text = label
-            table.rows[idx].cells[1].text = str(value)
-    
-    def _build_hierarchy_progress_table(self, hierarchy_data: List[Dict]):
-        """Build hierarchy progress detail table."""
-        if not hierarchy_data:
-            return
-        
-        # Create table with hierarchy data
-        table = self.doc.add_table(rows=len(hierarchy_data) + 1, cols=4)
-        table.style = 'Table Grid'
-        
-        # Headers
-        headers = ['Uraian', 'Rencana (%)', 'Realisasi (%)', 'Deviasi (%)']
+        ringkasan = [
+            (f'Rencana {label} Ini', pct(summary.get('target_period'))),
+            (f'Realisasi {label} Ini', pct(summary.get('actual_period'))),
+            ('Akumulasi Rencana', pct(summary.get('cumulative_target'))),
+            ('Akumulasi Realisasi', pct(summary.get('cumulative_actual'))),
+            ('Deviasi', pct(summary.get('deviation_cumulative'), signed=True)),
+        ]
+        rows = max(len(identity), len(ringkasan)) + 1
+        info = self.doc.add_table(rows=rows, cols=4)
+        info.alignment = WD_TABLE_ALIGNMENT.CENTER
+        info.autofit = False
+        self._daily_set_col_widths(info, [3.0, 6.0, 4.0, 5.0])
+        self._daily_set_cell_text(info.cell(0, 0), 'IDENTITAS PROJECT', bold=True, size=8, color=accent)
+        self._daily_set_cell_text(info.cell(0, 2), 'RINGKASAN PROGRESS', bold=True, size=8, color=accent)
+        for idx, (key, value) in enumerate(identity, start=1):
+            self._daily_set_cell_text(info.cell(idx, 0), key, bold=True, size=8)
+            self._daily_set_cell_text(info.cell(idx, 1), value, size=8)
+        for idx, (key, value) in enumerate(ringkasan, start=1):
+            self._daily_set_cell_text(info.cell(idx, 2), key, bold=True, size=8)
+            self._daily_set_cell_text(info.cell(idx, 3), value, size=8, align=WD_ALIGN_PARAGRAPH.RIGHT)
+
+        heading = self.doc.add_paragraph()
+        heading.paragraph_format.space_before = Pt(8)
+        heading_run = heading.add_run('RINCIAN PROGRESS')
+        heading_run.bold = True
+        heading_run.font.size = Pt(9)
+        heading_run.font.color.rgb = RGBColor.from_string(accent)
+
+        headers = [
+            'Uraian Pekerjaan', 'Volume', 'Harga Satuan', 'Total Harga', 'Bobot (%)',
+            f'Kumulatif {label} Lalu', f'Progress {label} Ini', f'Kumulatif {label} Ini',
+        ]
+        table = self.doc.add_table(rows=1, cols=len(headers))
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        self._daily_set_col_widths(table, [5.4, 1.4, 2.1, 2.4, 1.4, 1.8, 1.7, 1.8])
         for idx, header in enumerate(headers):
-            table.rows[0].cells[idx].text = header
-            self._style_header_cell(table.rows[0].cells[idx])
-        
-        # Data rows
-        for row_idx, item in enumerate(hierarchy_data):
-            row = table.rows[row_idx + 1]
-            row.cells[0].text = item.get('name', '')
-            row.cells[1].text = f"{item.get('planned', 0):.2f}"
-            row.cells[2].text = f"{item.get('actual', 0):.2f}"
-            row.cells[3].text = f"{item.get('deviation', 0):.2f}"
+            cell = table.cell(0, idx)
+            self._daily_set_cell_text(cell, header, bold=True, size=7, color='FFFFFF',
+                                      align=WD_ALIGN_PARAGRAPH.CENTER)
+            self._daily_set_cell_shading(cell, accent)
+        self._enable_header_repeat(table)
+
+        totals = {'harga': 0.0, 'bobot': 0.0, 'lalu': 0.0, 'ini': 0.0}
+        for item in hierarchy_data:
+            cells = table.add_row().cells
+            level = int(item.get('level') or 3)
+            is_job = item.get('type') == 'pekerjaan'
+            name = ('   ' * max(0, level - 1)) + str(item.get('name') or '')
+            self._daily_set_cell_text(cells[0], name, bold=not is_job, size=7)
+            if not is_job:
+                self._daily_set_cell_shading(cells[0], 'E2E8F0' if level <= 1 else 'F1F5F9')
+                continue
+            lalu = float(item.get(f'{prefix}_lalu') or 0)
+            ini = float(item.get(f'{prefix}_ini') or 0)
+            harga = float(item.get('harga') or 0)
+            bobot = float(item.get('bobot') or 0)
+            totals['harga'] += harga
+            totals['bobot'] += bobot
+            totals['lalu'] += lalu
+            totals['ini'] += ini
+            right = WD_ALIGN_PARAGRAPH.RIGHT
+            self._daily_set_cell_text(cells[1], format_cell_display(item.get('volume') or 0, '#,##0.00'), size=7, align=right)
+            self._daily_set_cell_text(cells[2], f"Rp {format_cell_display(item.get('harga_satuan') or 0, '#,##0')}", size=7, align=right)
+            self._daily_set_cell_text(cells[3], f"Rp {format_cell_display(harga, '#,##0')}", size=7, align=right)
+            self._daily_set_cell_text(cells[4], pct(bobot), size=7, align=right)
+            self._daily_set_cell_text(cells[5], pct(lalu), size=7, align=right)
+            self._daily_set_cell_text(cells[6], pct(ini), size=7, align=right)
+            self._daily_set_cell_text(cells[7], pct(lalu + ini), size=7, align=right)
+
+        total_cells = table.add_row().cells
+        for idx, value in enumerate((
+            'TOTAL', '', '', f"Rp {format_cell_display(totals['harga'], '#,##0')}",
+            pct(totals['bobot']), pct(totals['lalu']), pct(totals['ini']),
+            pct(totals['lalu'] + totals['ini']),
+        )):
+            self._daily_set_cell_text(total_cells[idx], value, bold=True, size=7,
+                                      align=WD_ALIGN_PARAGRAPH.RIGHT if idx else None)
+            self._daily_set_cell_shading(total_cells[idx], 'E8F4F8')
+        self._daily_set_table_borders(table, '6B7280', '4')
+        self._daily_set_table_borders(info, 'CBD5E1', '4')
 
     # =========================================================================
     # DAILY DOCX EXPORT HELPERS

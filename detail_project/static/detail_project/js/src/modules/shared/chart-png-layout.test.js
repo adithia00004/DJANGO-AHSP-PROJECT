@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   KURVA_PNG_MARGIN_Y,
+  aggregateGanttToMonths,
   buildKurvaSPngSeries,
   progressToY,
   wrapTextToWidth,
@@ -119,5 +120,20 @@ describe('progressToY', () => {
       progressToY(pngSeries.planned[0], 0, 400),
       progressToY(pngSeries.planned[1], 0, 400),
     ]);
+  });
+});
+
+describe('aggregateGanttToMonths', () => {
+  it('groups weeks into 4-week months like the web monthly Gantt', () => {
+    const columns = [1, 2, 3, 4, 5, 6, 7].map((week) => ({ week }));
+    const result = aggregateGanttToMonths(
+      columns,
+      { 10: { 2: 40, 6: 60 } },
+      { 10: { 7: 25 }, 11: { 1: 0 } },
+    );
+    expect(result.columns).toEqual([{ week: 1, label: 'M1' }, { week: 2, label: 'M2' }]);
+    expect(result.planned).toEqual({ 10: { 1: 40, 2: 60 } });
+    // Zero values draw no bar.
+    expect(result.actual).toEqual({ 10: { 2: 25 } });
   });
 });

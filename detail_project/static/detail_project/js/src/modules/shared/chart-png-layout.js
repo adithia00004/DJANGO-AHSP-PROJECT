@@ -121,3 +121,36 @@ export function progressToY(percent, bodyTop, bodyHeight, marginY = KURVA_PNG_MA
   const clamped = Math.max(0, Math.min(100, toNumber(percent)));
   return y0 - (clamped / 100) * (y0 - y100);
 }
+
+/**
+ * Group weekly Gantt data into the web's monthly columns (4-week blocks,
+ * "M1", "M2", ...; UnifiedTableManager._buildBarData). A month shows a bar
+ * when any of its weeks has progress, using the largest weekly value.
+ *
+ * @param {Array<{week?: number}>} timeColumns - weekly columns in order
+ * @param {Object<string, Object<number, number>>} planned - taskId -> week -> value
+ * @param {Object<string, Object<number, number>>} actual - taskId -> week -> value
+ * @returns {{columns: Array<{week: number, label: string}>, planned: Object, actual: Object}}
+ */
+export function aggregateGanttToMonths(timeColumns, planned = {}, actual = {}) {
+  const weeks = (timeColumns || []).map((col, idx) => Number(col?.week) || idx + 1);
+  const monthOf = new Map(weeks.map((week, idx) => [week, Math.floor(idx / 4) + 1]));
+  const monthCount = Math.ceil(weeks.length / 4);
+  const columns = Array.from({ length: monthCount }, (_, i) => ({ week: i + 1, label: `M${i + 1}` }));
+
+  const group = (source) => {
+    const out = {};
+    Object.entries(source || {}).forEach(([taskId, byWeek]) => {
+      Object.entries(byWeek || {}).forEach(([week, value]) => {
+        const month = monthOf.get(Number(week));
+        const number = Number(value) || 0;
+        if (!month || number <= 0) return;
+        out[taskId] = out[taskId] || {};
+        out[taskId][month] = Math.max(out[taskId][month] || 0, number);
+      });
+    });
+    return out;
+  };
+
+  return { columns, planned: group(planned), actual: group(actual) };
+}

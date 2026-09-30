@@ -31,6 +31,7 @@ import {
 import { exportReport } from './export/export-coordinator.js';
 import {
   KURVA_PNG_MIN_BODY_HEIGHT,
+  aggregateGanttToMonths,
   buildKurvaSPngSeries,
   progressToY,
   wrapTextToWidth,
@@ -1436,7 +1437,8 @@ class JadwalKegiatanApp {
       // ========================================================================
       if (useProfessional && (format === 'pdf' || format === 'word')) {
         // Skip chart rendering for weekly reports (no charts needed)
-        const skipChartRendering = (reportType === 'weekly' || reportType === 'daily');
+        // Word tidak memuat grafik (R-9), jadi grafik browser tidak perlu digambar.
+        const skipChartRendering = (reportType === 'weekly' || reportType === 'daily' || format === 'word');
 
         if (!skipChartRendering) {
           this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (150 DPI)...');
@@ -4008,9 +4010,13 @@ class JadwalKegiatanApp {
    */
   async _renderGanttFullImage(exportState) {
     const rows = exportState.hierarchyRows || [];
-    const timeColumns = exportState.weekColumns || [];
-    const planned = exportState.plannedProgress || {};
-    const actual = exportState.actualProgress || {};
+    let timeColumns = exportState.weekColumns || [];
+    let planned = exportState.plannedProgress || {};
+    let actual = exportState.actualProgress || {};
+    // Follow the web view: monthly display groups weeks into 4-week months.
+    if ((this.state.displayScale || 'weekly').toLowerCase() === 'monthly') {
+      ({ columns: timeColumns, planned, actual } = aggregateGanttToMonths(timeColumns, planned, actual));
+    }
 
     if (rows.length === 0 || timeColumns.length === 0) {
       throw new Error('No data available for Gantt chart');
@@ -4089,7 +4095,7 @@ class JadwalKegiatanApp {
       ctx.fillStyle = '#1e3a5f';
       ctx.font = '9px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(`W${col.week || idx + 1}`, x + COL_WIDTH / 2, startY + 30);
+      ctx.fillText(col.label && /^M\d+$/.test(col.label) ? col.label : `W${col.week || idx + 1}`, x + COL_WIDTH / 2, startY + 30);
     });
     ctx.textAlign = 'left';
 

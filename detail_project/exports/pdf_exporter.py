@@ -6476,6 +6476,14 @@ class PDFExporter(ConfigExporterBase):
                 # =============================================
                 blank_cols = max_weeks_per_page - weeks_in_page
                 total_weeks_rendered = weeks_in_page + blank_cols  # Always = max_weeks_per_page
+                if len(week_chunks) == 1 and weeks_in_page:
+                    # Owner 2026-09-30: semua minggu muat satu halaman -> kolom
+                    # minggu melebar mengisi halaman (dulu separuh halaman kosong).
+                    # Bila minggu terbagi ke beberapa halaman, lebar tetap (R-1)
+                    # agar halaman-halamannya sejajar.
+                    week_width = max(week_column_width, (width - freeze_width) / weeks_in_page)
+                    blank_cols = 0
+                    total_weeks_rendered = weeks_in_page
                 
                 # Calculate FIXED table width (same as Grid View and Gantt)
                 # total_table_width = freeze_width + (max_weeks_per_page * week_width)
