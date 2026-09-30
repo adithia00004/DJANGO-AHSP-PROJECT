@@ -22,8 +22,15 @@ def _read(*parts):
 
 class JsonNotAReportFormatTests(TestCase):
     def test_jadwal_report_endpoints_exist_but_no_json(self):
+        # Laporan Jadwal hanya lewat endpoint professional (PDF/Word/Excel).
+        # Endpoint generik lama CSV/PDF/Word/Excel dihapus 2026-09-30 (doc 42
+        # §9; tidak dipanggil UI aktif).
+        reverse(
+            "detail_project:export_jadwal_pekerjaan_professional",
+            kwargs={"project_id": 1},
+        )
         for fmt in ["csv", "pdf", "word", "xlsx"]:
-            with self.subTest(fmt=fmt):
+            with self.subTest(fmt=fmt), self.assertRaises(NoReverseMatch):
                 reverse(
                     f"detail_project:export_jadwal_pekerjaan_{fmt}",
                     kwargs={"project_id": 1},

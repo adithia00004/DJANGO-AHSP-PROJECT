@@ -6353,107 +6353,6 @@ def export_rincian_ahsp_xlsx(request: HttpRequest, project_id: int):
 
 
 # ============================================================================
-# EXPORT: JADWAL PEKERJAAN (CSV / PDF / WORD / XLSX)
-# ============================================================================
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def export_jadwal_pekerjaan_csv(request: HttpRequest, project_id: int):
-    """
-    Export Jadwal Pekerjaan to CSV.
-
-    Supports 3 report types:
-    - full: Rekap Laporan (all weeks)
-    - monthly: Laporan Bulanan (monthly aggregation)
-    - weekly: Laporan Mingguan (weekly with date ranges)
-    """
-    try:
-        project = _owner_or_404(project_id, request.user)
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        attachments = _parse_export_attachments(request)
-        parameters = _parse_export_parameters(request)
-        return manager.export_jadwal_pekerjaan('csv', attachments=attachments, parameters=parameters)
-    except Http404:
-        raise
-    except Exception as e:
-        return export_error_response(e, context="export jadwal pekerjaan CSV")
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def export_jadwal_pekerjaan_pdf(request: HttpRequest, project_id: int):
-    """
-    Export Jadwal Pekerjaan to PDF.
-
-    Supports 3 report types:
-    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
-    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
-    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
-    """
-    try:
-        project = _owner_or_404(project_id, request.user)
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        attachments = _parse_export_attachments(request)
-        parameters = _parse_export_parameters(request)
-        return manager.export_jadwal_pekerjaan('pdf', attachments=attachments, parameters=parameters)
-    except Http404:
-        raise
-    except Exception as e:
-        return export_error_response(e, context="export jadwal pekerjaan PDF")
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def export_jadwal_pekerjaan_word(request: HttpRequest, project_id: int):
-    """
-    Export Jadwal Pekerjaan to Word.
-
-    Supports 3 report types:
-    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
-    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
-    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
-    """
-    try:
-        project = _owner_or_404(project_id, request.user)
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        attachments = _parse_export_attachments(request)
-        parameters = _parse_export_parameters(request)
-        return manager.export_jadwal_pekerjaan('word', attachments=attachments, parameters=parameters)
-    except Http404:
-        raise
-    except Exception as e:
-        return export_error_response(e, context="export jadwal pekerjaan Word")
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def export_jadwal_pekerjaan_xlsx(request: HttpRequest, project_id: int):
-    """
-    Export Jadwal Pekerjaan to XLSX.
-
-    Supports 3 report types:
-    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
-    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
-    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
-    """
-    try:
-        project = _owner_or_404(project_id, request.user)
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        attachments = _parse_export_attachments(request)
-        parameters = _parse_export_parameters(request)
-        return manager.export_jadwal_pekerjaan('xlsx', attachments=attachments, parameters=parameters)
-    except Http404:
-        raise
-    except Exception as e:
-        return export_error_response(e, context="export jadwal pekerjaan XLSX")
-
-
-# ============================================================================
 # EXPORT: JADWAL PEKERJAAN PROFESSIONAL (Laporan Tertulis)
 # ============================================================================
 
@@ -10528,7 +10427,6 @@ export_rekap_rab_pdf = api_pdf_export_allowed(export_rekap_rab_pdf)
 export_volume_pekerjaan_pdf = api_pdf_export_allowed(export_volume_pekerjaan_pdf)
 export_harga_items_pdf = api_pdf_export_allowed(export_harga_items_pdf)
 export_rincian_ahsp_pdf = api_pdf_export_allowed(export_rincian_ahsp_pdf)
-export_jadwal_pekerjaan_pdf = api_pdf_export_allowed(export_jadwal_pekerjaan_pdf)
 
 # WORD exports: PRO-only.
 export_rekap_kebutuhan_word = _api_pro_export_required("Export Word")(export_rekap_kebutuhan_word)
@@ -10536,7 +10434,6 @@ export_rekap_rab_word = _api_pro_export_required("Export Word")(export_rekap_rab
 export_volume_pekerjaan_word = _api_pro_export_required("Export Word")(export_volume_pekerjaan_word)
 export_harga_items_word = _api_pro_export_required("Export Word")(export_harga_items_word)
 export_rincian_ahsp_word = _api_pro_export_required("Export Word")(export_rincian_ahsp_word)
-export_jadwal_pekerjaan_word = _api_pro_export_required("Export Word")(export_jadwal_pekerjaan_word)
 
 # XLSX exports: PRO-only.
 export_rekap_kebutuhan_xlsx = _api_pro_export_required("Export Excel")(export_rekap_kebutuhan_xlsx)
@@ -10544,14 +10441,12 @@ export_rekap_rab_xlsx = _api_pro_export_required("Export Excel")(export_rekap_ra
 export_volume_pekerjaan_xlsx = _api_pro_export_required("Export Excel")(export_volume_pekerjaan_xlsx)
 export_harga_items_xlsx = _api_pro_export_required("Export Excel")(export_harga_items_xlsx)
 export_rincian_ahsp_xlsx = _api_pro_export_required("Export Excel")(export_rincian_ahsp_xlsx)
-export_jadwal_pekerjaan_xlsx = _api_pro_export_required("Export Excel")(export_jadwal_pekerjaan_xlsx)
 
 # CSV exports: PRO-only.
 api_export_rincian_rab_csv = _api_pro_export_required("Export CSV")(api_export_rincian_rab_csv)
 export_rekap_rab_csv = _api_pro_export_required("Export CSV")(export_rekap_rab_csv)
 export_harga_items_csv = _api_pro_export_required("Export CSV")(export_harga_items_csv)
 export_rincian_ahsp_csv = _api_pro_export_required("Export CSV")(export_rincian_ahsp_csv)
-export_jadwal_pekerjaan_csv = _api_pro_export_required("Export CSV")(export_jadwal_pekerjaan_csv)
 
 # JSON data packages: PRO-only (policy decision).
 export_list_pekerjaan_json = _api_pro_export_required("Export JSON")(export_list_pekerjaan_json)

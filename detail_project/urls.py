@@ -235,23 +235,6 @@ urlpatterns = [
           views_api.export_rincian_ahsp_xlsx,
           name='export_rincian_ahsp_xlsx'),
 
-     # Export Jadwal Pekerjaan
-     path('api/project/<int:project_id>/export/jadwal-pekerjaan/csv/',
-          views_api.export_jadwal_pekerjaan_csv,
-          name='export_jadwal_pekerjaan_csv'),
-
-     path('api/project/<int:project_id>/export/jadwal-pekerjaan/pdf/',
-          views_api.export_jadwal_pekerjaan_pdf,
-          name='export_jadwal_pekerjaan_pdf'),
-
-     path('api/project/<int:project_id>/export/jadwal-pekerjaan/word/',
-          views_api.export_jadwal_pekerjaan_word,
-          name='export_jadwal_pekerjaan_word'),
-
-     path('api/project/<int:project_id>/export/jadwal-pekerjaan/xlsx/',
-          views_api.export_jadwal_pekerjaan_xlsx,
-          name='export_jadwal_pekerjaan_xlsx'),
-
      # Export Jadwal Pekerjaan Professional (Laporan Tertulis)
      path('api/project/<int:project_id>/export/jadwal-pekerjaan/professional/',
           views_api.export_jadwal_pekerjaan_professional,
