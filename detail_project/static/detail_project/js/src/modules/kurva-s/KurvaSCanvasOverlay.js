@@ -384,9 +384,9 @@ export class KurvaSCanvasOverlay {
     this._drawCurve(cellRects, this.curveData.planned, this._getPlannedColor(), 'Planned');
     this._drawCurve(cellRects, this.curveData.actual, this._getActualColor(), 'Actual');
     drawWorkPeriodEndMarker(this.ctx, this.tableManager, cellRects, {
-      xOffset: gridBounds.gridLeft,
+      xOffset: this.gridBounds.gridLeft,
       top: 0,
-      bottom: gridBounds.gridHeight,
+      bottom: this.gridBounds.gridHeight,
     });
 
     // DEBUG: Log canvas info for hover debugging

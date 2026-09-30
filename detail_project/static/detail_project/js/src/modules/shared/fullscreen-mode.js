@@ -211,7 +211,7 @@ function removeFullscreenButton(container) {
 }
 
 /**
- * Add download image button to a container (positioned next to fullscreen button)
+ * Add the chart PNG action beside the main export button.
  * @param {HTMLElement} container - Container to add button to
  * @param {Object} options - Button options
  * @param {Function} options.onClick - Click handler for download
@@ -221,63 +221,37 @@ function removeFullscreenButton(container) {
 function addDownloadImageButton(container, options = {}) {
     if (!container) return null;
 
-    // Check if button already exists
-    const existingBtn = container.querySelector('.download-image-btn');
+    const toolbar = document.querySelector('#kt-toolbar .toolbar-actions');
+    const target = toolbar || container;
+    const existingBtn = target.querySelector('.download-image-btn');
     if (existingBtn) return existingBtn;
 
-    // Ensure container has relative positioning
-    const containerStyle = window.getComputedStyle(container);
-    if (containerStyle.position === 'static') {
-        container.style.position = 'relative';
-    }
-
-    // Create button
     const btn = document.createElement('button');
-    btn.className = 'download-image-btn';
-    btn.innerHTML = '<i class="bi bi-image"></i>';
-    btn.title = options.title || 'Download as PNG Image';
-    btn.setAttribute('aria-label', 'Download as Image');
+    btn.type = 'button';
+    btn.className = 'download-image-btn btn btn-outline-primary btn-sm';
+    btn.innerHTML = '<i class="bi bi-image" aria-hidden="true"></i> <span class="btn-text">PNG</span>';
+    btn.title = options.title || 'Ekspor grafik sebagai PNG';
+    btn.setAttribute('aria-label', 'Ekspor grafik sebagai PNG');
 
-    // Style to position next to fullscreen button (to its right)
-    btn.style.cssText = `
-        position: absolute;
-        top: 8px;
-        left: 48px;
-        z-index: 100;
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        background: rgba(255, 255, 255, 0.95);
-        color: #374151;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    `;
-
-    // Hover effect
-    btn.addEventListener('mouseenter', () => {
-        btn.style.background = '#3b82f6';
-        btn.style.color = '#ffffff';
-        btn.style.transform = 'scale(1.05)';
-    });
-    btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'rgba(255, 255, 255, 0.95)';
-        btn.style.color = '#374151';
-        btn.style.transform = 'scale(1)';
-    });
+    // The chart container is a fallback for pages without the main toolbar.
+    if (!toolbar) {
+        if (window.getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+        }
+        btn.style.cssText = 'position:absolute;top:8px;left:48px;z-index:100;';
+    }
 
     // Click handler
     if (options.onClick) {
         btn.addEventListener('click', options.onClick);
     }
 
-    // Add to container
-    container.appendChild(btn);
+    const exportButton = toolbar?.querySelector('[data-bs-target="#exportModal"]');
+    if (exportButton) {
+        exportButton.insertAdjacentElement('afterend', btn);
+    } else {
+        target.appendChild(btn);
+    }
 
     return btn;
 }
@@ -288,7 +262,8 @@ function addDownloadImageButton(container, options = {}) {
  */
 function removeDownloadImageButton(container) {
     if (!container) return;
-    const btn = container.querySelector('.download-image-btn');
+    const btn = document.querySelector('#kt-toolbar .download-image-btn')
+        || container.querySelector('.download-image-btn');
     if (btn) {
         btn.parentNode.removeChild(btn);
     }

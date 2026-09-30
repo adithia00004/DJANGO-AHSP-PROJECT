@@ -5584,14 +5584,20 @@ class JadwalKegiatanApp {
         await this._loadChartModules();
       }
 
-      // 4. Switch mode via UnifiedTableManager (shows/hides overlays)
-      if (this.unifiedManager) {
-        this.unifiedManager.switchMode(mode);
-      }
-
-      // 5. Update state displayMode and download button visibility
+      // Keep the export mode in sync with the selected tab even if an overlay
+      // fails to draw.
       const modeToDisplayMode = { grid: 'grid', gantt: 'gantt', kurva: 'scurve' };
       this.state.displayMode = modeToDisplayMode[mode] || 'grid';
+
+      // 4. Switch mode via UnifiedTableManager (shows/hides overlays)
+      if (this.unifiedManager) {
+        try {
+          this.unifiedManager.switchMode(mode);
+        } catch (error) {
+          console.error('[UnifiedTabSync] Failed to switch mode:', mode, error);
+        }
+      }
+
       this._updateDownloadButtonVisibility();
       this._updateStatusBar();
     };
