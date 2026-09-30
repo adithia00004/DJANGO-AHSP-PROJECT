@@ -6,11 +6,15 @@ Both scenarios use the same canonical Monday-Sunday week boundary as project 217
 
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from docx import Document
 
 from dashboard.models import Project
+from detail_project.exports.errors import ExportValidationError
+from detail_project.exports.export_manager import ExportManager
 from detail_project.exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
 from detail_project.timeline_utils import (
     contract_boundary_week,
@@ -116,3 +120,35 @@ class ExtensionExportAdapterTests(ExtensionExportFixtureMixin, TestCase):
         self.assertEqual(len(data["weekly_columns"]), 6)
         self.assertTrue(all(not col["is_boundary_week"] for col in data["weekly_columns"]))
         self.assertTrue(all(not col["is_extension_week"] for col in data["weekly_columns"]))
+
+
+class ExtensionDailyWordTests(ExtensionExportFixtureMixin, TestCase):
+    def _document_text(self, project, week):
+        response = ExportManager(project, self.owner).export_jadwal_professional(
+            "word", report_type="daily", daily_mode="week", period=week,
+        )
+        self.assertTrue(response.content.startswith(b"PK"))
+        document = Document(BytesIO(response.content))
+        return "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+    def test_w7_daily_word_renders_extension_days(self):
+        text = self._document_text(self.next_week, 7)
+        self.assertIn("Senin, 21 September 2026 | Minggu 7 | Penambahan Waktu Kerja", text)
+        self.assertNotIn("terlambat", text.lower())
+
+    def test_boundary_week_marks_only_the_day_after_contract_end(self):
+        text = self._document_text(self.next_week, 6)
+        self.assertIn("Sabtu, 19 September 2026 | Minggu 6", text)
+        self.assertNotIn("Sabtu, 19 September 2026 | Minggu 6 | Penambahan", text)
+        self.assertIn("Minggu, 20 September 2026 | Minggu 6 | Penambahan Waktu Kerja", text)
+
+    def test_same_week_extension_marks_days_without_a_new_week(self):
+        text = self._document_text(self.same_week, 1)
+        self.assertIn("Rabu, 16 September 2026 | Minggu 1", text)
+        self.assertIn("Kamis, 17 September 2026 | Minggu 1 | Penambahan Waktu Kerja", text)
+
+    def test_day_after_work_period_remains_rejected(self):
+        with self.assertRaises(ExportValidationError):
+            ExportManager(self.next_week, self.owner).export_jadwal_professional(
+                "word", report_type="daily", daily_mode="day", days=[50],
+            )

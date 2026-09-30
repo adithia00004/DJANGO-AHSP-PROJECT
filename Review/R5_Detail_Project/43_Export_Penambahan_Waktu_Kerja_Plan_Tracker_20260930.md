@@ -175,8 +175,8 @@ Aturan penempatan:
 | Langkah | Status | Commit | Tanggal | Catatan |
 |---|---|---|---|---|
 | E0 | REVIEW | `63ef286c` | 2026-09-30 | Fixture tipe 1, tipe 2, tanpa tambahan lulus; baseline backend 894 tes/3 gagal lama/40 skipped, frontend 431 lulus/25 skipped |
-| E1 | REVIEW | commit ini | 2026-09-30 | Adapter meneruskan akhir kontrak/tambahan dan minggu batas; kolom bertanda, harian membawa flag hari tambahan; 21 tes terkait lulus |
-| E2 | TODO | | | |
+| E1 | REVIEW | `af99f8ff` | 2026-09-30 | Adapter meneruskan akhir kontrak/tambahan dan minggu batas; kolom bertanda, harian membawa flag hari tambahan; 21 tes terkait lulus |
+| E2 | REVIEW | commit ini | 2026-09-30 | Word harian menerima tanggal tambahan dan menandainya di subjudul; 14 tes render harian lulus |
 | E3 | TODO | | | |
 | E4 | TODO | | | |
 | E5 | TODO | | | |
@@ -194,9 +194,10 @@ Setiap langkah = satu commit kode + catatan bukti uji di bawah.
 | 2026-09-30 | E0 baseline frontend | `npm run test:frontend -- --reporter=dot --silent` | 39 file; 431 lulus, 25 skipped. |
 | 2026-09-30 | E0 fixture | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e0 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja --settings=config.settings.test_pg --noinput --verbosity=1` | 3 lulus: tambahan satu minggu yang sama, tambahan sampai W7, tanpa tambahan. |
 | 2026-09-30 | E1 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e1 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja detail_project.tests_jadwal_monthly_report.ReportPeriodCountTests detail_project.tests_wp_export_parity.JadwalDailyDocxExportTests --settings=config.settings.test_pg --noinput --verbosity=1` | 21 lulus; metadata tipe 1/2 dan tanpa tambahan, hitung periode kanonik, serta jalur DOCX harian lama. |
+| 2026-09-30 | E2 | `docker exec -e POSTGRES_TEST_DB=test_twk_export_43_e2 ahsp_web python manage.py test detail_project.tests_export_penambahan_waktu_kerja.ExtensionDailyWordTests detail_project.tests_wp_export_parity.JadwalDailyDocxExportTests --settings=config.settings.test_pg --noinput --verbosity=1` | 14 lulus; DOCX W7 dapat dibuat, W6 hanya 20/09 bertanda, tipe 1 bertanda sesudah Rabu, hari di luar akhir tambahan ditolak. |
 
 ## 8. Log temuan & keputusan tambahan
 
 | Tanggal | Langkah | Temuan / keputusan | Oleh |
 |---|---|---|---|
-| | | | |
+| 2026-09-30 | E2 | Penanda harian K-15 ditempatkan di subjudul tanggal/minggu. Halaman dokumentasi hari yang sama memakai subjudul itu juga; isi pekerjaan dan pengesahan tetap. | Codex |

@@ -18,7 +18,7 @@ from .volume_pekerjaan_adapter import VolumePekerjaanAdapter
 from .harga_items_adapter import HargaItemsAdapter
 from .rincian_ahsp_adapter import RincianAHSPAdapter
 from .jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
-from detail_project.timeline_utils import is_extension_day
+from detail_project.timeline_utils import is_extension_day, work_period_end
 
 
 logger = logging.getLogger(__name__)
@@ -1283,7 +1283,7 @@ class ExportManager:
         from .errors import ExportValidationError
 
         project_start = getattr(self.project, 'tanggal_mulai', None)
-        project_end = getattr(self.project, 'tanggal_selesai', None)
+        project_end = work_period_end(self.project)
         if not project_start:
             raise ExportValidationError(
                 "Tanggal mulai proyek belum diisi. Lengkapi data proyek sebelum membuat laporan harian."

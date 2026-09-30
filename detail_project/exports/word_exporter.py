@@ -2021,7 +2021,10 @@ class WordExporter:
     def _daily_subtitle(self, report: Dict[str, Any]) -> str:
         week = report.get('week_number')
         week_text = f"Minggu {week}" if week else "Minggu -"
-        return f"{self._daily_day_name(report)}, {self._daily_date_text(report)} | {week_text}"
+        subtitle = f"{self._daily_day_name(report)}, {self._daily_date_text(report)} | {week_text}"
+        if report.get('is_extension_day'):
+            subtitle += " | Penambahan Waktu Kerja"
+        return subtitle
 
     def _daily_progress_values(self, report: Dict[str, Any]) -> tuple[str, str, str]:
         progress = report.get('previous_progress') or report.get('progress_previous_week') or {}
