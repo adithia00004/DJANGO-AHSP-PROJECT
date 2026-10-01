@@ -3,7 +3,7 @@
  *
  * KONTRAK (T-1, docs/RENCANA_PERAPIAN_PROYEK_20261001.md §5.2):
  * - Bentuk pemanggilan yang didukung:
- *     DP.toast.show({message, type, duration, title, closable, icon})
+ *     DP.toast.show({message, type, duration, title, closable, icon, actions})
  *     DP.toast.show(message, type, durationOrOptions)
  *     DP.toast.success|error|warning|info|danger|warn(message, durationOrOptions)
  *     DP.core.toast.show(...), window.showToast(message, type, durationOrOptions)
@@ -129,6 +129,11 @@
       duration: resolveDuration(type, opts.duration),
       closable,
       icon: opts.icon || null,
+      actions: Array.isArray(opts.actions)
+        ? opts.actions
+          .filter((action) => action && typeof action.onClick === 'function')
+          .map((action) => ({ label: String(action.label || 'OK'), onClick: action.onClick }))
+        : [],
     };
   }
 
@@ -158,7 +163,7 @@
 
   // ===== CREATE TOAST ELEMENT =====
   function createToast(opts) {
-    const { message, title, type, closable, icon } = opts;
+    const { message, title, type, closable, icon, actions } = opts;
 
     const toast = document.createElement('div');
     toast.className = `dp-toast dp-toast-${type}`;
@@ -201,6 +206,26 @@
       closeBtn.addEventListener('click', () => removeToast(toast));
     }
 
+    if (actions.length) {
+      const actionArea = document.createElement('div');
+      actionArea.className = 'dp-toast-actions';
+      actions.forEach((action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dp-toast-action';
+        button.textContent = action.label;
+        button.addEventListener('click', () => {
+          try {
+            action.onClick();
+          } finally {
+            removeToast(toast);
+          }
+        });
+        actionArea.appendChild(button);
+      });
+      toast.querySelector('.dp-toast-content').appendChild(actionArea);
+    }
+
     return toast;
   }
 
@@ -238,7 +263,9 @@
     const area = ensureToastArea();
 
     // Deduplikasi: pesan sama yang masih tampil -> perpanjang + penanda xN.
-    const key = opts.type === 'loading' ? null : `${opts.type}|${opts.title}|${opts.message}`;
+    const key = opts.type === 'loading' || opts.actions.length
+      ? null
+      : `${opts.type}|${opts.title}|${opts.message}`;
     const existing = key ? active.get(key) : null;
     if (existing && existing.parentNode && !existing.classList.contains('dp-toast-hide')) {
       existing._dpCount += 1;

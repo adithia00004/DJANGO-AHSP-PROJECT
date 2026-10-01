@@ -100,6 +100,35 @@
     word-break: break-word;
 }
 
+/* Optional actions (for example, Undo after saving or importing). */
+.dp-toast-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.625rem;
+}
+
+.dp-toast-action {
+    border: 1px solid var(--dp-c-primary, #0d6efd);
+    border-radius: var(--dp-radius-sm, 0.25rem);
+    padding: 0.25rem 0.625rem;
+    background: var(--dp-c-primary, #0d6efd);
+    color: #fff;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.dp-toast-action:hover {
+    filter: brightness(0.92);
+}
+
+.dp-toast-action:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
 /* Close Button */
 .dp-toast-close {
     flex-shrink: 0;
