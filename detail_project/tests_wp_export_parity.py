@@ -843,22 +843,22 @@ class JadwalDailyDocxExportTests(TestCase):
         # (bug lama: hanya minggu sebelumnya saja).
         texts = self._table_texts(self._daily_docx(15).tables[0])
         self.assertIn("s.d. Minggu 2", texts)
-        self.assertIn("20.00%", texts)
-        self.assertIn("10.00%", texts)
-        self.assertIn("-10.00%", texts)
+        self.assertIn("20,00%", texts)
+        self.assertIn("10,00%", texts)
+        self.assertIn("-10,00%", texts)
 
     def test_daily_current_week_shows_planned_target_only(self):
         # 15 Jan = Minggu 3: target kumulatif W1..W3 = 30% (+10% minggu ini);
         # realisasi & deviasi minggu berjalan belum ada -> '-'.
         table = self._daily_docx(15).tables[0]
         current_col = [row.cells[4].text for row in table.rows]
-        self.assertEqual(current_col, ["s.d. Minggu 3", "30.00% (+10.00%)", "-", "-"])
+        self.assertEqual(current_col, ["s.d. Minggu 3", "30,00% (+10,00%)", "-", "-"])
 
     def test_daily_progress_first_week_shows_zero_not_dash(self):
         table = self._daily_docx(1).tables[0]
         previous_col = [row.cells[3].text for row in table.rows]
-        self.assertEqual(previous_col, ["Awal Proyek", "0.00%", "0.00%", "0.00%"])
-        self.assertEqual(table.rows[1].cells[4].text, "10.00% (+10.00%)")
+        self.assertEqual(previous_col, ["Awal Proyek", "0,00%", "0,00%", "0,00%"])
+        self.assertEqual(table.rows[1].cells[4].text, "10,00% (+10,00%)")
 
     def test_daily_identity_table_drops_fields_shown_elsewhere(self):
         texts = " ".join(self._table_texts(self._daily_docx(15).tables[0]))

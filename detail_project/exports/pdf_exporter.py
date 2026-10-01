@@ -282,6 +282,9 @@ class NumberedCanvas(pdf_canvas.Canvas):
         
         # Draw header/footer on THIS page BEFORE finishing
         self._draw_header_footer()
+        if self._current_segment == COVER_SEGMENT:
+            # The cover marker applies to the cover page only.
+            self._current_segment = ''
         
         # Standard behavior
         super().showPage()
@@ -297,8 +300,9 @@ class NumberedCanvas(pdf_canvas.Canvas):
         
         Skip page 1 (cover page) - no header/footer on cover.
         """
-        # SKIP COVER PAGE (page 1)
-        if self._page_count == 1:
+        # SKIP COVER PAGES: page 1 and every page marked as a cover (covers of
+        # the 2nd+ period in monthly/weekly reports used to get a header).
+        if self._page_count == 1 or self._page_segments.get(self._page_count) == COVER_SEGMENT:
             return
         
         width, height = self._pagesize
@@ -362,6 +366,10 @@ def make_numbered_canvas(project_name='', section_title=''):
         return NumberedCanvas(*args, project_name=project_name, 
                             section_title=section_title, **kwargs)
     return canvas_maker
+
+
+# Reserved segment name: pages carrying it are covers (no header/footer).
+COVER_SEGMENT = '__cover__'
 
 
 def _pct_id(value, signed: bool = False, decimals: int = 2) -> str:
@@ -3183,7 +3191,8 @@ class PDFExporter(ConfigExporterBase):
         """
         from reportlab.platypus.flowables import HRFlowable
 
-        elements = []
+        # Marks this page as a cover so NumberedCanvas skips header/footer.
+        elements = [SegmentMarker(COVER_SEGMENT)]
 
         # Frame content (will be wrapped in border)
         frame_content = [Spacer(1, 60*mm)]

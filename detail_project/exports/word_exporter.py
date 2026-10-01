@@ -2472,9 +2472,12 @@ class WordExporter:
             numeric = float(value) * 100
         except (TypeError, ValueError):
             return '-'
+        # Format id-ID (koma desimal, doc 30 / R-49), sama dengan PDF.
+        from .cell_format import format_cell_display
+        text = format_cell_display(numeric, '#,##0.00')
         if signed and numeric > 0:
-            return f"+{numeric:.2f}%"
-        return f"{numeric:.2f}%"
+            return f"+{text}%"
+        return f"{text}%"
 
     def _create_daily_response(self, reports: List[Dict[str, Any]]) -> HttpResponse:
         self._apply_min_row_heights()

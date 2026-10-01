@@ -809,6 +809,18 @@ class WordProgressReportTests(ExtensionSummaryFixtureMixin, TestCase):
         self.assertIn('Akumulasi Rencana', text)
         self.assertIsNone(re.search(r'\d\.\d{2}%', text))
 
+    def test_every_pdf_cover_has_no_header_footer(self):
+        # Dulu hanya halaman 1 yang bersih; cover periode ke-2 dst. ikut header.
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            'pdf', report_type='weekly', weeks=[6, 7],
+        )
+        covers = [page for page in pdf_page_texts(response.content) if 'LAPORAN MINGGU ke-' in page]
+        self.assertEqual(len(covers), 2)
+        for cover in covers:
+            self.assertNotIn('Dashboard-RAB.com', cover)
+        pages = pdf_page_texts(response.content)
+        self.assertTrue(any('Dashboard-RAB.com' in page for page in pages))
+
     def test_weekly_word_without_extension_has_progress_and_signature(self):
         text = self._text(self._document(self.without_extension, 'weekly', weeks=[6]))
         self.assertIn('LAPORAN MINGGU ke-6', text)
