@@ -171,15 +171,13 @@ class SyncLedTemplateTests(TestCase):
         jadwal_source = (
             self.static_js_dir / "src" / "jadwal_kegiatan_app.js"
         ).read_text(encoding="utf-8")
-        legacy_save_source = (
-            self.static_js_dir
-            / "jadwal_pekerjaan"
-            / "kelola_tahapan"
-            / "save_handler_module.js"
+        active_save_source = (
+            self.static_js_dir / "src" / "modules" / "core" / "save-handler.js"
         ).read_text(encoding="utf-8")
 
         self.assertIn("FULL_RELOAD_SCOPES", sync_source)
         self.assertIn("event?.detail?.scope !== 'jadwal'", jadwal_source)
         self.assertIn("dp:sync-led-ack", jadwal_source)
-        self.assertIn("mode: state.progressMode || 'planned'", legacy_save_source)
-        self.assertNotIn("mode: state.timeScale", legacy_save_source)
+        self.assertIn("const progressMode = this.state?.progressMode || 'planned';", active_save_source)
+        self.assertIn("mode: progressMode", active_save_source)
+        self.assertNotIn("mode: state.timeScale", active_save_source)
