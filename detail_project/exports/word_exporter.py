@@ -25,7 +25,7 @@ from django.conf import settings
 from django.http import HttpResponse
 
 from docx import Document
-from docx.shared import Inches, Mm, Pt, Cm, RGBColor
+from docx.shared import Inches, Mm, Pt, Cm, RGBColor, Emu
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -822,8 +822,15 @@ class WordExporter:
         """
         self.doc = Document()
         self._setup_page_layout('A4', 'portrait')
+        # Tampilan mengikuti PDF (owner 2026-10-01): Arial seperti PDF/Word
+        # harian, header/footer berjalan, cover berbingkai tanpa header.
+        self._setup_daily_doc_styles()
 
         project_info = data.get('project_info', {}) or {}
+        project_name = str(
+            project_info.get('nama') or project_info.get('nama_project') or self.config.project_name or ''
+        )
+        label = 'Bulan' if mode == 'monthly' else 'Minggu'
         period_key = 'month' if mode == 'monthly' else 'week'
         entries = data.get('months_data' if mode == 'monthly' else 'weeks_data') or [
             {period_key: data.get(period_key) or 1, 'data': data}
@@ -838,16 +845,23 @@ class WordExporter:
             boundary = None
         state = {'first': True, 'summary_inserted': False}
 
-        def new_page():
+        def new_section(right_text, blank_first_page):
+            # Tiap cover/Rangkuman membuka section baru agar halaman pertamanya
+            # bisa tanpa header/footer (cover) dan teks header kanan sesuai
+            # segmen, seperti PDF.
             if not state['first']:
-                self.doc.add_page_break()
+                self.doc.add_section()
             state['first'] = False
+            self._progress_header_footer(
+                self.doc.sections[-1], project_name, right_text, blank_first_page,
+            )
 
         def add_summary():
-            new_page()
+            # Halaman pertama dokumen tetap tanpa header (PDF melewati hal. 1).
+            new_section('Jadwal Pekerjaan', blank_first_page=state['first'])
             self._daily_add_contract_summary(contract_summary)
             self.doc.add_paragraph()
-            self._build_signature_section(project_info)
+            self._build_signature_section(project_info, compact_title=True)
             state['summary_inserted'] = True
 
         for entry in entries:
@@ -857,12 +871,11 @@ class WordExporter:
             if contract_summary and boundary and not state['summary_inserted'] and period > boundary:
                 add_summary()
 
-            new_page()
+            new_section(f'Rincian Progress {label} ke-{period}', blank_first_page=True)
             period_info = dict(period_data.get('period') or {})
             period_info[period_key] = period
             period_info['is_extension_period'] = is_extension
-            self._build_cover_page(mode, project_info, period_info)
-            self.doc.add_page_break()
+            self._build_progress_cover(project_info, period_info, mode)
             self._build_progress_page(
                 period, project_info,
                 period_data.get('executive_summary') or {},
@@ -874,11 +887,10 @@ class WordExporter:
                 add_summary()
             else:
                 self.doc.add_paragraph()
-                self._build_signature_section(project_info)
+                self._build_signature_section(project_info, compact_title=True)
 
-        label = 'bulan' if mode == 'monthly' else 'minggu'
         periods = '_'.join(str(entry.get(period_key) or 1) for entry in entries)
-        return self._create_response(f'laporan_{label}_{periods}')
+        return self._create_response(f'laporan_{label.lower()}_{periods}')
 
     # =========================================================================
     # PAGE LAYOUT SETUP
@@ -942,22 +954,29 @@ class WordExporter:
         new_section.left_margin = Mm(self.config.margin_left)
         new_section.right_margin = Mm(self.config.margin_right)
     
-    def _build_signature_section(self, project_info: Dict[str, Any] = None):
+    def _build_signature_section(self, project_info: Dict[str, Any] = None,
+                                 compact_title: bool = False):
         """
         Build signature section with signature boxes.
         Uses config.signature_config for signature data.
-        
+
         Args:
             project_info: Optional project info dict (for backward compatibility)
+            compact_title: judul kecil rata kiri seperti PDF (laporan
+                bulanan/mingguan Jadwal); default judul besar di tengah.
         """
         # Add title
         title_para = self.doc.add_paragraph()
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title_run = title_para.add_run('LEMBAR PENGESAHAN')
         title_run.bold = True
-        title_run.font.size = Pt(14)
-        
-        self.doc.add_paragraph()  # Spacing
+        if compact_title:
+            title_run.font.size = Pt(9)
+            title_para.paragraph_format.space_before = Pt(10)
+            title_para.paragraph_format.space_after = Pt(4)
+        else:
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title_run.font.size = Pt(14)
+            self.doc.add_paragraph()  # Spacing
         
         # Get signature data from config
         sig_config = self.config.signature_config
@@ -1613,121 +1632,401 @@ class WordExporter:
     # PROGRESS PAGE
     # =========================================================================
     
+    # -------------------------------------------------------------------------
+    # Laporan bulanan/mingguan: tampilan mengikuti PDF (owner 2026-10-01, R-48)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _hex(color: str) -> str:
+        return color.lstrip('#').upper()
+
+    def _usable_size(self, section=None):
+        section = section or self.doc.sections[-1]
+        width = section.page_width - section.left_margin - section.right_margin
+        height = section.page_height - section.top_margin - section.bottom_margin
+        return width, height
+
+    def _paragraph_border(self, paragraph, edge: str, color: str, size: str = '4'):
+        p_pr = paragraph._p.get_or_add_pPr()
+        borders = p_pr.find(qn('w:pBdr'))
+        if borders is None:
+            borders = OxmlElement('w:pBdr')
+            p_pr.append(borders)
+        element = OxmlElement(f'w:{edge}')
+        element.set(qn('w:val'), 'single')
+        element.set(qn('w:sz'), size)
+        element.set(qn('w:space'), '1')
+        element.set(qn('w:color'), self._hex(color))
+        borders.append(element)
+
+    def _cell_edges(self, cell, color: str, size: str, edges=('top', 'left', 'bottom', 'right'),
+                    val: str = 'single'):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        tc_borders = tc_pr.first_child_found_in('w:tcBorders')
+        if tc_borders is None:
+            tc_borders = OxmlElement('w:tcBorders')
+            tc_pr.append(tc_borders)
+        for edge in edges:
+            element = tc_borders.find(qn(f'w:{edge}'))
+            if element is None:
+                element = OxmlElement(f'w:{edge}')
+                tc_borders.append(element)
+            element.set(qn('w:val'), val)
+            element.set(qn('w:sz'), size)
+            element.set(qn('w:color'), self._hex(color))
+
+    def _cell_margins(self, cell, top=None, bottom=None, left=None, right=None):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        margins = tc_pr.find(qn('w:tcMar'))
+        if margins is None:
+            margins = OxmlElement('w:tcMar')
+            tc_pr.append(margins)
+        for edge, value in (('top', top), ('bottom', bottom), ('left', left), ('right', right)):
+            if value is None:
+                continue
+            element = OxmlElement(f'w:{edge}')
+            element.set(qn('w:w'), str(int(value.twips)))
+            element.set(qn('w:type'), 'dxa')
+            margins.append(element)
+
+    def _set_widths(self, table, widths):
+        """Lebar kolom (Length) ke tblGrid + tiap sel; autofit dimatikan."""
+        table.autofit = False
+        widths = [Emu(int(width)) for width in widths]
+        for grid_col, width in zip(table._tbl.tblGrid.findall(qn('w:gridCol')), widths):
+            grid_col.set(qn('w:w'), str(int(width.twips)))
+        for row in table.rows:
+            for idx, width in enumerate(widths):
+                if idx < len(row.cells):
+                    row.cells[idx].width = width
+
+    def _put_text(self, cell_or_paragraph, text, *, size=8, bold=False, color=None,
+                  align=None, space_before=0, space_after=0):
+        paragraph = (cell_or_paragraph.paragraphs[0]
+                     if hasattr(cell_or_paragraph, 'paragraphs') else cell_or_paragraph)
+        paragraph.paragraph_format.space_before = Pt(space_before)
+        paragraph.paragraph_format.space_after = Pt(space_after)
+        if align is not None:
+            paragraph.alignment = align
+        run = paragraph.add_run('' if text is None else str(text))
+        run.bold = bold
+        run.font.size = Pt(size)
+        if color:
+            run.font.color.rgb = RGBColor.from_string(self._hex(color))
+        return run
+
+    def _progress_header_footer(self, section, project_name: str, right_text: str,
+                                blank_first_page: bool):
+        """Header: nama proyek (kiri) + segmen (kanan) bergaris bawah; footer
+        "Dashboard-RAB.com" bergaris atas -- sama dengan header/footer PDF.
+        Halaman pertama section (cover) tanpa header/footer."""
+        from docx.enum.text import WD_TAB_ALIGNMENT
+
+        section.header_distance = Mm(5)
+        section.footer_distance = Mm(4)
+        section.different_first_page_header_footer = blank_first_page
+        width, _ = self._usable_size(section)
+
+        header = section.header
+        header.is_linked_to_previous = False
+        paragraph = header.paragraphs[0]
+        paragraph.text = ''
+        tab_stops = paragraph.paragraph_format.tab_stops
+        # Gaya 'Header' bawaan punya tab tengah 3,25" & kanan 6,5" yang
+        # menarik teks kanan ke tengah; dibersihkan lalu satu tab kanan di tepi.
+        for default_stop in (Inches(3.25), Inches(6.5)):
+            tab_stops.add_tab_stop(default_stop, WD_TAB_ALIGNMENT.CLEAR)
+        tab_stops.add_tab_stop(Emu(int(width)), WD_TAB_ALIGNMENT.RIGHT)
+        self._put_text(paragraph, (project_name or '')[:50], color=UTS.TEXT_SECONDARY)
+        self._put_text(paragraph, f"\t{(right_text or '')[:60]}", color=UTS.TEXT_SECONDARY)
+        self._paragraph_border(paragraph, 'bottom', UTS.LIGHT_BORDER)
+
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        paragraph = footer.paragraphs[0]
+        paragraph.text = ''
+        self._put_text(paragraph, 'Dashboard-RAB.com', color=UTS.TEXT_MUTED,
+                       align=WD_ALIGN_PARAGRAPH.RIGHT)
+        self._paragraph_border(paragraph, 'top', UTS.LIGHT_BORDER)
+
+        if blank_first_page:
+            for part in (section.first_page_header, section.first_page_footer):
+                part.is_linked_to_previous = False
+                part.paragraphs[0].text = ''
+
+    def _build_progress_cover(self, project_info: Dict[str, Any], period_info: Dict[str, Any],
+                              mode: str):
+        """Cover sama dengan PDF (R-36): bingkai selebar area cetak, judul di
+        tengah + garis tipis, nama proyek, periode, identitas rata kanan-kiri.
+        Masa Penambahan Waktu Kerja: judul & nama proyek merah tua (R-42)."""
+        from docx.enum.table import WD_ROW_HEIGHT_RULE
+
+        is_extension = bool(period_info.get('is_extension_period'))
+        accent = UTS.EXTENSION_PRIMARY if is_extension else UTS.PRIMARY_LIGHT
+        name_color = UTS.EXTENSION_PRIMARY if is_extension else UTS.PRIMARY_DARK
+        if mode == 'monthly':
+            title = f"LAPORAN BULAN ke-{period_info.get('month', 1)}"
+        else:
+            title = f"LAPORAN MINGGU ke-{period_info.get('week', 1)}"
+
+        width, height = self._usable_size()
+        frame = self.doc.add_table(rows=1, cols=1)
+        frame.alignment = WD_TABLE_ALIGNMENT.CENTER
+        self._set_widths(frame, [width])
+        self._min_height_exempt.add(id(frame._tbl))
+        row = frame.rows[0]
+        # Sisa kecil agar paragraf wajib sesudah tabel tetap di halaman cover.
+        row.height = Emu(int(height - Mm(6)))
+        row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
+        cell = frame.cell(0, 0)
+        self._cell_edges(cell, UTS.PRIMARY_LIGHT, '16')  # 2 pt, warna bingkai PDF
+        side = Mm(10)
+        self._cell_margins(cell, top=Mm(5), bottom=Mm(5), left=side, right=side)
+        inner = width - 2 * side
+
+        self._put_text(cell, title, size=22, bold=True, color=accent,
+                       align=WD_ALIGN_PARAGRAPH.CENTER, space_before=Mm(60).pt)
+        rule = cell.add_paragraph()
+        rule.paragraph_format.space_before = Mm(3)
+        rule.paragraph_format.space_after = Mm(8)
+        indent = Emu(int((inner - Mm(60)) / 2))
+        rule.paragraph_format.left_indent = indent
+        rule.paragraph_format.right_indent = indent
+        rule.paragraph_format.line_spacing = Pt(2)
+        self._paragraph_border(rule, 'bottom', accent, size='8')
+
+        project_name = project_info.get('nama') or project_info.get('nama_project') or self.config.project_name
+        self._put_text(cell.add_paragraph(), project_name or 'Nama Proyek', size=16, bold=True,
+                       color=name_color, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=Mm(6).pt)
+
+        start, end = period_info.get('start_date'), period_info.get('end_date')
+        if start and end and hasattr(start, 'strftime') and hasattr(end, 'strftime'):
+            self._put_text(cell.add_paragraph(), f"Periode: {start:%d/%m/%Y} - {end:%d/%m/%Y}",
+                           size=12, color=UTS.TEXT_SECONDARY, align=WD_ALIGN_PARAGRAPH.CENTER,
+                           space_after=Mm(14).pt)
+
+        details = []
+        for label, key in (('Lokasi', 'lokasi'), ('Pemilik', 'nama_client'), ('Sumber Dana', 'sumber_dana')):
+            if project_info.get(key):
+                details.append((label, project_info.get(key)))
+        anggaran = project_info.get('anggaran')
+        if anggaran:
+            from .cell_format import format_cell_display
+            try:
+                details.append(('Anggaran', f"Rp {format_cell_display(float(anggaran), '#,##0')}"))
+            except (TypeError, ValueError):
+                details.append(('Anggaran', f"Rp {anggaran}"))
+        if details:
+            table = cell.add_table(rows=len(details), cols=3)
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            self._set_widths(table, [Mm(40), Mm(5), Mm(100)])
+            for idx, (label, value) in enumerate(details):
+                cells = table.rows[idx].cells
+                self._put_text(cells[0], label, size=10, bold=True, color=UTS.TEXT_SECONDARY,
+                               align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=Mm(1).pt, space_after=Mm(1).pt)
+                self._put_text(cells[1], ':', size=10, color=UTS.TEXT_SECONDARY,
+                               align=WD_ALIGN_PARAGRAPH.CENTER, space_before=Mm(1).pt, space_after=Mm(1).pt)
+                self._put_text(cells[2], value, size=10, color='#2d3748',
+                               space_before=Mm(1).pt, space_after=Mm(1).pt)
+
+    def _progress_panel(self, cell, title: str, rows, title_color: str, label_width=None):
+        """Panel label : nilai berlatar abu muda + bingkai tipis (PDF)."""
+        self._put_text(cell, title, size=10, bold=True, color=title_color, space_after=Mm(2).pt)
+        width = cell.width
+        table = cell.add_table(rows=len(rows), cols=3)
+        label_w, sep_w = label_width or Mm(27), Mm(4)
+        self._set_widths(table, [label_w, sep_w, width - label_w - sep_w - Mm(2)])
+        last = len(rows) - 1
+        for idx, (label, value, value_color, value_bold) in enumerate(rows):
+            cells = table.rows[idx].cells
+            self._put_text(cells[0], label, size=8, bold=True, color=UTS.TEXT_SECONDARY,
+                           space_before=1.5, space_after=1.5)
+            self._put_text(cells[1], ':', size=8, color=UTS.TEXT_SECONDARY,
+                           space_before=1.5, space_after=1.5)
+            self._put_text(cells[2], value, size=8, bold=value_bold,
+                           color=value_color or UTS.TEXT_PRIMARY, space_before=1.5, space_after=1.5)
+            for col, c in enumerate(cells):
+                self._daily_set_cell_shading(c, 'F8FAFC')
+                edges = ['top'] if idx == 0 else []
+                if idx == last:
+                    edges.append('bottom')
+                if col == 0:
+                    edges.append('left')
+                if col == 2:
+                    edges.append('right')
+                if edges:
+                    self._cell_edges(c, UTS.LIGHT_BORDER, '4', edges)
+
     def _build_progress_page(self, period: int, project_info: Dict[str, Any],
                              summary: Dict[str, Any], hierarchy_data: List[Dict],
                              mode: str = 'monthly', is_extension: bool = False):
-        """Halaman Progres Pelaksanaan (Word), kolom & angka sama dengan PDF.
+        """Halaman Progres Pelaksanaan (Word), tampilan & angka sama dengan PDF.
 
-        Identitas, ringkasan (rencana/realisasi periode, akumulasi, deviasi),
-        lalu rincian per pekerjaan: bobot, kumulatif lalu, progres periode ini,
-        kumulatif ini (semua sudah tertimbang bobot oleh adapter).
+        Judul, panel IDENTITAS PROJECT | RINGKASAN PROGRESS berdampingan, lalu
+        RINCIAN PROGRESS: header kapital, baris klasifikasi diarsir penuh, garis
+        tebal mengapit kolom progres, baris TOTAL. Uraian tidak dipotong
+        (pilihan owner 2026-10-01; PDF memotong karena keterbatasan sel).
         """
         from .cell_format import format_cell_display
 
         label = 'Bulan' if mode == 'monthly' else 'Minggu'
-        accent = (UTS.EXTENSION_PRIMARY if is_extension else UTS.PRIMARY_LIGHT)[1:].upper()
+        accent = UTS.EXTENSION_PRIMARY if is_extension else UTS.PRIMARY_LIGHT
+        accent_dark = UTS.EXTENSION_PRIMARY if is_extension else UTS.PRIMARY_DARK
         prefix = 'progress_bulan' if mode == 'monthly' else 'progress_minggu'
+        center = WD_ALIGN_PARAGRAPH.CENTER
 
-        def pct(value, signed=False):
-            text = format_cell_display(value or 0, '#,##0.00')
-            if signed and (value or 0) > 0:
+        def pct(value, signed=False, show_zero=True):
+            number = float(value or 0)
+            if number == 0 and not show_zero:
+                return '-'
+            text = format_cell_display(number, '#,##0.00')
+            if signed and number >= 0:
                 text = f'+{text}'
             return f'{text}%'
 
-        self._daily_add_title(
-            f'PROGRESS PELAKSANAAN PEKERJAAN {label.upper()} KE-{period}',
-            'Penambahan Waktu Kerja' if is_extension else '',
-            accent=accent,
-        )
+        def rupiah(value):
+            number = float(value or 0)
+            return f"Rp {format_cell_display(number, '#,##0')}" if number > 0 else '-'
 
-        # Identitas + ringkasan dalam satu tabel dua blok.
+        width, _ = self._usable_size()
+
+        title = self.doc.add_paragraph()
+        # Halaman baru lewat page_break_before (bukan paragraf page break
+        # sesudah cover) agar tidak muncul halaman kosong.
+        title.paragraph_format.page_break_before = True
+        self._put_text(title, f'PROGRESS PELAKSANAAN PEKERJAAN {label.upper()} KE-{period}',
+                       size=16, bold=True, color=accent, align=center,
+                       space_before=Mm(4).pt, space_after=(Pt(3).pt if is_extension else Mm(6).pt))
+        if is_extension:
+            self._put_text(self.doc.add_paragraph(), 'Penambahan Waktu Kerja', size=10, bold=True,
+                           color=accent, align=center, space_after=Mm(5).pt)
+
+        deviation = float(summary.get('deviation_cumulative') or 0)
+        if deviation > 0:
+            deviation_color = '#22c55e'
+        elif deviation < 0:
+            deviation_color = '#ef4444'
+        else:
+            deviation_color = '#eab308'
         identity = [
             ('Nama Project', self._project_value(project_info, 'nama', 'nama_project', default=self.config.project_name)),
             ('Pemilik', self._project_value(project_info, 'nama_client', default='-')),
             ('Sumber Dana', self._project_value(project_info, 'sumber_dana', default='-')),
             ('Lokasi', self._project_value(project_info, 'lokasi', default='-')),
+        ] + [
+            (key, value) for key, value in (
+                ('Ket. Project 1', project_info.get('ket_project1')),
+                ('Ket. Project 2', project_info.get('ket_project2')),
+            ) if value and value != '-'
         ]
         ringkasan = [
-            (f'Rencana {label} Ini', pct(summary.get('target_period'))),
-            (f'Realisasi {label} Ini', pct(summary.get('actual_period'))),
-            ('Akumulasi Rencana', pct(summary.get('cumulative_target'))),
-            ('Akumulasi Realisasi', pct(summary.get('cumulative_actual'))),
-            ('Deviasi', pct(summary.get('deviation_cumulative'), signed=True)),
+            (f'Rencana {label} Ini', pct(summary.get('target_period')), None, False),
+            (f'Realisasi {label} Ini', pct(summary.get('actual_period')), None, False),
+            ('Akumulasi Rencana', pct(summary.get('cumulative_target')), None, False),
+            ('Akumulasi Realisasi', pct(summary.get('cumulative_actual')), None, False),
+            ('Deviasi', pct(deviation, signed=True), deviation_color, True),
         ]
-        rows = max(len(identity), len(ringkasan)) + 1
-        info = self.doc.add_table(rows=rows, cols=4)
-        info.alignment = WD_TABLE_ALIGNMENT.CENTER
-        info.autofit = False
-        self._daily_set_col_widths(info, [3.0, 6.0, 4.0, 5.0])
-        self._daily_set_cell_text(info.cell(0, 0), 'IDENTITAS PROJECT', bold=True, size=8, color=accent)
-        self._daily_set_cell_text(info.cell(0, 2), 'RINGKASAN PROGRESS', bold=True, size=8, color=accent)
-        for idx, (key, value) in enumerate(identity, start=1):
-            self._daily_set_cell_text(info.cell(idx, 0), key, bold=True, size=8)
-            self._daily_set_cell_text(info.cell(idx, 1), value, size=8)
-        for idx, (key, value) in enumerate(ringkasan, start=1):
-            self._daily_set_cell_text(info.cell(idx, 2), key, bold=True, size=8)
-            self._daily_set_cell_text(info.cell(idx, 3), value, size=8, align=WD_ALIGN_PARAGRAPH.RIGHT)
+
+        gap = Mm(6)
+        panel = int((width - gap) / 2)
+        layout = self.doc.add_table(rows=1, cols=3)
+        layout.alignment = WD_TABLE_ALIGNMENT.CENTER
+        self._set_widths(layout, [panel, gap, panel])
+        self._min_height_exempt.add(id(layout._tbl))
+        for col in range(3):
+            self._cell_margins(layout.cell(0, col), left=Mm(0), right=Mm(0))
+        self._progress_panel(layout.cell(0, 0), 'IDENTITAS PROJECT',
+                             [(k, v, None, False) for k, v in identity], accent_dark)
+        self._progress_panel(layout.cell(0, 2), 'RINGKASAN PROGRESS', ringkasan, accent_dark,
+                             label_width=Mm(40))
 
         heading = self.doc.add_paragraph()
-        heading.paragraph_format.space_before = Pt(8)
-        heading_run = heading.add_run('RINCIAN PROGRESS')
-        heading_run.bold = True
-        heading_run.font.size = Pt(9)
-        heading_run.font.color.rgb = RGBColor.from_string(accent)
+        self._put_text(heading, 'RINCIAN PROGRESS', size=10, bold=True, color=accent_dark,
+                       space_before=Mm(6).pt, space_after=Mm(2).pt)
 
         headers = [
-            'Uraian Pekerjaan', 'Volume', 'Harga Satuan', 'Total Harga', 'Bobot (%)',
-            f'Kumulatif {label} Lalu', f'Progress {label} Ini', f'Kumulatif {label} Ini',
+            'URAIAN PEKERJAAN', 'VOLUME', 'HARGA\nSATUAN', 'TOTAL\nHARGA', 'BOBOT\n(%)',
+            f'KUMULATIF\n{label.upper()} LALU', f'PROGRESS\n{label.upper()} INI',
+            f'KUMULATIF\n{label.upper()} INI',
         ]
+        # Proporsi kolom PDF [49,18,22,22,12,18,18,18] mm diskalakan ke lebar cetak.
+        ratios = [49, 18, 22, 22, 12, 18, 18, 18]
+        widths = [int(width * r / sum(ratios)) for r in ratios]
         table = self.doc.add_table(rows=1, cols=len(headers))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        table.autofit = False
-        self._daily_set_col_widths(table, [5.4, 1.4, 2.1, 2.4, 1.4, 1.8, 1.7, 1.8])
+        self._set_widths(table, widths)
+        # Padding sel kiri/kanan 1 mm seperti PDF (bawaan Word 1,9 mm membuat
+        # "BOBOT" & "100,00%" terlipat di kolom sempit).
+        tbl_pr = table._tbl.tblPr
+        cell_mar = OxmlElement('w:tblCellMar')
+        for edge in ('left', 'right'):
+            element = OxmlElement(f'w:{edge}')
+            element.set(qn('w:w'), str(int(Mm(1).twips)))
+            element.set(qn('w:type'), 'dxa')
+            cell_mar.append(element)
+        tbl_pr.append(cell_mar)
         for idx, header in enumerate(headers):
             cell = table.cell(0, idx)
-            self._daily_set_cell_text(cell, header, bold=True, size=7, color='FFFFFF',
-                                      align=WD_ALIGN_PARAGRAPH.CENTER)
-            self._daily_set_cell_shading(cell, accent)
+            self._put_text(cell, header, size=7, bold=True, color='#FFFFFF', align=center)
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            self._daily_set_cell_shading(cell, self._hex(accent))
         self._enable_header_repeat(table)
 
         totals = {'harga': 0.0, 'bobot': 0.0, 'lalu': 0.0, 'ini': 0.0}
         for item in hierarchy_data:
             cells = table.add_row().cells
-            level = int(item.get('level') or 3)
-            is_job = item.get('type') == 'pekerjaan'
-            name = ('   ' * max(0, level - 1)) + str(item.get('name') or '')
-            self._daily_set_cell_text(cells[0], name, bold=not is_job, size=7)
+            level = int(item.get('level') or 0)
+            item_type = item.get('type') or 'pekerjaan'
+            is_job = item_type == 'pekerjaan'
+            size, bold = (7, False)
+            if item_type == 'klasifikasi':
+                size, bold = 8, True
+            elif item_type == 'sub_klasifikasi':
+                size, bold = 7.5, True
+            name_paragraph = cells[0].paragraphs[0]
+            name_paragraph.paragraph_format.left_indent = Mm(2 * max(0, level))
+            self._put_text(cells[0], item.get('name') or item.get('uraian') or '', size=size, bold=bold)
+            for cell in cells:
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             if not is_job:
-                self._daily_set_cell_shading(cells[0], 'E2E8F0' if level <= 1 else 'F1F5F9')
+                fill = UTS.KLASIFIKASI_BG if item_type == 'klasifikasi' else UTS.SUB_KLASIFIKASI_BG
+                for cell in cells:
+                    self._daily_set_cell_shading(cell, self._hex(fill))
                 continue
             lalu = float(item.get(f'{prefix}_lalu') or 0)
             ini = float(item.get(f'{prefix}_ini') or 0)
             harga = float(item.get('harga') or 0)
             bobot = float(item.get('bobot') or 0)
+            volume = float(item.get('volume') or 0)
             totals['harga'] += harga
             totals['bobot'] += bobot
             totals['lalu'] += lalu
             totals['ini'] += ini
-            right = WD_ALIGN_PARAGRAPH.RIGHT
-            self._daily_set_cell_text(cells[1], format_cell_display(item.get('volume') or 0, '#,##0.00'), size=7, align=right)
-            self._daily_set_cell_text(cells[2], f"Rp {format_cell_display(item.get('harga_satuan') or 0, '#,##0')}", size=7, align=right)
-            self._daily_set_cell_text(cells[3], f"Rp {format_cell_display(harga, '#,##0')}", size=7, align=right)
-            self._daily_set_cell_text(cells[4], pct(bobot), size=7, align=right)
-            self._daily_set_cell_text(cells[5], pct(lalu), size=7, align=right)
-            self._daily_set_cell_text(cells[6], pct(ini), size=7, align=right)
-            self._daily_set_cell_text(cells[7], pct(lalu + ini), size=7, align=right)
+            values = (
+                format_cell_display(volume, '#,##0.00') if volume > 0 else '-',
+                rupiah(item.get('harga_satuan')), rupiah(harga),
+                pct(bobot, show_zero=False), pct(lalu), pct(ini), pct(lalu + ini),
+            )
+            for idx, value in enumerate(values, start=1):
+                self._put_text(cells[idx], value, size=size, align=center)
 
+        if 99.9 <= totals['bobot'] <= 100.1:
+            totals['bobot'] = 100.0
         total_cells = table.add_row().cells
         for idx, value in enumerate((
-            'TOTAL', '', '', f"Rp {format_cell_display(totals['harga'], '#,##0')}",
-            pct(totals['bobot']), pct(totals['lalu']), pct(totals['ini']),
-            pct(totals['lalu'] + totals['ini']),
+            'TOTAL', '', '', rupiah(totals['harga']), pct(totals['bobot']),
+            pct(totals['lalu']), pct(totals['ini']), pct(totals['lalu'] + totals['ini']),
         )):
-            self._daily_set_cell_text(total_cells[idx], value, bold=True, size=7,
-                                      align=WD_ALIGN_PARAGRAPH.RIGHT if idx else None)
+            self._put_text(total_cells[idx], value, size=7, bold=True,
+                           align=center if idx else None)
+            total_cells[idx].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             self._daily_set_cell_shading(total_cells[idx], 'E8F4F8')
-        self._daily_set_table_borders(table, '6B7280', '4')
-        self._daily_set_table_borders(info, 'CBD5E1', '4')
+
+        self._daily_set_table_borders(table, self._hex(UTS.LIGHT_BORDER), '4')
+        # Garis abu tebal mengapit kolom progres (PDF LINEBEFORE kol.5 / LINEAFTER kol.7).
+        for row in table.rows:
+            self._cell_edges(row.cells[5], '#888888', '8', ('left',))
+            self._cell_edges(row.cells[7], '#888888', '8', ('right',))
 
     # =========================================================================
     # DAILY DOCX EXPORT HELPERS

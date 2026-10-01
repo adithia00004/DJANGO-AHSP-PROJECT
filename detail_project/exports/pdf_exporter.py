@@ -364,6 +364,18 @@ def make_numbered_canvas(project_name='', section_title=''):
     return canvas_maker
 
 
+def _pct_id(value, signed: bool = False, decimals: int = 2) -> str:
+    """Persen format id-ID (koma desimal, titik ribuan), keputusan doc 30.
+
+    ``signed`` meniru format ``:+`` lama: nol dan positif diberi '+'.
+    """
+    number = float(value or 0)
+    text = f"{number:,.{decimals}f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    if signed and number >= 0:
+        text = f"+{text}"
+    return f"{text}%"
+
+
 class SegmentMarker(Flowable):
     """
     Invisible flowable that signals a segment change to NumberedCanvas.
@@ -751,7 +763,7 @@ class PDFExporter(ConfigExporterBase):
         if value == 0 and not show_zero:
             return '-'
         try:
-            return f"{float(value):.{decimals}f}%"
+            return _pct_id(value, decimals=decimals)
         except (ValueError, TypeError):
             return '-'
     
@@ -2112,9 +2124,9 @@ class PDFExporter(ConfigExporterBase):
                 if summary:
                     summary_rows_data = [
                         ['Keterangan', 'Nilai'],
-                        ['Total Progress Rencana', f"{summary.get('total_planned', 0):.2f}%"],
-                        ['Total Progress Realisasi', f"{summary.get('total_actual', 0):.2f}%"],
-                        ['Deviasi', f"{summary.get('deviation', 0):+.2f}%"],
+                        ['Total Progress Rencana', _pct_id(summary.get('total_planned', 0))],
+                        ['Total Progress Realisasi', _pct_id(summary.get('total_actual', 0))],
+                        ['Deviasi', _pct_id(summary.get('deviation', 0), signed=True)],
                     ]
                     summary_table = Table(summary_rows_data, colWidths=[150, 100])
                     summary_table.setStyle(TableStyle([
@@ -3460,15 +3472,15 @@ class PDFExporter(ConfigExporterBase):
         
         # Format deviation with color
         deviation_para = Paragraph(
-            f'<font color="{deviation_color}"><b>{deviation:+.2f}%</b></font>',
+            f'<font color="{deviation_color}"><b>{_pct_id(deviation, signed=True)}</b></font>',
             ParagraphStyle('Deviation', fontSize=8, fontName='Helvetica')
         )
         
         ringkasan_data = [
-            ['Rencana Bulan Ini', ':', f"{summary.get('target_period', 0):.2f}%"],
-            ['Realisasi Bulan Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
-            ['Akumulasi Rencana', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
-            ['Akumulasi Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
+            ['Rencana Bulan Ini', ':', _pct_id(summary.get('target_period', 0))],
+            ['Realisasi Bulan Ini', ':', _pct_id(summary.get('actual_period', 0))],
+            ['Akumulasi Rencana', ':', _pct_id(summary.get('cumulative_target', 0))],
+            ['Akumulasi Realisasi', ':', _pct_id(summary.get('cumulative_actual', 0))],
             ['Deviasi', ':', deviation_para],  # Colored deviation
         ]
         
@@ -3898,16 +3910,16 @@ class PDFExporter(ConfigExporterBase):
         
         # Format deviation with color
         deviation_para = Paragraph(
-            f'<font color="{deviation_color}"><b>{deviation:+.2f}%</b></font>',
+            f'<font color="{deviation_color}"><b>{_pct_id(deviation, signed=True)}</b></font>',
             ParagraphStyle('Deviation', fontSize=8, fontName='Helvetica')
         )
         
         # Weekly labels: "Minggu Ini" instead of "Bulan Ini"
         ringkasan_data = [
-            ['Rencana Minggu Ini', ':', f"{summary.get('target_period', 0):.2f}%"],
-            ['Realisasi Minggu Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
-            ['Akumulasi Rencana', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
-            ['Akumulasi Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
+            ['Rencana Minggu Ini', ':', _pct_id(summary.get('target_period', 0))],
+            ['Realisasi Minggu Ini', ':', _pct_id(summary.get('actual_period', 0))],
+            ['Akumulasi Rencana', ':', _pct_id(summary.get('cumulative_target', 0))],
+            ['Akumulasi Realisasi', ':', _pct_id(summary.get('cumulative_actual', 0))],
             ['Deviasi', ':', deviation_para],  # Colored deviation
         ]
         
@@ -4274,13 +4286,13 @@ class PDFExporter(ConfigExporterBase):
         # Summary metrics
         period_label = summary.get('period_label', 'Periode Ini')
         metrics = [
-            [f'Target {period_label}', ':', f"{summary.get('target_period', 0):.2f}%"],
-            [f'Realisasi {period_label}', ':', f"{summary.get('actual_period', 0):.2f}%"],
-            ['Deviasi', ':', f"{summary.get('deviation', 0):+.2f}%"],
+            [f'Target {period_label}', ':', _pct_id(summary.get('target_period', 0))],
+            [f'Realisasi {period_label}', ':', _pct_id(summary.get('actual_period', 0))],
+            ['Deviasi', ':', _pct_id(summary.get('deviation', 0), signed=True)],
             ['', '', ''],
-            ['Kumulatif Target', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
-            ['Kumulatif Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
-            ['Deviasi Kumulatif', ':', f"{summary.get('deviation_cumulative', 0):+.2f}%"],
+            ['Kumulatif Target', ':', _pct_id(summary.get('cumulative_target', 0))],
+            ['Kumulatif Realisasi', ':', _pct_id(summary.get('cumulative_actual', 0))],
+            ['Deviasi Kumulatif', ':', _pct_id(summary.get('deviation_cumulative', 0), signed=True)],
         ]
         
         summary_table = Table(metrics, colWidths=[60*mm, 5*mm, 50*mm])
@@ -4346,9 +4358,9 @@ class PDFExporter(ConfigExporterBase):
         # Format delta values
         def format_delta(val):
             if val >= 0:
-                return f'<font color="#27ae60">+{val:.2f}%</font>'
+                return f'<font color="#27ae60">+{_pct_id(val)}</font>'
             else:
-                return f'<font color="#e74c3c">{val:.2f}%</font>'
+                return f'<font color="#e74c3c">{_pct_id(val)}</font>'
         
         # Headers
         headers = ['Metrik', f'{period_name} Lalu', f'{period_name} Ini', 'Delta']
@@ -4357,20 +4369,20 @@ class PDFExporter(ConfigExporterBase):
         data_rows = [
             [
                 'Target',
-                f"{previous_data.get('target_period', 0):.2f}%",
-                f"{current_data.get('target_period', 0):.2f}%",
+                _pct_id(previous_data.get('target_period', 0)),
+                _pct_id(current_data.get('target_period', 0)),
                 format_delta(comparison.get('delta_target', 0)),
             ],
             [
                 'Realisasi',
-                f"{previous_data.get('actual_period', 0):.2f}%",
-                f"{current_data.get('actual_period', 0):.2f}%",
+                _pct_id(previous_data.get('actual_period', 0)),
+                _pct_id(current_data.get('actual_period', 0)),
                 format_delta(comparison.get('delta_actual', 0)),
             ],
             [
                 'Kumulatif',
-                f"{previous_data.get('cumulative_actual', 0):.2f}%",
-                f"{current_data.get('cumulative_actual', 0):.2f}%",
+                _pct_id(previous_data.get('cumulative_actual', 0)),
+                _pct_id(current_data.get('cumulative_actual', 0)),
                 format_delta(comparison.get('delta_cumulative', 0)),
             ],
         ]

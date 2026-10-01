@@ -268,9 +268,9 @@ class MonthlyPdfRenderTests(_MonthlyFixtureMixin, TestCase):
         akumulasi = lines[lines.index("Akumulasi Realisasi") + 2]
         total_row = lines[lines.index("TOTAL") + 1:lines.index("TOTAL") + 6]
         # TOTAL: [total harga, bobot, kum. lalu, progress ini, kum. ini]
-        self.assertEqual(akumulasi, "100.00%")
+        self.assertEqual(akumulasi, "100,00%")  # id-ID (doc 30)
         self.assertEqual(total_row[4], akumulasi)
-        self.assertNotEqual(total_row[2], "100.00%")  # bekisting masih berjalan di bulan ini
+        self.assertNotEqual(total_row[2], "100,00%")  # bekisting masih berjalan di bulan ini
 
     def test_numbers_are_id_locale_and_not_truncated(self):
         text = "\n".join(self._monthly_pdf_pages(3))

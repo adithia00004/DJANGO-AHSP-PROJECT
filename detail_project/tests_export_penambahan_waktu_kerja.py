@@ -770,10 +770,44 @@ class WordProgressReportTests(ExtensionSummaryFixtureMixin, TestCase):
     @staticmethod
     def _text(document):
         parts = [p.text for p in document.paragraphs]
-        for table in document.tables:
-            for row in table.rows:
-                parts.extend(cell.text for cell in row.cells)
+
+        def walk(tables):
+            # Panel identitas/ringkasan adalah tabel di dalam sel (seperti PDF).
+            for table in tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        parts.append(cell.text)
+                        walk(cell.tables)
+
+        walk(document.tables)
         return "\n".join(parts)
+
+    def test_word_progress_follows_pdf_design(self):
+        # Owner 2026-10-01 (R-48): Word mingguan/bulanan mengikuti tampilan PDF.
+        document = self._document(self.next_week, 'weekly', weeks=[6])
+        self.assertEqual(document.styles['Normal'].font.name, 'Arial')
+        section = document.sections[0]
+        self.assertTrue(section.different_first_page_header_footer)  # cover tanpa header
+        self.assertEqual(section.first_page_header.paragraphs[0].text, '')
+        self.assertIn('Rincian Progress Minggu ke-6', section.header.paragraphs[0].text)
+        self.assertEqual(section.footer.paragraphs[0].text, 'Dashboard-RAB.com')
+        cover = document.tables[0]
+        self.assertEqual((len(cover.rows), len(cover.columns)), (1, 1))  # bingkai
+        self.assertIn('LAPORAN MINGGU ke-6', cover.cell(0, 0).text)
+        self.assertIn('Anggaran', cover.cell(0, 0).tables[0].cell(3, 0).text)
+        text = self._text(document)
+        for expected in ('IDENTITAS PROJECT', 'RINGKASAN PROGRESS', 'URAIAN PEKERJAAN',
+                         'Akumulasi Realisasi'):
+            self.assertIn(expected, text)
+        self.assertIsNone(re.search(r'\d\.\d{2}%', text))
+
+    def test_weekly_pdf_progress_percent_uses_id_locale(self):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            'pdf', report_type='weekly', weeks=[6, 7],
+        )
+        text = '\n'.join(pdf_page_texts(response.content))
+        self.assertIn('Akumulasi Rencana', text)
+        self.assertIsNone(re.search(r'\d\.\d{2}%', text))
 
     def test_weekly_word_without_extension_has_progress_and_signature(self):
         text = self._text(self._document(self.without_extension, 'weekly', weeks=[6]))
