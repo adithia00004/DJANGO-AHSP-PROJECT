@@ -1049,24 +1049,62 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # Snapshot natural-key maps BEFORE temporary re-indexing.
     existing_k_by_order = {k.ordering_index: k for k in klas_queryset}
     existing_s_by_klas_order = {(s.klasifikasi_id, s.ordering_index): s for s in sub_queryset}
+    existing_k_state = {
+        k.id: {"name": k.name, "ordering_index": k.ordering_index}
+        for k in klas_queryset
+    }
+    existing_s_state = {
+        s.id: {
+            "name": s.name,
+            "ordering_index": s.ordering_index,
+            "klasifikasi_id": s.klasifikasi_id,
+        }
+        for s in sub_queryset
+    }
 
-    # Free unique slots first to avoid transient UniqueViolation during reordering/moves.
-    # - Klasifikasi unique_together: (project, ordering_index)
-    # - SubKlasifikasi unique_together: (project, klasifikasi, ordering_index)
-    klas_temp_offset = 5_000_000
-    for idx, kobj in enumerate(klas_queryset, start=1):
-        kobj.ordering_index = klas_temp_offset + idx
-        kobj.save(update_fields=["ordering_index"])
+    # Jarak parkir ordering_index saat menyusun ulang pohon.
+    #
+    # Baris lama dipindahkan ke slot sementara supaya UPDATE per-baris tidak
+    # menabrak slot yang masih ditempati. Offset ini HARUS lebih besar dari
+    # jumlah baris mana pun yang mungkin ada di pohon final: dulu parkirnya
+    # `max + idx`, sehingga 35 baris diparkir di 36..70 -- dan begitu pengguna
+    # MENAMBAH satu baris, posisi final ke-36 menabrak baris parkir di 36.
+    # Akibatnya menambah pekerjaan selalu gagal (UniqueViolation), sementara
+    # menyusun ulang tanpa menambah tetap berhasil.
+    #
+    # Nilainya disamakan dengan _get_safe_temp_order() agar kedua mekanisme
+    # parkir tidak pernah saling tabrak. ordering_index PositiveIntegerField,
+    # jadi nilai negatif bukan pilihan.
+    ORDER_PARK_OFFSET = 1_000_000
 
-    sub_temp_offset = 6_000_000
-    for idx, sobj in enumerate(sub_queryset, start=1):
-        sobj.ordering_index = sub_temp_offset + idx
-        sobj.save(update_fields=["ordering_index"])
+    # Free unique slots with set-based updates. Per-row saves here made a normal
+    # full-tree save issue one UPDATE for every category, sub-category, and job.
+    if klas_queryset:
+        klas_max_order = max((k.ordering_index for k in klas_queryset), default=0)
+        for idx, kobj in enumerate(klas_queryset, start=1):
+            kobj.ordering_index = klas_max_order + ORDER_PARK_OFFSET + idx
+        Klasifikasi.objects.bulk_update(klas_queryset, ["ordering_index"])
+
+    if sub_queryset:
+        sub_max_order = max((s.ordering_index for s in sub_queryset), default=0)
+        for idx, sobj in enumerate(sub_queryset, start=1):
+            sobj.ordering_index = sub_max_order + ORDER_PARK_OFFSET + idx
+        SubKlasifikasi.objects.bulk_update(sub_queryset, ["ordering_index"])
 
     existing_k = {k.id: k for k in klas_queryset}
     existing_s = {s.id: s for s in sub_queryset}
     pekerjaan_queryset = list(Pekerjaan.objects.filter(project=project).order_by('id'))
     existing_p = {p.id: p for p in pekerjaan_queryset}
+    existing_p_state = {
+        p.id: {
+            "ordering_index": p.ordering_index,
+            "sub_klasifikasi_id": p.sub_klasifikasi_id,
+            "snapshot_kode": p.snapshot_kode,
+            "snapshot_uraian": p.snapshot_uraian,
+            "snapshot_satuan": p.snapshot_satuan,
+        }
+        for p in pekerjaan_queryset
+    }
 
     # N1 fix: pekerjaan yang dibawa EKSPLISIT by-id di payload TIDAK boleh menjadi
     # kandidat reuse-by-ordering_index. Tanpa pengecualian ini, baris baru tanpa id
@@ -1114,15 +1152,18 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             continue  # masih dipakai bundle oleh row surviving; biarkan C1 memblok delete
         reuse_pool.setdefault(pobj.ordering_index, []).append(pobj)
 
-    # BUG FIX #3 (REVISED): Set temporary high ordering_index to avoid UniqueViolation
-    # When deleting/reordering pekerjaan, we need to temporarily free up ordering_index values
-    # to prevent constraint violations during the update process.
-    # Cannot use negative values because ordering_index is PositiveIntegerField.
-    # Strategy: Temporarily shift all to very high values (1,000,000+), then assign final values.
-    temp_offset = 1_000_000
-    for idx, pobj in enumerate(pekerjaan_queryset, start=1):
-        pobj.ordering_index = temp_offset + idx  # Set to high temporary value (1000001, 1000002, ...)
-        pobj.save(update_fields=['ordering_index'])
+    # Free existing ordering slots in one SQL UPDATE. Saving every Pekerjaan here
+    # used to fire post_save cache invalidation signals once per row, even when
+    # the user only changed a single item (or saved an unchanged tree).
+    if pekerjaan_queryset:
+        current_max_order = max((p.ordering_index for p in pekerjaan_queryset), default=0)
+        for idx, pobj in enumerate(pekerjaan_queryset, start=1):
+            pobj.ordering_index = current_max_order + ORDER_PARK_OFFSET + idx
+        Pekerjaan.objects.bulk_update(pekerjaan_queryset, ["ordering_index"])
+
+    unchanged_klasifikasi: list[Klasifikasi] = []
+    unchanged_subklasifikasi: list[SubKlasifikasi] = []
+    unchanged_pekerjaan: list[Pekerjaan] = []
 
     def _get_or_reuse_pekerjaan_for_order(order: int):
         pool = reuse_pool.get(order)
@@ -1293,13 +1334,21 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             k_obj = existing_k[k_id]
             k_obj.name = k_name
             k_obj.ordering_index = k_order
-            k_obj.save(update_fields=["name", "ordering_index"])
+            old_state = existing_k_state[k_obj.id]
+            if k_obj.name == old_state["name"] and k_obj.ordering_index == old_state["ordering_index"]:
+                unchanged_klasifikasi.append(k_obj)
+            else:
+                k_obj.save(update_fields=["name", "ordering_index"])
         else:
             k_obj = existing_k_by_order.get(k_order)
             if k_obj and k_obj.project_id == project.id and k_obj.id not in keep_k:
-                if k_obj.name != k_name:
-                    k_obj.name = k_name
-                    k_obj.save(update_fields=["name"])
+                k_obj.name = k_name
+                k_obj.ordering_index = k_order
+                old_state = existing_k_state[k_obj.id]
+                if k_obj.name == old_state["name"] and k_obj.ordering_index == old_state["ordering_index"]:
+                    unchanged_klasifikasi.append(k_obj)
+                else:
+                    k_obj.save(update_fields=["name", "ordering_index"])
             else:
                 k_obj = Klasifikasi.objects.create(project=project, name=k_name, ordering_index=k_order)
         keep_k.add(k_obj.id)
@@ -1322,13 +1371,30 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                 s_obj.name = s_name
                 s_obj.ordering_index = s_order
                 s_obj.klasifikasi = k_obj
-                s_obj.save(update_fields=["name", "ordering_index", "klasifikasi"])
+                old_state = existing_s_state[s_obj.id]
+                if (
+                    s_obj.name == old_state["name"]
+                    and s_obj.ordering_index == old_state["ordering_index"]
+                    and s_obj.klasifikasi_id == old_state["klasifikasi_id"]
+                ):
+                    unchanged_subklasifikasi.append(s_obj)
+                else:
+                    s_obj.save(update_fields=["name", "ordering_index", "klasifikasi"])
             else:
                 s_obj = existing_s_by_klas_order.get((k_obj.id, s_order))
                 if s_obj and s_obj.project_id == project.id and s_obj.id not in keep_all_s:
-                    if s_obj.name != s_name:
-                        s_obj.name = s_name
-                        s_obj.save(update_fields=["name"])
+                    s_obj.name = s_name
+                    s_obj.ordering_index = s_order
+                    s_obj.klasifikasi = k_obj
+                    old_state = existing_s_state[s_obj.id]
+                    if (
+                        s_obj.name == old_state["name"]
+                        and s_obj.ordering_index == old_state["ordering_index"]
+                        and s_obj.klasifikasi_id == old_state["klasifikasi_id"]
+                    ):
+                        unchanged_subklasifikasi.append(s_obj)
+                    else:
+                        s_obj.save(update_fields=["name", "ordering_index", "klasifikasi"])
                 else:
                     s_obj = SubKlasifikasi.objects.create(
                         project=project, klasifikasi=k_obj, name=s_name, ordering_index=s_order
@@ -1465,9 +1531,22 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                 pobj.snapshot_uraian = ov_ura
                             if ov_sat:
                                 pobj.snapshot_satuan = ov_sat
-                        pobj.save(update_fields=[
-                            "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
-                        ])
+                        old_state = existing_p_state[pobj.id]
+                        if (
+                            pobj.ordering_index == old_state["ordering_index"]
+                            and pobj.sub_klasifikasi_id == old_state["sub_klasifikasi_id"]
+                            and pobj.snapshot_kode == old_state["snapshot_kode"]
+                            and pobj.snapshot_uraian == old_state["snapshot_uraian"]
+                            and pobj.snapshot_satuan == old_state["snapshot_satuan"]
+                        ):
+                            # This row is still in the temporary ordering range in
+                            # the database. Restore it with one bulk write below,
+                            # without invoking model save hooks or cache signals.
+                            unchanged_pekerjaan.append(pobj)
+                        else:
+                            pobj.save(update_fields=[
+                                "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
+                            ])
 
                     # SYN-01: tandai "detail perlu dimuat ulang" HANYA untuk baris yang
                     # benar-benar berganti sumber. Cabang "Update biasa" (reorder /
@@ -1603,6 +1682,16 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             status=400,
             message=f"{len(errors)} perubahan tidak dapat diproses. Tidak ada perubahan yang disimpan.",
         )
+
+    # Rows whose submitted values matched the database still need their original
+    # ordering restored after the temporary shift. Use one bulk statement rather
+    # than one save/signal cycle per row.
+    if unchanged_klasifikasi:
+        Klasifikasi.objects.bulk_update(unchanged_klasifikasi, ["ordering_index"])
+    if unchanged_subklasifikasi:
+        SubKlasifikasi.objects.bulk_update(unchanged_subklasifikasi, ["ordering_index"])
+    if unchanged_pekerjaan:
+        Pekerjaan.objects.bulk_update(unchanged_pekerjaan, ["ordering_index"])
 
     # WP-P4 (C1): tolak hapus pekerjaan yang masih dipakai sebagai target
     # "Pekerjaan Gabungan" (bundle) oleh pekerjaan lain yang TETAP ada.
