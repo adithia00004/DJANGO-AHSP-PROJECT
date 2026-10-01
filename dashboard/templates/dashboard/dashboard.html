@@ -236,7 +236,7 @@
                     <th class="field-required">Client <span class="text-danger">*</span></th>
                     <th class="field-required">Anggaran <span class="text-danger">*</span></th>
                     <th class="field-required">Tgl Mulai <span class="text-danger">*</span></th>
-                    <th class="field-optional">Tgl Selesai</th>
+                    <th class="field-required">Tgl Selesai <span class="text-danger">*</span></th>
                     <th class="field-optional">Durasi</th>
                     <th class="field-optional">Ket 1</th>
                     <th class="field-optional">Ket 2</th>
@@ -280,7 +280,7 @@
                       {{ form.tanggal_mulai }}
                       {% for err in form.tanggal_mulai.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
                     </td>
-                    <td class="field-optional {% if form.tanggal_selesai.errors %}table-danger{% endif %}">
+                    <td class="field-required {% if form.tanggal_selesai.errors %}table-danger{% endif %}">
                       {{ form.tanggal_selesai }}
                       {% for err in form.tanggal_selesai.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
                     </td>
@@ -319,7 +319,7 @@
               <td class="field-required">{{ formset.empty_form.nama_client }}</td>
               <td class="field-required">{{ formset.empty_form.anggaran_owner }}</td>
               <td class="field-required">{{ formset.empty_form.tanggal_mulai }}</td>
-              <td class="field-optional">{{ formset.empty_form.tanggal_selesai }}</td>
+              <td class="field-required">{{ formset.empty_form.tanggal_selesai }}</td>
               <td class="field-optional">{{ formset.empty_form.durasi_hari }}</td>
               <td class="field-optional">{{ formset.empty_form.ket_project1 }}</td>
               <td class="field-optional">{{ formset.empty_form.ket_project2 }}</td>

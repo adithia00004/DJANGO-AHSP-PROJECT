@@ -983,6 +983,33 @@ table .dp-thead-sticky th {
 .dashboard-project-table.mass-edit-mode {
   border: 2px solid var(--dp-c-warning, #ffc107);
   background-color: var(--dp-c-surface, #fff);
+  /* Keep the editable grid predictable while horizontal scrolling. */
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+}
+
+.dashboard-project-table.mass-edit-mode th,
+.dashboard-project-table.mass-edit-mode td {
+  box-sizing: border-box;
+}
+
+/* Long project metadata must wrap inside its column instead of expanding the
+   whole grid or being clipped by the table's nowrap defaults. */
+.mass-edit-mode th[data-field],
+.mass-edit-mode td[data-field] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mass-edit-mode td[data-field] > input,
+.mass-edit-mode td[data-field] > textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Highlight edited cells with yellow/amber background */
@@ -1039,6 +1066,12 @@ table .dp-thead-sticky th {
     min-height 0.15s ease,
     box-shadow 0.15s ease,
     border-color 0.15s ease;
+}
+
+/* Project identity fields need more room before they receive focus because
+   long names and locations are common and should be readable at a glance. */
+.mass-edit-mode textarea.mass-edit-multiline-tall {
+  min-height: 5rem;
 }
 
 .mass-edit-mode textarea.mass-edit-multiline.is-expanded {
@@ -1104,15 +1137,29 @@ table .dp-thead-sticky th {
   box-sizing: border-box;
   position: sticky;
   left: 0;
-  background: var(--dp-c-surface, #fff);
+  /* Opaque background is required for a sticky cell over the scrolled grid. */
+  background: var(--dp-c-surface, #fff) !important;
+  background-image: none !important;
   background-clip: padding-box;
   box-shadow: 2px 0 0 var(--dp-c-border, #dee2e6);
-  white-space: normal;
+  white-space: normal !important;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .mass-edit-mode tbody td.mass-edit-project-name {
-  z-index: 4;
+  z-index: 5 !important;
+}
+
+/* Bootstrap/core table-hover paints every cell on hover. Repaint the sticky
+   project cell with an opaque color so scrolled columns never show through. */
+.mass-edit-mode tbody tr:hover > td.mass-edit-project-name {
+  background: color-mix(
+    in srgb,
+    var(--dp-c-surface, #fff) 92%,
+    var(--dp-c-primary, #0d6efd) 8%
+  ) !important;
+  background-image: none !important;
 }
 
 /* Intersection of sticky header and sticky first column. This selector must
@@ -1125,13 +1172,15 @@ table .dp-thead-sticky th {
   min-width: 220px;
   max-width: 220px;
   z-index: calc(var(--dp-z-thead, 12030) + 1) !important;
-  background: var(--dp-c-surface-2, #f7f8fa);
+  background: var(--dp-c-surface-2, #f7f8fa) !important;
+  background-image: none !important;
 }
 
 .mass-edit-mode th[data-field],
 .mass-edit-mode td[data-field] {
   width: 220px;
   min-width: 220px;
+  max-width: 220px;
 }
 
 /* Compact structured values. */
@@ -1141,6 +1190,7 @@ table .dp-thead-sticky th {
 .mass-edit-mode td[data-field="durasi_hari"] {
   width: 180px;
   min-width: 180px;
+  max-width: 180px;
 }
 
 .mass-edit-mode th[data-field="tanggal_mulai"],
@@ -1149,6 +1199,7 @@ table .dp-thead-sticky th {
 .mass-edit-mode td[data-field="tanggal_selesai"] {
   width: 165px;
   min-width: 165px;
+  max-width: 165px;
 }
 
 /* Identity and organization fields benefit from more horizontal context. */
@@ -1164,28 +1215,36 @@ table .dp-thead-sticky th {
 .mass-edit-mode td[data-field^="instansi_"] {
   width: clamp(240px, 24vw, 340px);
   min-width: clamp(240px, 24vw, 340px);
+  max-width: clamp(240px, 24vw, 340px);
 }
 
 .mass-edit-mode th[data-field="deskripsi"],
 .mass-edit-mode td[data-field="deskripsi"] {
   width: clamp(300px, 32vw, 460px);
   min-width: clamp(300px, 32vw, 460px);
+  max-width: clamp(300px, 32vw, 460px);
 }
 
 /* Expanding one editable cell expands its table column as well. Keep the
    maximum tied to the viewport so the neighboring context remains visible. */
 .mass-edit-mode td[data-field]:focus-within {
+  width: clamp(280px, 38vw, 560px);
   min-width: clamp(280px, 38vw, 560px);
+  max-width: clamp(280px, 38vw, 560px);
 }
 
 .mass-edit-mode td[data-field="anggaran_owner"]:focus-within,
 .mass-edit-mode td[data-field="durasi_hari"]:focus-within {
+  width: 180px;
   min-width: 180px;
+  max-width: 180px;
 }
 
 .mass-edit-mode td[data-field="tanggal_mulai"]:focus-within,
 .mass-edit-mode td[data-field="tanggal_selesai"]:focus-within {
+  width: 165px;
   min-width: 165px;
+  max-width: 165px;
 }
 
 .mass-edit-mode .mass-edit-row-error {

@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
 
-from dashboard.forms import UploadProjectForm
+from dashboard.forms import ProjectForm, UploadProjectForm
 from dashboard.models import Project
 from detail_project.models import Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan
 
@@ -131,6 +131,26 @@ class PrelaunchFunctionalSmokeTests(TestCase):
         self.assertEqual(delete_response.status_code, 302)
         project.refresh_from_db()
         self.assertFalse(project.is_active)
+
+    def test_simple_project_form_exposes_required_completion_date(self):
+        """The simple create form must show every field required by ProjectForm."""
+        incomplete_form = ProjectForm(data={
+            "nama": "Project Tanpa Tanggal Selesai",
+            "tanggal_mulai": "2026-01-01",
+            "sumber_dana": "APBD",
+            "lokasi_project": "Jakarta",
+            "nama_client": "Client Smoke",
+            "anggaran_owner": "1000000",
+        })
+        self.assertFalse(incomplete_form.is_valid())
+        self.assertIn("tanggal_selesai", incomplete_form.errors)
+
+        self.assertTrue(self.client.login(username=self.owner.username, password=self.password))
+        response = self.client.get(reverse("dashboard:dashboard"))
+        self.assertContains(
+            response,
+            '<th class="field-required">Tgl Selesai <span class="text-danger">*</span></th>',
+        )
 
     def test_project_delete_confirmation_preserves_next_and_soft_delete(self):
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))

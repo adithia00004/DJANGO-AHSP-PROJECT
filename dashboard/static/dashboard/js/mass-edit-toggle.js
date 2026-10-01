@@ -60,22 +60,23 @@
     'lokasi_project',
     'nama_client',
     'anggaran_owner',
-    'tanggal_mulai'
+    'tanggal_mulai',
+    'tanggal_selesai'
   ];
 
   // All editable fields. Keep the default grid focused; users can opt into
   // additional columns from the action bar.
   const ALL_FIELDS = [
-    // 6 Required
+    // 7 Required
     { name: 'nama', label: 'Nama Project', type: 'text', required: true },
     { name: 'sumber_dana', label: 'Sumber Dana', type: 'text', required: true },
     { name: 'lokasi_project', label: 'Lokasi Project', type: 'text', required: true },
     { name: 'nama_client', label: 'Nama Client', type: 'text', required: true },
     { name: 'anggaran_owner', label: 'Anggaran Owner', type: 'text', required: true, isNumeric: true, allowDecimal: true },
     { name: 'tanggal_mulai', label: 'Tanggal Mulai', type: 'date', required: true },
+    { name: 'tanggal_selesai', label: 'Tanggal Selesai', type: 'date', required: true },
 
-    // 14 Optional
-    { name: 'tanggal_selesai', label: 'Tanggal Selesai', type: 'date', required: false },
+    // Optional fields
     { name: 'durasi_hari', label: 'Durasi (hari)', type: 'text', required: false, isNumeric: true, allowDecimal: false },
     { name: 'ket_project1', label: 'Ket Project 1', type: 'text', required: false },
     { name: 'ket_project2', label: 'Ket Project 2', type: 'text', required: false },
@@ -118,6 +119,10 @@
     'instansi_konsultan_pengawas',
     'deskripsi',
     'kategori'
+  ]);
+  const TALL_MULTILINE_FIELD_NAMES = new Set([
+    'nama',
+    'lokasi_project'
   ]);
 
   // ============================================================================
@@ -574,7 +579,10 @@
     if (field.type === 'textarea' || MULTILINE_FIELD_NAMES.has(field.name)) {
       input = document.createElement('textarea');
       input.className = 'form-control form-control-sm mass-edit-multiline';
-      input.rows = field.type === 'textarea' ? 3 : 1;
+      input.rows = field.type === 'textarea' || TALL_MULTILINE_FIELD_NAMES.has(field.name) ? 4 : 1;
+      if (TALL_MULTILINE_FIELD_NAMES.has(field.name)) {
+        input.classList.add('mass-edit-multiline-tall');
+      }
     } else {
       input = document.createElement('input');
       input.type = field.type;

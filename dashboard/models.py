@@ -12,7 +12,7 @@ class Project(models.Model):
     owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name="projects", db_index=True)
     index_project = models.CharField(max_length=30, unique=True, editable=False, null=True, blank=True)
 
-    # === 6 Kolom Wajib ===
+    # === Kolom Wajib ===
     nama = models.CharField("Nama Project", max_length=200)  # wajib
     tahun_project = models.PositiveIntegerField(editable=False, null=True, blank=True)  # auto-calculated from tanggal_mulai
     sumber_dana = models.CharField(max_length=255)           # wajib

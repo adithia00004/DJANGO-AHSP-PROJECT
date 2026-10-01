@@ -303,6 +303,53 @@ class MassEditFrontendGuardTests(TestCase):
             styles,
         )
 
+    def test_mass_edit_completion_date_and_grid_visuals_match_project_rules(self):
+        with open(
+            "dashboard/static/dashboard/js/mass-edit-toggle.js",
+            encoding="utf-8",
+        ) as handle:
+            script = handle.read()
+        with open(
+            "dashboard/static/dashboard/css/dashboard.css",
+            encoding="utf-8",
+        ) as handle:
+            styles = handle.read()
+
+        self.assertIn(
+            "{ name: 'tanggal_selesai', label: 'Tanggal Selesai', type: 'date', required: true }",
+            script,
+        )
+        self.assertIn("table-layout: fixed;", styles)
+        self.assertIn(
+            "background: var(--dp-c-surface, #fff) !important;",
+            styles,
+        )
+        self.assertIn(
+            ".mass-edit-mode tbody tr:hover > td.mass-edit-project-name",
+            styles,
+        )
+
+    def test_mass_edit_gives_project_identity_textareas_more_default_height(self):
+        with open(
+            "dashboard/static/dashboard/js/mass-edit-toggle.js",
+            encoding="utf-8",
+        ) as handle:
+            script = handle.read()
+        with open(
+            "dashboard/static/dashboard/css/dashboard.css",
+            encoding="utf-8",
+        ) as handle:
+            styles = handle.read()
+
+        self.assertIn("'nama',\n    'lokasi_project'", script)
+        self.assertIn("input.rows = field.type === 'textarea' || TALL_MULTILINE_FIELD_NAMES.has(field.name) ? 4 : 1;", script)
+        self.assertIn("input.classList.add('mass-edit-multiline-tall');", script)
+        self.assertIn(
+            ".mass-edit-mode textarea.mass-edit-multiline-tall",
+            styles,
+        )
+        self.assertIn("min-height: 5rem;", styles)
+
     def test_quick_search_has_clear_button_and_null_guards(self):
         with open(
             "dashboard/templates/dashboard/_project_stats_and_table.html",
