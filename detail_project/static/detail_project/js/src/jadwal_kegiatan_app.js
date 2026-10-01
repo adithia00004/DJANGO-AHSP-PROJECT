@@ -1628,8 +1628,17 @@ class JadwalKegiatanApp {
         console.log(`[Export] ⏱️ API response received in ${(performance.now() - apiCallStart).toFixed(0)}ms`);
 
         if (!response.ok) {
+          // Server mengirim JSON {message|error}; jangan tampilkan body mentah.
           const errorText = await response.text();
-          throw new Error(`Export gagal: ${response.status} - ${errorText}`);
+          let reason = '';
+          try {
+            const body = JSON.parse(errorText);
+            reason = body?.message || body?.error || body?.detail || '';
+          } catch (parseError) {
+            reason = '';
+          }
+          console.error('[Export] Server error', response.status, errorText);
+          throw new Error(reason || 'Server tidak dapat membuat laporan. Silakan coba lagi.');
         }
 
         // Download the file. Validate the payload before saving so JSON/HTML
@@ -1657,11 +1666,7 @@ class JadwalKegiatanApp {
         // Calculate total time
         const totalTime = (performance.now() - exportStartTime).toFixed(0);
 
-        // Show success toast
-        Toast.success(`Laporan berhasil di-export! (${totalTime}ms)`, {
-          duration: 3000,
-          position: 'top-right'
-        });
+        Toast.success('Laporan berhasil diunduh.', 3000);
 
         console.log(`[Export] ✅ Professional export completed in ${totalTime}ms:`, { reportType, format, filename });
         return;
@@ -1707,11 +1712,7 @@ class JadwalKegiatanApp {
       // Hide progress modal
       this._hideExportProgressModal();
 
-      // Show success toast
-      Toast.success('Export berhasil! File menggunakan offscreen rendering (300 DPI)', {
-        duration: 3000,
-        position: 'top-right'
-      });
+      Toast.success('Laporan berhasil diunduh.', 3000);
 
       console.log('[Export Phase 4] Export completed successfully:', result);
     } catch (error) {
@@ -1720,11 +1721,9 @@ class JadwalKegiatanApp {
       // Hide progress modal
       this._hideExportProgressModal();
 
-      // Show error toast
-      Toast.error(`Export gagal: ${error.message}`, {
-        duration: 5000,
-        position: 'top-right'
-      });
+      // Pesan singkat untuk user; detail teknis sudah di console.
+      const reason = String(error?.message || '').replace(/^Export gagal:\s*/i, '').trim();
+      Toast.error(`Export gagal${reason ? `: ${reason}` : '. Silakan coba lagi.'}`, 6000);
     }
   }
 
@@ -3583,17 +3582,10 @@ class JadwalKegiatanApp {
         if (saveButton) {
           ButtonStateManager.setSuccess(saveButton, 2000);
         }
-
-        Toast.success('Perubahan berhasil disimpan');
-      } else {
-        // Set button to error state
-        if (saveButton) {
-          ButtonStateManager.setError(saveButton, 2000);
-        }
-
-        if (result.reason !== 'no_changes') {
-          Toast.error(result.message || 'Perubahan gagal disimpan');
-        }
+        // Toast hasil simpan hanya dari SaveHandler (T-F3: dulu muncul dua
+        // toast untuk satu simpan, sukses maupun gagal).
+      } else if (saveButton) {
+        ButtonStateManager.setError(saveButton, 2000);
       }
     } catch (error) {
       console.error('[JadwalKegiatanApp] Save error:', error);
@@ -3693,12 +3685,13 @@ class JadwalKegiatanApp {
   /**
    * Show toast notification
    */
-  showToast(message, type = 'info', duration = 3000) {
-    // Use existing toast system if available
+  showToast(message, type = 'info', duration) {
+    // Durasi kosong -> default per jenis dari js/core/toast.js.
     if (typeof window.showToast === 'function') {
       window.showToast(message, type, duration);
       return;
     }
+    duration = duration || 3000;
 
     // Fallback toast implementation
     console.log(`[${type.toUpperCase()}] ${message}`);
@@ -3950,15 +3943,17 @@ class JadwalKegiatanApp {
     const displayMode = this.state.displayMode || 'grid';
 
     if (displayMode !== 'gantt' && displayMode !== 'scurve') {
-      Toast.info('Download hanya tersedia untuk mode Gantt Chart dan Kurva S', {
-        duration: 3000,
-        position: 'top-right'
-      });
+      Toast.info('Unduh gambar hanya tersedia di tampilan Gantt Chart dan Kurva S.', 3000);
       return;
     }
 
+    // Toast proses ditutup sebelum toast hasil muncul (dulu keduanya tampil).
+    const progressToast = window.DP?.toast?.loading?.('Menyiapkan gambar...') || null;
+    const closeProgress = () => {
+      if (progressToast) window.DP?.toast?.dismiss?.(progressToast);
+    };
+
     try {
-      Toast.info('Rendering chart image...', { duration: 2000, position: 'top-right' });
 
       // Get state for rendering
       const exportState = this._transformStateForExport();
@@ -3989,18 +3984,14 @@ class JadwalKegiatanApp {
       link.click();
       document.body.removeChild(link);
 
-      Toast.success(`${displayMode === 'gantt' ? 'Gantt Chart' : 'Kurva S'} downloaded as PNG!`, {
-        duration: 3000,
-        position: 'top-right'
-      });
+      closeProgress();
+      Toast.success(`Gambar ${displayMode === 'gantt' ? 'Gantt Chart' : 'Kurva S'} berhasil diunduh.`, 3000);
 
       console.log('[JadwalKegiatanApp] Chart image downloaded:', filename);
     } catch (error) {
       console.error('[JadwalKegiatanApp] Error downloading chart image:', error);
-      Toast.error('Gagal download chart image: ' + error.message, {
-        duration: 5000,
-        position: 'top-right'
-      });
+      closeProgress();
+      Toast.error('Gambar gagal diunduh. Silakan coba lagi.', 6000);
     }
   }
 

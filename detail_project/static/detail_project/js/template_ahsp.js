@@ -994,7 +994,12 @@
         if (kind === 'job' && refId) {
           // Show loading toast
           const loadingMsg = `Memeriksa bundle "${kode}"...`;
-          toast(loadingMsg, 'info', 0); // No auto-dismiss during loading
+          // Toast proses (loading) ditutup sebelum toast hasil muncul; dulu
+          // keduanya tampil bersamaan (T-F4).
+          const loadingToast = window.DP?.toast?.loading ? window.DP.toast.loading(loadingMsg) : null;
+          const closeLoading = () => {
+            if (loadingToast) window.DP.toast.dismiss(loadingToast);
+          };
 
           try {
             // Fetch job details to validate it has components with timeout
@@ -1009,6 +1014,7 @@
             clearTimeout(timeoutId);
 
             const data = await resp.json();
+            closeLoading();
 
             if (data.ok && (!data.items || data.items.length === 0)) {
               // Bundle is empty - show warning and prevent selection
@@ -1024,6 +1030,7 @@
             toast(`Bundle "${kode}" valid (${data.items?.length || 0} komponen).`, 'success', 2000);
 
           } catch (err) {
+            closeLoading();
             if (err.name === 'AbortError') {
               console.error('[BUNDLE_VALIDATION] Timeout validating bundle:', kode);
               toast('Timeout saat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);

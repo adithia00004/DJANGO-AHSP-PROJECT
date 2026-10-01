@@ -259,51 +259,37 @@ export class ButtonStateManager {
 }
 
 /**
- * Toast Notifications (wrapper untuk DP.core.toast)
+ * Toast Notifications (wrapper untuk DP.toast).
+ *
+ * Durasi & jenis diserahkan ke kontrak inti js/core/toast.js: sukses/info
+ * 3 dtk, peringatan 5 dtk, error 6 dtk; argumen kedua boleh angka atau
+ * {duration}. Dulu wrapper memaksa 1,6/2 dtk dan jenis 'danger' (tanpa gaya
+ * error), dan objek {duration, position} membuat toast tidak pernah hilang.
  */
+function showCoreToast(type, message, duration, fallback) {
+  const api = window.DP?.toast || window.DP?.core?.toast;
+  if (api?.show) {
+    return api.show(message, type, duration);
+  }
+  fallback(message);
+  return null;
+}
+
 export class Toast {
-  /**
-   * Show success toast
-   */
-  static success(message, duration = 1600) {
-    if (window.DP?.core?.toast) {
-      window.DP.core.toast.show(message, 'success', duration);
-    } else {
-      console.log(`✅ ${message}`);
-    }
+  static success(message, duration) {
+    return showCoreToast('success', message, duration, (m) => console.log(`✅ ${m}`));
   }
 
-  /**
-   * Show error toast
-   */
-  static error(message, duration = 3000) {
-    if (window.DP?.core?.toast) {
-      window.DP.core.toast.show(message, 'danger', duration);
-    } else {
-      console.error(`❌ ${message}`);
-    }
+  static error(message, duration) {
+    return showCoreToast('error', message, duration, (m) => console.error(`❌ ${m}`));
   }
 
-  /**
-   * Show warning toast
-   */
-  static warning(message, duration = 2000) {
-    if (window.DP?.core?.toast) {
-      window.DP.core.toast.show(message, 'warning', duration);
-    } else {
-      console.warn(`⚠️ ${message}`);
-    }
+  static warning(message, duration) {
+    return showCoreToast('warning', message, duration, (m) => console.warn(`⚠️ ${m}`));
   }
 
-  /**
-   * Show info toast
-   */
-  static info(message, duration = 1600) {
-    if (window.DP?.core?.toast) {
-      window.DP.core.toast.show(message, 'info', duration);
-    } else {
-      console.info(`ℹ️ ${message}`);
-    }
+  static info(message, duration) {
+    return showCoreToast('info', message, duration, (m) => console.info(`ℹ️ ${m}`));
   }
 }
 

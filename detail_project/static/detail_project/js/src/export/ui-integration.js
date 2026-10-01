@@ -293,9 +293,10 @@ export class ExportManagerNew {
       btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Exporting...';
     }
 
-    // Show toast notification - prefer global DP.toast
+    // Show toast notification - prefer global DP.toast. Handle disimpan agar
+    // _hideLoading bisa menutupnya (T-F9: dulu toast loading menempel).
     if (window.DP && window.DP.toast && window.DP.toast.export) {
-      window.DP.toast.export.started(format.toUpperCase());
+      this._loadingToast = window.DP.toast.export.started(format.toUpperCase());
       return;
     }
 
@@ -333,6 +334,10 @@ export class ExportManagerNew {
    * Hide loading indicator
    */
   _hideLoading() {
+    if (this._loadingToast && window.DP?.toast?.dismiss) {
+      window.DP.toast.dismiss(this._loadingToast);
+    }
+    this._loadingToast = null;
     const btn = document.querySelector('[data-original-text]');
     if (btn) {
       btn.disabled = false;

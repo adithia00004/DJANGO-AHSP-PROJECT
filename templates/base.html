@@ -348,10 +348,11 @@
     <script defer src="{% static 'detail_project/js/theme.js' %}"></script>
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Global Toast Notifications (harus sebelum messages_modal.js: pesan
+         sukses/info server tampil sebagai toast) -->
+    <script defer src="{% static 'detail_project/js/core/toast.js' %}"></script>
     <!-- Messages Modal Handler -->
     <script defer src="{% static 'detail_project/js/messages_modal.js' %}"></script>
-    <!-- Global Toast Notifications -->
-    <script defer src="{% static 'detail_project/js/core/toast.js' %}"></script>
     <!-- Global Confirm/Alert Modal -->
     <script defer src="{% static 'detail_project/js/core/modal.js' %}"></script>
     <!-- Global Error Handler with Recovery Dialog -->

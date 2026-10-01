@@ -1,15 +1,27 @@
 /**
  * Unified Global Toast Notification System
- * 
- * Features:
- * - Easy-to-use API: DP.toast.success(), DP.toast.error(), etc.
- * - CRUD presets: DP.toast.crud.created(), DP.toast.crud.updated(), etc.
- * - Export presets: DP.toast.export.started(), DP.toast.export.success(), etc.
- * - Network presets: DP.toast.network.offline(), etc.
- * - Premium styling with dark mode support
- * - Max 3 visible toasts with stacking
- * - Auto-dismiss with configurable duration
- * 
+ *
+ * KONTRAK (T-1, docs/RENCANA_PERAPIAN_PROYEK_20261001.md §5.2):
+ * - Bentuk pemanggilan yang didukung:
+ *     DP.toast.show({message, type, duration, title, closable, icon})
+ *     DP.toast.show(message, type, durationOrOptions)
+ *     DP.toast.success|error|warning|info|danger|warn(message, durationOrOptions)
+ *     DP.core.toast.show(...), window.showToast(message, type, durationOrOptions)
+ *   durationOrOptions = angka ms ATAU objek {duration}. (Dulu objek {duration,
+ *   position} terbaca sebagai durasi tak valid -> toast tidak pernah hilang.)
+ * - Jenis: success, info, warning, error, loading. Alias: danger->error,
+ *   warn->warning. Jenis tak dikenal -> info.
+ * - Durasi: sukses/info 3 dtk, peringatan 5 dtk, error 6 dtk (+ tombol tutup).
+ *   Angka > 0 dipakai (maks 60 dtk). 0/negatif/NaN/bukan angka -> default
+ *   jenisnya: TIDAK ADA toast biasa yang menetap (keluhan owner 2026-10-01).
+ * - loading menetap sampai DP.toast.dismiss(handle); batas aman 60 dtk.
+ * - Deduplikasi: toast jenis+judul+pesan sama yang masih tampil tidak
+ *   digandakan; timernya diulang dan diberi penanda "x2", "x3" (textContent).
+ *   loading tidak dideduplikasi (tiap operasi punya handle sendiri).
+ * - Maks 3 toast tampil TERMASUK yang baru; yang tertua (non-loading dulu)
+ *   digusur.
+ * - Setiap pemanggilan mengembalikan elemen toast sebagai handle.
+ *
  * @module DP.toast
  */
 
@@ -28,6 +40,11 @@
     position: 'top-right', // top-right, top-center, bottom-right
     zIndex: 13100,
   };
+
+  const DEFAULT_DURATION = { success: 3000, info: 3000, warning: 5000, error: 6000 };
+  const TYPE_ALIASES = { danger: 'error', warn: 'warning' };
+  const MAX_DURATION = 60000;
+  const LOADING_SAFETY_MS = 60000;
 
   // ===== ICONS =====
   const ICONS = {
@@ -52,6 +69,7 @@
 
   // ===== STATE =====
   let toastArea = null;
+  const active = new Map(); // dedupe key -> toast element
 
   // ===== SETUP TOAST AREA =====
   function ensureToastArea() {
@@ -69,33 +87,85 @@
     return toastArea;
   }
 
-  // ===== CLAMP VISIBLE TOASTS =====
-  function clampToasts() {
-    const area = ensureToastArea();
-    const toasts = area.querySelectorAll('.dp-toast');
-    const excess = toasts.length - CONFIG.maxVisible;
+  // ===== NORMALISASI =====
+  function normalizeType(type) {
+    let t = String(type || 'info').toLowerCase();
+    t = TYPE_ALIASES[t] || t;
+    if (!ICONS[t]) {
+      if (window.console) console.warn('[DP.toast] jenis tidak dikenal:', type);
+      t = 'info';
+    }
+    return t;
+  }
 
-    for (let i = 0; i < excess; i++) {
-      const toast = toasts[i];
+  function resolveDuration(type, raw) {
+    if (type === 'loading') return 0;
+    const value = raw && typeof raw === 'object' ? raw.duration : raw;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return DEFAULT_DURATION[type] || CONFIG.defaultDuration;
+    }
+    return Math.min(value, MAX_DURATION);
+  }
+
+  function normalizeOptions(options, typeArg, durationArg) {
+    let opts;
+    if (options && typeof options === 'object') {
+      opts = Object.assign({}, options);
+    } else {
+      opts = { message: options, type: typeArg, duration: durationArg };
+      if (durationArg && typeof durationArg === 'object') {
+        // show(message, type, {duration, title, closable, icon})
+        opts = Object.assign({}, durationArg, opts, { duration: durationArg.duration });
+      }
+    }
+    const type = normalizeType(opts.type);
+    let closable = opts.closable !== false;
+    if (type === 'error') closable = true;
+    if (type === 'loading') closable = opts.closable === true;
+    return {
+      message: opts.message == null ? '' : String(opts.message),
+      title: opts.title ? String(opts.title) : '',
+      type,
+      duration: resolveDuration(type, opts.duration),
+      closable,
+      icon: opts.icon || null,
+    };
+  }
+
+  // ===== TIMER =====
+  function schedule(toast, duration) {
+    clearTimeout(toast._dpTimer);
+    const delay = toast._dpType === 'loading' ? LOADING_SAFETY_MS : duration;
+    if (delay > 0) {
+      toast._dpTimer = setTimeout(() => removeToast(toast), delay);
+    }
+  }
+
+  // ===== CLAMP VISIBLE TOASTS (sesudah toast baru masuk) =====
+  function clampToasts(area) {
+    const visible = Array.from(area.querySelectorAll('.dp-toast:not(.dp-toast-hide)'));
+    let excess = visible.length - CONFIG.maxVisible;
+    if (excess <= 0) return;
+    const ordered = visible
+      .filter((t) => t._dpType !== 'loading')
+      .concat(visible.filter((t) => t._dpType === 'loading'));
+    for (const toast of ordered) {
+      if (excess <= 0) break;
       removeToast(toast);
+      excess -= 1;
     }
   }
 
   // ===== CREATE TOAST ELEMENT =====
-  function createToast(options) {
-    const {
-      message = '',
-      title = '',
-      type = 'info',
-      duration = CONFIG.defaultDuration,
-      closable = true,
-      icon = null,
-    } = options;
+  function createToast(opts) {
+    const { message, title, type, closable, icon } = opts;
 
     const toast = document.createElement('div');
     toast.className = `dp-toast dp-toast-${type}`;
-    toast.setAttribute('role', 'alert');
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
     toast.setAttribute('aria-atomic', 'true');
+    toast._dpType = type;
+    toast._dpCount = 1;
 
     // Icon
     const iconClass = icon || ICONS[type] || ICONS.info;
@@ -106,11 +176,11 @@
     if (title) {
       contentHtml += `<div class="dp-toast-title">${escapeHtml(title)}</div>`;
     }
-    contentHtml += `<div class="dp-toast-message">${escapeHtml(message)}</div>`;
+    contentHtml += `<div class="dp-toast-message">${escapeHtml(message)}<span class="dp-toast-count" hidden></span></div>`;
 
     // Close button
     const closeHtml = closable
-      ? `<button type="button" class="dp-toast-close" aria-label="Close"><i class="bi bi-x"></i></button>`
+      ? `<button type="button" class="dp-toast-close" aria-label="Tutup"><i class="bi bi-x"></i></button>`
       : '';
 
     toast.innerHTML = `
@@ -131,17 +201,17 @@
       closeBtn.addEventListener('click', () => removeToast(toast));
     }
 
-    // Auto-dismiss
-    if (duration > 0 && type !== 'loading') {
-      setTimeout(() => removeToast(toast), duration);
-    }
-
     return toast;
   }
 
   // ===== REMOVE TOAST =====
   function removeToast(toast) {
     if (!toast || !toast.parentNode) return;
+    clearTimeout(toast._dpTimer);
+    if (toast._dpKey && active.get(toast._dpKey) === toast) {
+      active.delete(toast._dpKey);
+    }
+    if (toast.classList.contains('dp-toast-hide')) return;
 
     toast.classList.add('dp-toast-hide');
     setTimeout(() => {
@@ -163,21 +233,32 @@
   }
 
   // ===== MAIN SHOW FUNCTION =====
-  function show(options) {
-    // Handle simple string call: show('message', 'success', 3000)
-    if (typeof options === 'string') {
-      options = {
-        message: options,
-        type: arguments[1] || 'info',
-        duration: arguments[2] || CONFIG.defaultDuration,
-      };
+  function show(options, typeArg, durationArg) {
+    const opts = normalizeOptions(options, typeArg, durationArg);
+    const area = ensureToastArea();
+
+    // Deduplikasi: pesan sama yang masih tampil -> perpanjang + penanda xN.
+    const key = opts.type === 'loading' ? null : `${opts.type}|${opts.title}|${opts.message}`;
+    const existing = key ? active.get(key) : null;
+    if (existing && existing.parentNode && !existing.classList.contains('dp-toast-hide')) {
+      existing._dpCount += 1;
+      const badge = existing.querySelector('.dp-toast-count');
+      if (badge) {
+        badge.textContent = ` ×${existing._dpCount}`;
+        badge.hidden = false;
+      }
+      schedule(existing, opts.duration);
+      return existing;
     }
 
-    const area = ensureToastArea();
-    clampToasts();
-
-    const toast = createToast(options);
+    const toast = createToast(opts);
+    if (key) {
+      toast._dpKey = key;
+      active.set(key, toast);
+    }
     area.appendChild(toast);
+    schedule(toast, opts.duration);
+    clampToasts(area);
 
     // Trigger animation
     requestAnimationFrame(() => {
@@ -189,23 +270,23 @@
 
   // ===== SHORTCUT METHODS =====
   function success(message, duration) {
-    return show({ message, type: 'success', duration: duration || 3000 });
+    return show(message, 'success', duration);
   }
 
   function error(message, duration) {
-    return show({ message, type: 'error', duration: duration || 5000 });
+    return show(message, 'error', duration);
   }
 
   function warning(message, duration) {
-    return show({ message, type: 'warning', duration: duration || 4000 });
+    return show(message, 'warning', duration);
   }
 
   function info(message, duration) {
-    return show({ message, type: 'info', duration: duration || 3000 });
+    return show(message, 'info', duration);
   }
 
   function loading(message) {
-    return show({ message: message || 'Memuat...', type: 'loading', duration: 0, closable: false });
+    return show({ message: message || 'Memuat...', type: 'loading' });
   }
 
   // ===== CRUD PRESETS =====
@@ -304,6 +385,9 @@
     warning,
     info,
     loading,
+    // Alias agar wrapper dinamis DP.toast[type] ikut benar (T-F5).
+    danger: error,
+    warn: warning,
 
     // Presets
     crud,
@@ -334,7 +418,7 @@
   // Allow window.showToast for easy migration
   if (typeof window.showToast === 'undefined') {
     window.showToast = function (message, type, duration) {
-      return show({ message, type: type || 'info', duration: duration || 3000 });
+      return show(message, type, duration);
     };
   }
 

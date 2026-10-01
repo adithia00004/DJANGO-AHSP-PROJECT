@@ -36,6 +36,31 @@
         'error': 'bg-danger text-white'
     };
 
+    const KNOWN_LEVELS = ['error', 'warning', 'success', 'info', 'debug'];
+
+    /**
+     * Level dari tags Django. Django menyusun tags sebagai "extra_tags level"
+     * (mis. "import-error error"), jadi token pertama BUKAN selalu level.
+     */
+    function levelFromTags(tags) {
+        const tokens = String(tags || '').split(/\s+/);
+        return KNOWN_LEVELS.find(level => tokens.includes(level)) || 'info';
+    }
+
+    function hasTag(msg, tag) {
+        return String(msg.tags || '').split(/\s+/).includes(tag);
+    }
+
+    /**
+     * Template memakai |escapejs di atribut data, yang menghasilkan teks
+     * """, "-" dst. (atribut HTML tidak mendekodenya). Didekode di
+     * sini lalu tetap dirender sebagai teks.
+     */
+    function decodeEscapeJs(text) {
+        return String(text || '').replace(/\\u([0-9a-fA-F]{4})/g,
+            (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+
     /**
      * Parse Django messages from hidden div
      */
@@ -50,16 +75,25 @@
 
         messageItems.forEach(item => {
             const tags = item.dataset.tags || 'info';
-            const level = tags.split(' ')[0]; // Get first tag as level
-
-            messages.push({
-                level: level,
-                tags: tags,
-                message: item.dataset.message
-            });
+            const raw = item.dataset.message || '';
+            const msg = { level: levelFromTags(tags), tags: tags, message: raw };
+            // HTML error import dibiarkan apa adanya (perilaku lama); pesan
+            // biasa didekode lalu di-escape saat dirender.
+            if (!hasTag(msg, 'import-error')) {
+                msg.message = decodeEscapeJs(raw);
+            }
+            messages.push(msg);
         });
 
         return messages;
+    }
+
+    /**
+     * Owner 2026-10-01 (K-6): sukses/info tampil sebagai toast yang hilang
+     * sendiri; error/peringatan (dan HTML error import) tetap modal.
+     */
+    function isToastMessage(msg) {
+        return ['success', 'info', 'debug'].includes(msg.level) && !hasTag(msg, 'import-error');
     }
 
     /**
@@ -129,7 +163,11 @@
                 messageHtml = messageLines.map(line => {
                     if (!line.trim()) return '';
                     // Escape HTML for safety
-                    const escaped = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const escaped = line
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
                     return `<p class="mb-2">${escaped}</p>`;
                 }).join('');
             }
@@ -192,6 +230,19 @@
     /**
      * Initialize on page load
      */
+    function showModalWhenReady(messages, attempt) {
+        // Wait for Bootstrap to be loaded
+        if (typeof bootstrap === 'undefined') {
+            if ((attempt || 0) < 50) {
+                setTimeout(() => showModalWhenReady(messages, (attempt || 0) + 1), 100);
+            } else {
+                console.error('Bootstrap tidak termuat; pesan server tidak dapat ditampilkan.');
+            }
+            return;
+        }
+        showMessagesModal(messages);
+    }
+
     function init() {
         // Wait for DOM to be ready
         if (document.readyState === 'loading') {
@@ -199,17 +250,23 @@
             return;
         }
 
-        // Wait for Bootstrap to be loaded
-        if (typeof bootstrap === 'undefined') {
-            console.warn('Bootstrap not loaded yet, retrying...');
-            setTimeout(init, 100);
-            return;
-        }
-
-        // Parse and show messages
         const messages = parseMessages();
-        if (messages.length > 0) {
-            showMessagesModal(messages);
+        if (messages.length === 0) return;
+
+        // Sukses/info -> toast (hilang sendiri). Tanpa DP.toast, semuanya
+        // tetap tampil di modal agar tidak ada pesan yang hilang.
+        const toastApi = window.DP && window.DP.toast;
+        const toastMessages = toastApi ? messages.filter(isToastMessage) : [];
+        const modalMessages = messages.filter(msg => !toastMessages.includes(msg));
+        toastMessages.forEach(msg => {
+            toastApi.show(msg.message, msg.level === 'debug' ? 'info' : msg.level);
+        });
+
+        if (modalMessages.length > 0) {
+            showModalWhenReady(modalMessages, 0);
+        } else {
+            const messagesContainer = document.getElementById('django-messages-data');
+            if (messagesContainer) messagesContainer.remove();
         }
     }
 
