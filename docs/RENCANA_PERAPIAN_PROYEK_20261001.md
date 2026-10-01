@@ -28,16 +28,17 @@ Perubahan dari v1:
 
 ---
 
-## 1. Kondisi saat ini (snapshot HEAD `6c87a6e6`, 2026-10-01)
+## 1. Kondisi saat ini (snapshot main `57a0e3be` dan worktree A-9, 2026-10-01)
 
 | Area | Kondisi | Bukti |
 |---|---|---|
 | `main` | `69059282`, tanggal commit **2026-02-11** (v1 salah menulis 06-08) | `git show -s --format=fuller main` |
-| Garis kerja | 14 branch lama bertumpuk. Ditambah `fix/rekap-pdf-layout` (commit `230f975b`), yang sudah di-fast-forward ke `feat/tambahan-waktu-kerja`; ujung kini `6c87a6e6`, `main` ancestor → **fast-forward mungkin** (324 commit). Worktree kedua untuk branch fix PDF masih ada; A-6 perlu menutupnya sebelum menghapus ref | `git worktree list`, `git rev-list`, verifikasi Codex |
+| Branch | A-5 merge ke `main` selesai di `57a0e3be`, tanpa push. A-9 dikerjakan di `chore/hapus-kode-mati` dari `main`; 3 commit kode + cek selesai, fast-forward lokal ke `main` belum dilakukan. `fix/rekap-pdf-layout` tetap di worktree `../ahsp-pdf-rekap-layout`. Empat branch lama belum tergabung; lihat A-8 | `git worktree list`, `git branch --no-merged` |
 | Branch lama belum tergabung | 4 branch, **bukan** bagian garis kerja: `claude/fix-transaction-management-error-011CUox8f9ABCiXmbvqMPmtS` (1 commit, 2025-11-05), `codex/review-workflow_3_pages-and-create-agenda` (1, 2025-11-13), `fix/kurva-s-phase1-critical-fixes` (48, 2026-01-13), `refactor/bundle-quantity-semantic` (16, 2025-12-26). `git cherry` belum menemukan padanan patch, **tetapi isinya bisa saja sudah diintegrasikan ulang dengan cara lain** → perlu review (A-8) | `git branch --no-merged`, `git cherry` |
 | WIP owner | W-1..W-4 sudah dipisah menjadi 3 commit (`bf92d0c7`, `de212bd8`, `6c87a6e6`); kode WIP tidak lagi tersisa di working tree | `git log -3`, bukti A-3 |
 | Migrasi | 27 berkas migrasi di antara `main` dan ujung. **11 menyentuh data atau menambah constraint** (tabel di bawah). Jumlah yang *benar-benar pending* di DB produksi **belum diketahui** | `git diff --name-only main..HEAD -- '*/migrations/*.py'` |
 | Tes | Setelah commit pada HEAD `6c87a6e6`: backend 5 app **1.041 tes, 0 gagal, 40 skipped**; Vitest **39 file, 432 lulus, 25 skipped**; `makemigrations --check` tanpa perubahan; `npm run build` lulus, `dist/` tidak berubah. Build memberi peringatan chunk Jadwal >500 kB yang sudah ada sebelumnya | bukti A-3/A-4 di §9 |
+| Dependency audit | `npm ci` di worktree A-9 sukses. `npm audit --omit=dev` (2026-10-01) melaporkan **1 high + 4 moderate** (`brace-expansion`, `dompurify`, `exceljs`, `fflate`, `uuid`). Remediasi otomatis `uuid` meminta downgrade major `exceljs`; belum diubah, perlu triage sebelum launch | hasil audit npm A-9 |
 | Tes vs migrasi | `config/settings/test_pg.py` mewarisi `test.py` yang memasang `MIGRATION_MODULES = DisableMigrations()` → **tes lulus ≠ migrasi aman** | `config/settings/test.py:31-38` |
 | Container | `ahsp_web` me-mount **hanya** `D:\PORTOFOLIO ADIT\DJANGO AHSP PROJECT` → `/app`. Worktree lain tidak terbaca `docker exec`. Image tidak memasang Git; cocokkan SHA sumber pada host dengan `sha256sum /app/<berkas>` untuk bukti kode yang dites | `docker inspect ahsp_web`; probe SHA 2026-10-01 |
 | Fitur Tambahan Waktu Kerja + export | Selesai; UAT otomatis lulus (doc 41: 16/16, doc 43: 9/9). Sisa: cek visual owner | doc 41 §6, doc 43 §5 |
@@ -247,7 +248,7 @@ Status: `TODO` / `WIP` / `REVIEW` / `DONE` / `BLOCKED` (alasan wajib) / `SKIP` (
 | A-6 | Hapus branch tergabung (`-d`) | A-5 | DONE | Claude | 42 branch tergabung dihapus dengan `git branch -d` (hash tercatat di log sesi). Ditolak `-d` karena upstream berbeda, **dibiarkan**: `claude/check-main-branch-commits-011CUpD4h9MUV92eikHPMJHE`, `feat/crud-hardening-batchA`, `implementation/r5-master-plan-20260614`. Dilewati: `fix/rekap-pdf-layout` (dipakai worktree Codex `../ahsp-pdf-rekap-layout`). Tersisa 4 branch lama (A-8) | 2026-10-01 |
 | A-7 | Uji migrasi di salinan DB produksi (11 berisiko) | K-2 | TODO | Owner + pelaksana | | |
 | A-8 | Review 4 branch lama | K-8 | TODO | | | |
-| A-9 | Hapus kode mati (Jadwal v1, 2 JS Referensi, stats.html) | A-5 | TODO | | | |
+| A-9 | Hapus kode mati Jadwal v1 dan 2 JS Referensi | A-5 | DONE | Codex | Commit `b84f0fb0` (9 berkas Jadwal termasuk bootstrap yang tak dimuat), `acece5a6` (2 JS Referensi); koreksi rencana `a1efd458`. Tidak ada pemuat produksi tersisa; Django terkait 35 lulus, Vitest 40 file/458 lulus/25 skipped, build lulus. `stats.html` dibiarkan. A-9 branch belum fast-forward ke `main` | 2026-10-01 |
 | B-1 | `docs/STATUS_PROYEK.md` | A-5 | TODO | | | |
 | B-2 | Perbarui checklist launch | B-1 | TODO | | | |
 | B-3 | Label arsip dokumen usang | B-1 | TODO | | | |
