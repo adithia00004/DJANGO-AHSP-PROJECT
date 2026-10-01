@@ -398,62 +398,30 @@
     if (searchDrop && !searchDrop.classList.contains('d-none')) positionSearchDropdown();
   }, { passive: true });
 
-  // Toast (single) + multi-toasts (untuk Undo)
-  const toastEl = document.getElementById('vp-toast');
-  const toastBody = document.getElementById('vp-toast-body');
-  const multiToasts = document.getElementById('vp-toasts');
-  let toastRef = null;
-  try { if (window.bootstrap && toastEl) toastRef = new bootstrap.Toast(toastEl, { delay: 1600 }); } catch { }
-
-  function showToast(message, variant) {
-    if (!toastEl || !toastBody || !toastRef) {
-      if (!message) return;
-      const type = variant === 'danger' ? 'error' : (variant || 'info');
-      if (window.DP && DP.toast && DP.toast.show) {
-        DP.toast.show(message, type);
-        return;
-      }
-      if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) {
-        DP.core.toast.show(message, type);
-        return;
-      }
-      if (typeof window.showToast === 'function') {
-        window.showToast(message, type);
-        return;
-      }
-      console.warn('[VP] Toast:', message);
-      return;
+  // All notifications use the shared toast system. Action callbacks support Undo.
+  function showToast(message, variant = 'success') {
+    if (!message) return null;
+    const api = window.DP?.toast;
+    if (!api) {
+      console.warn('[VP] DP.toast tidak tersedia:', message);
+      return null;
     }
-    toastEl.classList.remove('text-bg-success', 'text-bg-danger', 'text-bg-warning');
-    toastEl.classList.add(variant === 'danger' ? 'text-bg-danger' : variant === 'warning' ? 'text-bg-warning' : 'text-bg-success');
-    toastBody.textContent = message || 'OK';
-    toastRef.show();
+    const type = variant === 'danger' ? 'error' : (variant || 'info');
+    return (api[type] || api.info)(message, 1600);
   }
 
   function showActionToast(message, actions = []) {
-    if (!multiToasts || !window.bootstrap) { showToast(message); return; }
-    const wrapper = document.createElement('div');
-    wrapper.className = 'toast align-items-center text-bg-dark border-0';
-    wrapper.setAttribute('role', 'alert');
-    wrapper.setAttribute('aria-live', 'assertive');
-    wrapper.setAttribute('aria-atomic', 'true');
-    wrapper.innerHTML = `
-      <div class="d-flex">
-        <div class="toast-body">${escapeHtml(message)}</div>
-        <div class="d-flex align-items-center gap-1 me-2">
-          ${actions.map((a, i) => `<button type="button" class="btn btn-sm ${a.class || 'btn-warning'}" data-i="${i}">${escapeHtml(a.label || 'OK')}</button>`).join('')}
-          <button type="button" class="btn-close btn-close-white m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-      </div>
-    `;
-    multiToasts.appendChild(wrapper);
-    const t = new bootstrap.Toast(wrapper, { delay: 4000 });
-    actions.forEach((a, i) => {
-      const btn = wrapper.querySelector(`[data-i="${i}"]`);
-      if (btn) btn.addEventListener('click', () => { try { a.onClick?.(); } finally { t.hide(); } });
+    const api = window.DP?.toast;
+    if (!api?.show) {
+      console.warn('[VP] DP.toast tidak tersedia untuk aksi notifikasi:', message);
+      return null;
+    }
+    return api.show({
+      message,
+      type: 'info',
+      duration: 4000,
+      actions: actions.map(({ label, onClick }) => ({ label, onClick })),
     });
-    wrapper.addEventListener('hidden.bs.toast', () => wrapper.remove());
-    t.show();
   }
 
   // ---- HTTP helper: gunakan DP.core.http bila ada

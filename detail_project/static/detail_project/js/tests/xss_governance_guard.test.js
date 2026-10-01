@@ -46,8 +46,6 @@ beforeAll(() => {
  * 3. Run this test to confirm count matches
  */
 const INNERHTML_ALLOWLIST = [
-    // showActionToast — escapeHtml(message) + escapeHtml(a.label)
-    { context: 'showActionToast', safe: 'escapeHtml on message and label' },
     // search dropdown — static "no results" text
     { context: 'renderSearchDropdown (empty)', safe: 'static string, no user data' },
     // search dropdown — highlightLabel uses escapeHtml on all parts
