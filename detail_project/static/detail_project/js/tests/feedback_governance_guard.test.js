@@ -111,8 +111,6 @@ const NATIVE_DIALOG_BUDGET = {
   'detail_project/static/detail_project/js/volume_pekerjaan.js': 3,
   'detail_project/static/detail_project/js/shared/param_sidebar_editor.js': 3,
   'detail_project/static/detail_project/js/src/jadwal_kegiatan_app.js': 3,
-  'detail_project/static/detail_project/js/jadwal_pekerjaan/kelola_tahapan/save_handler_module.js': 2,
-  'referensi/static/referensi/js/ahsp_database.js': 2,
   'referensi/static/referensi/js/ahsp_database_v2.js': 1,
   'referensi/static/referensi/js/ahsp_database_api.js': 1,
   'detail_project/static/detail_project/js/rincian_ahsp.js': 1,
@@ -120,7 +118,6 @@ const NATIVE_DIALOG_BUDGET = {
   'detail_project/static/detail_project/js/print/RekapRABPrint.js': 1,
   'detail_project/static/detail_project/js/print/PrintComponents.js': 1,
   'detail_project/static/detail_project/js/export/ExcelExporter.js': 1,
-  'detail_project/static/detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_tab.js': 1,
   'detail_project/static/detail_project/js/src/export/ui-integration.js': 1,
   'detail_project/static/detail_project/js/src/modules/app/DataOrchestrator.js': 1,
 };
