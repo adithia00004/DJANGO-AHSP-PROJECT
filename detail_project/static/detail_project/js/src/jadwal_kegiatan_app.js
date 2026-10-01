@@ -3686,30 +3686,14 @@ class JadwalKegiatanApp {
    * Show toast notification
    */
   showToast(message, type = 'info', duration) {
-    // Durasi kosong -> default per jenis dari js/core/toast.js.
-    if (typeof window.showToast === 'function') {
-      window.showToast(message, type, duration);
-      return;
+    const api = window.DP?.toast;
+    if (!api) {
+      console.warn('[JadwalKegiatanApp] DP.toast tidak tersedia:', message);
+      return null;
     }
-    duration = duration || 3000;
-
-    // Fallback toast implementation
-    console.log(`[${type.toUpperCase()}] ${message}`);
-
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-
-    document.body.appendChild(toast);
-
-    setTimeout(() => {
-      toast.classList.add('show');
-    }, 10);
-
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 300);
-    }, duration);
+    const normalizedType = type === 'danger' ? 'error' : (type === 'warn' ? 'warning' : type);
+    const method = api[normalizedType] || api.info;
+    return method(message, duration);
   }
 
   /**
