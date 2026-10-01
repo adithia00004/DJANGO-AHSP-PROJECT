@@ -76,6 +76,15 @@
     }
   }
 
+  function confirmModal(message, options) {
+    const modalApi = window.DP && window.DP.core && window.DP.core.modal;
+    if (!modalApi || typeof modalApi.confirm !== 'function') {
+      notify('Konfirmasi perubahan tidak tersedia. Silakan muat ulang halaman.', 'warning');
+      return Promise.resolve(false);
+    }
+    return Promise.resolve(modalApi.confirm(message, options)).catch(() => false);
+  }
+
   // --- rendering -----------------------------------------------------------
 
   function buildWeekTable(preview) {
@@ -265,12 +274,18 @@
     });
   }
 
-  function commit(host, chosen, revision, button) {
+  async function commit(host, chosen, revision, button) {
     const lost = Number(chosen.planned_lost);
     if (lost > 0) {
-      const proceed = window.confirm(
+      const proceed = await confirmModal(
         `Opsi ini menghapus ${chosen.planned_lost}% rencana progress yang tidak ` +
-        'muat di rentang tanggal proyek. Lanjutkan?'
+        'muat di rentang tanggal proyek. Lanjutkan?',
+        {
+          title: 'Konfirmasi perbaikan jadwal',
+          confirmText: 'Lanjutkan',
+          cancelText: 'Batal',
+          confirmClass: 'btn btn-danger',
+        },
       );
       if (!proceed) return;
     }
