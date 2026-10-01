@@ -2356,115 +2356,16 @@
     toast('CSV berhasil di-export.', 'success');
   });
 
-  // toast notification - delegate to global DP.toast
-  /**
-   * Show toast notification with auto-dismiss
-   * @param {string} msg - Message to display
-   * @param {string} type - Type: 'success', 'error', 'warning', 'info', 'warn'
-   * @param {number} delay - Auto-dismiss delay in ms (default: 3000)
-   */
+  // Delegate notifications to the global toast renderer.
   function toast(msg, type = 'info', delay = 3000) {
-    console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
-
-    // Normalize type (warn -> warning)
+    const api = window.DP?.toast;
+    if (!api) {
+      console.warn('[TemplateAHSP] DP.toast tidak tersedia:', msg);
+      return null;
+    }
     const normalizedType = type === 'warn' ? 'warning' : type;
-
-    // Use new global toast API
-    if (window.DP && window.DP.toast && window.DP.toast[normalizedType]) {
-      return window.DP.toast[normalizedType](msg, delay);
-    }
-
-    // Fallback to legacy API
-    if (window.DP && window.DP.core && window.DP.core.toast) {
-      window.DP.core.toast.show(msg, normalizedType, delay);
-      return;
-    }
-
-    // Fallback to inline implementation
-    // P3.2 FIX: Toast stacking with max limit
-    let container = document.getElementById('ta-toast-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'ta-toast-container';
-      container.style.cssText = `
-        position: fixed;
-        top: 80px;
-        right: 20px;
-        z-index: 13100;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        max-width: 400px;
-      `;
-      document.body.appendChild(container);
-    }
-
-    // Remove oldest toasts if more than 5
-    const existingToasts = container.querySelectorAll('.ta-toast');
-    if (existingToasts.length >= 5) {
-      existingToasts[0].remove(); // Remove oldest (first)
-    }
-
-    // Icon and color mapping
-    const config = {
-      success: { icon: 'bi-check-circle-fill', bg: '#28a745', color: '#fff' },
-      error: { icon: 'bi-x-circle-fill', bg: '#dc3545', color: '#fff' },
-      warning: { icon: 'bi-exclamation-triangle-fill', bg: '#ffc107', color: '#000' },
-      info: { icon: 'bi-info-circle-fill', bg: '#17a2b8', color: '#fff' }
-    };
-    const cfg = config[type] || config.info;
-
-    // Create toast element
-    const toastEl = document.createElement('div');
-    toastEl.className = 'ta-toast';
-    toastEl.style.cssText = `
-      background: ${cfg.bg};
-      color: ${cfg.color};
-      padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 300px;
-      animation: slideInRight 0.3s ease-out;
-      font-size: 14px;
-      line-height: 1.4;
-    `;
-
-    toastEl.innerHTML = `
-      <i class="bi ${cfg.icon}" style="font-size: 20px; flex-shrink: 0;"></i>
-      <span style="flex: 1;">${escapeHtml(msg)}</span>
-      <button type="button" style="
-        background: none;
-        border: none;
-        color: ${cfg.color};
-        font-size: 20px;
-        line-height: 1;
-        cursor: pointer;
-        padding: 0;
-        opacity: 0.7;
-        flex-shrink: 0;
-      " aria-label="Close">&times;</button>
-    `;
-
-    // Close button
-    const closeBtn = toastEl.querySelector('button');
-    closeBtn.addEventListener('click', () => {
-      toastEl.style.animation = 'slideOutRight 0.3s ease-in';
-      setTimeout(() => toastEl.remove(), 300);
-    });
-
-    // Auto-dismiss after 5 seconds (error stays longer)
-    const duration = type === 'error' ? 8000 : 5000;
-    setTimeout(() => {
-      if (toastEl.parentNode) {
-        toastEl.style.animation = 'slideOutRight 0.3s ease-in';
-        setTimeout(() => toastEl.remove(), 300);
-      }
-    }, duration);
-
-    container.appendChild(toastEl);
+    const method = api[normalizedType] || api.info;
+    return method(msg, delay);
   }
 
   // Helper: Escape HTML to prevent XSS
@@ -2472,23 +2373,6 @@
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-  }
-
-  // Add animations via <style>
-  if (!document.getElementById('ta-toast-animations')) {
-    const style = document.createElement('style');
-    style.id = 'ta-toast-animations';
-    style.textContent = `
-      @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-      }
-      @keyframes slideOutRight {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(100%); opacity: 0; }
-      }
-    `;
-    document.head.appendChild(style);
   }
 
   refreshParamSnapshot({ force: true, quiet: true })
