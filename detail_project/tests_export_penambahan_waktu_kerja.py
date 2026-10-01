@@ -5,6 +5,7 @@ Both scenarios use the same canonical Monday-Sunday week boundary as project 217
 """
 
 import base64
+import re
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -425,6 +426,7 @@ class ExtensionPdfMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
         self.assertTrue(kurva_pages)
         self.assertTrue(any("Penambahan" in page for page in kurva_pages))
 
+
     def test_browser_kurva_attachment_does_not_duplicate_server_kurva(self):
         manager = ExportManager(self.next_week, self.owner)
         base = pdf_page_texts(manager.export_jadwal_professional("pdf", report_type="rekap").content)
@@ -460,6 +462,45 @@ class ExtensionPdfMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
         month_three = next(i for i, page in enumerate(pages) if "PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-3" in page)
         self.assertLess(summary, month_three)
         self.assertIn("Penambahan Waktu Kerja", pages[month_three])
+
+
+class RekapPdfLayoutTests(ExtensionSummaryFixtureMixin, TestCase):
+    def _pages(self):
+        response = ExportManager(self.next_week, self.owner).export_jadwal_professional(
+            "pdf", report_type="rekap",
+        )
+        return pdf_page_texts(response.content)
+
+    def test_rekap_toc_uses_real_section_page_numbers(self):
+        pages = self._pages()
+        toc_index = next(i for i, page in enumerate(pages) if "DAFTAR ISI" in page)
+        toc_text = " ".join(pages[toc_index].split())
+
+        self.assertNotIn("...", toc_text)
+        self.assertNotIn("Gantt Chart", toc_text)
+        section_starts = {
+            "Grid View - Rencana": "BAGIAN 1: GRID VIEW - RENCANA",
+            "Grid View - Realisasi": "BAGIAN 2: GRID VIEW - REALISASI",
+            "Kurva S Progress Kumulatif": "GRAFIK KURVA S",
+        }
+        actual_pages = []
+        for toc_title, section_heading in section_starts.items():
+            actual_pages.append(next(
+                i + 1 for i, page in enumerate(pages) if section_heading in page
+            ))
+            self.assertIn(toc_title, toc_text)
+
+        toc_page_numbers = [
+            int(number)
+            for number in re.findall(r"(?:\s*\.\s*){4,}(\d+)", toc_text)
+        ]
+        self.assertEqual(toc_page_numbers, actual_pages)
+
+    def test_kurva_s_title_stays_with_first_chart_page(self):
+        pages = self._pages()
+        title_page = next(page for page in pages if "GRAFIK KURVA S" in page)
+
+        self.assertIn("Uraian Pekerjaan", title_page)
 
 
 class ExtensionExcelMarkerTests(ExtensionSummaryFixtureMixin, TestCase):

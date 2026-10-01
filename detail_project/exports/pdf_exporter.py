@@ -16,6 +16,7 @@ from reportlab.platypus import (
     Table as _BaseTable, TableStyle, Paragraph, Flowable,
     Spacer, PageBreak, KeepTogether, Image, NextPageTemplate
 )
+from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.graphics.shapes import Drawing, String, Line, Rect, Circle
 from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.graphics.charts.legends import Legend
@@ -391,6 +392,40 @@ class SegmentMarker(Flowable):
     def wrap(self, availWidth, availHeight):
         """This flowable takes no space."""
         return (0, 0)
+
+
+class TOCSectionMarker(Flowable):
+    """Register the first page of a rekap section for its table of contents."""
+
+    def __init__(self, title: str):
+        super().__init__()
+        self.title = title
+        self.key = f"rekap-section-{title.lower().replace(' ', '-')}"
+        self.width = 0
+        self.height = 0
+
+    def wrap(self, availWidth, availHeight):
+        return 0, 0
+
+    def draw(self):
+        # RekapDocTemplate.afterFlowable records the page after this marker has
+        # been placed. The marker is kept with the section heading when needed.
+        return None
+
+
+class RekapDocTemplate(SimpleDocTemplate):
+    """Simple document template that publishes section starts to ReportLab TOC."""
+
+    def afterFlowable(self, flowable):
+        if not isinstance(flowable, TOCSectionMarker):
+            return
+
+        self.canv.bookmarkPage(flowable.key)
+        self.canv.addOutlineEntry(flowable.title, flowable.key, level=0, closed=False)
+        self.notify(
+            'TOCEntry',
+            (0, flowable.title, self.page, flowable.key),
+        )
 
 
 class PDFExporter(ConfigExporterBase):
@@ -1407,13 +1442,14 @@ class PDFExporter(ConfigExporterBase):
                 title=self.config.title
             )
         else:
-            # Rekap: Use SimpleDocTemplate
+            # Rekap uses ReportLab's multi-pass TOC so section page numbers are
+            # populated from final pagination.
             if orientation == 'portrait':
                 pagesize = base_size
             else:
                 pagesize = landscape(base_size)
             
-            doc = SimpleDocTemplate(
+            doc = RekapDocTemplate(
                 buffer,
                 pagesize=pagesize,
                 topMargin=margin_top,
@@ -1897,6 +1933,7 @@ class PDFExporter(ConfigExporterBase):
             for idx, page in enumerate(planned_pages):
                 # Section header for first page
                 if idx == 0:
+                    story.append(TOCSectionMarker('Grid View - Rencana'))
                     section_title = ParagraphStyle(
                         'SectionHeader',
                         fontSize=16,
@@ -1927,6 +1964,7 @@ class PDFExporter(ConfigExporterBase):
             actual_pages = data.get('actual_pages', [])
             for idx, page in enumerate(actual_pages):
                 if idx == 0:
+                    story.append(TOCSectionMarker('Grid View - Realisasi'))
                     section_title = ParagraphStyle(
                         'SectionHeader',
                         fontSize=16,
@@ -1965,8 +2003,8 @@ class PDFExporter(ConfigExporterBase):
                     fontName='Helvetica-Bold',
                     spaceAfter=5*mm,
                 )
-                story.append(Paragraph("<b>GRAFIK KURVA S</b>", section_title))
-                story.append(Spacer(1, 5*mm))
+                kurva_heading = Paragraph("<b>GRAFIK KURVA S</b>", section_title)
+                kurva_heading_spacer = Spacer(1, 5*mm)
                 
                 # Extract pekerjaan rows from planned_pages and actual_pages data
                 # Row format from adapter: [kode, uraian, volume, satuan, week1_progress, week2_progress, ...]
@@ -2029,13 +2067,20 @@ class PDFExporter(ConfigExporterBase):
                         max_table_height=doc.height - 70 - 24 - 30,
                     )
                     
-                    for idx, page_drawing in enumerate(kurva_pages):
-                        story.append(page_drawing)
-                        # Add page break after each table (1 table per page)
-                        if idx < len(kurva_pages) - 1:
+                    if kurva_pages:
+                        # Keep the section title with the first chart page. The
+                        # Drawing already reserves space for the title; grouping
+                        # prevents a title-only page when the table is paginated.
+                        story.append(KeepTogether([
+                            TOCSectionMarker('Kurva S Progress Kumulatif'),
+                            kurva_heading,
+                            kurva_heading_spacer,
+                            kurva_pages[0],
+                        ]))
+                        for page_drawing in kurva_pages[1:]:
                             story.append(PageBreak())
-                        else:
-                            story.append(Spacer(1, 10*mm))
+                            story.append(page_drawing)
+                        story.append(Spacer(1, 10*mm))
                 else:
                     # Fallback to basic grid if no pekerjaan data
                     integrated_overlay = self._build_integrated_kurva_s_grid(
@@ -2044,7 +2089,12 @@ class PDFExporter(ConfigExporterBase):
                         max_weeks=20
                     )
                     if integrated_overlay:
-                        story.append(integrated_overlay)
+                        story.append(KeepTogether([
+                            TOCSectionMarker('Kurva S Progress Kumulatif'),
+                            kurva_heading,
+                            kurva_heading_spacer,
+                            integrated_overlay,
+                        ]))
                         story.append(Spacer(1, 10*mm))
                 
                 # Summary stats table
@@ -2172,6 +2222,7 @@ class PDFExporter(ConfigExporterBase):
             
             # Build backend Gantt if we have data
             if pekerjaan_rows and time_columns:
+                story.append(TOCSectionMarker('Gantt Chart'))
                 section_title = ParagraphStyle(
                     'SectionHeader',
                     fontSize=16,
@@ -2209,6 +2260,7 @@ class PDFExporter(ConfigExporterBase):
                 continue
             
             if report_type == 'rekap' and 'gantt' in att_title.lower() and not gantt_section_added:
+                story.append(TOCSectionMarker('Gantt Chart'))
                 section_title = ParagraphStyle(
                     'SectionHeader',
                     fontSize=16,
@@ -2246,7 +2298,11 @@ class PDFExporter(ConfigExporterBase):
         project_name = project_info.get('nama', self.config.project_name) or ''
         section_title = 'Jadwal Pekerjaan'
         story = self._collapse_redundant_page_breaks(story)
-        doc.build(story, canvasmaker=make_numbered_canvas(project_name, section_title))
+        canvasmaker = make_numbered_canvas(project_name, section_title)
+        if report_type == 'rekap':
+            doc.multiBuild(story, canvasmaker=canvasmaker)
+        else:
+            doc.build(story, canvasmaker=canvasmaker)
         
         pdf_content = buffer.getvalue()
         buffer.close()
@@ -4352,21 +4408,9 @@ class PDFExporter(ConfigExporterBase):
         return elements
 
     def _build_table_of_contents(self, sections: List[str]) -> List:
-        """
-        Build enhanced table of contents for rekap report.
-        
-        Features:
-        - Decorative title
-        - Dotted leaders between entry and page number
-        - Section icons
-        - Professional layout
-        
-        Args:
-            sections: List of section titles
-        """
+        """Build the rekap TOC; section page numbers come from multiBuild markers."""
         elements = []
-        
-        # Title with decorative line
+
         title_style = ParagraphStyle(
             'TOCTitle',
             fontSize=18,
@@ -4376,78 +4420,35 @@ class PDFExporter(ConfigExporterBase):
             spaceAfter=5*mm,
         )
         elements.append(Paragraph("<b>DAFTAR ISI</b>", title_style))
-        
-        # Decorative line under title
         line_drawing = Drawing(200*mm, 4)
         line_drawing.add(Line(0, 2, 200*mm, 2, strokeColor=colors.HexColor(UTS.PRIMARY_LIGHT), strokeWidth=1))
         elements.append(line_drawing)
         elements.append(Spacer(1, 10*mm))
-        
-        # Section icons
-        section_icons = {
-            'Grid View': '▣',
-            'Kurva S': '📈',
-            'Gantt Chart': '📊',
-            'Rencana': '📋',
-            'Realisasi': '✓',
-        }
-        
-        # TOC entries as table
-        toc_data = []
-        for idx, section in enumerate(sections, 1):
-            # Determine icon based on section name
-            icon = ''
-            for key, ico in section_icons.items():
-                if key.lower() in section.lower():
-                    icon = ico
-                    break
-            
-            # Create dotted leader
-            dots = '.' * 80  # Will be styled with color
-            
-            # Build row: [number, icon, section name, dots, page num]
-            toc_data.append([
-                f"{idx}.",
-                icon,
-                section,
-                dots,
-                f"..."  # Placeholder for page number
-            ])
-        
-        if toc_data:
-            toc_table = Table(toc_data, colWidths=[10*mm, 8*mm, 120*mm, 70*mm, 15*mm])
-            toc_table.setStyle(TableStyle([
-                # Font styling
-                ('FONTSIZE', (0, 0), (-1, -1), 11),
-                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),  # Numbers bold
-                ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),  # Section names
-                ('FONTSIZE', (3, 0), (3, -1), 8),  # Dots smaller
-                
-                # Colors
-                ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.PRIMARY_LIGHT)),
-                ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#2c3e50')),
-                ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor(UTS.LIGHT_BORDER)),
-                ('TEXTCOLOR', (4, 0), (4, -1), colors.HexColor(UTS.TEXT_MUTED)),
-                
-                # Alignment
-                ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-                ('ALIGN', (4, 0), (4, -1), 'RIGHT'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                
-                # Padding
-                ('TOPPADDING', (0, 0), (-1, -1), 3*mm),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 3*mm),
-                
-                # Alternating row backgrounds
-                *[('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8f9fa')) 
-                  for i in range(0, len(toc_data), 2)],
-                
-                # Subtle bottom border for each row
-                ('LINEBELOW', (0, 0), (-1, -1), 0.3, colors.HexColor(UTS.LIGHT_BORDER)),
-            ]))
-            elements.append(toc_table)
-        
+
+        toc_style = ParagraphStyle(
+            'TOCLevel1',
+            fontName='Helvetica',
+            fontSize=11,
+            leading=18,
+            leftIndent=12,
+            firstLineIndent=-12,
+            textColor=colors.HexColor('#2c3e50'),
+            spaceBefore=4,
+        )
+        toc = TableOfContents(
+            dotsMinLevel=0,
+            rightColumnWidth=18*mm,
+            levelStyles=[toc_style],
+        )
+        toc.tableStyle = TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.3, colors.HexColor(UTS.LIGHT_BORDER)),
+        ])
+        elements.append(toc)
         return elements
 
     def _build_detail_progress_table(self, detail_table: Dict[str, Any]) -> Table:
