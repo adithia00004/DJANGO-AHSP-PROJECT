@@ -268,16 +268,6 @@ button[type="submit"].btn-warning {
     }
 }
 
-/* Utility: Toast Notifications (fallback darurat — jalur utama = DP.toast)
-   U2 fix: toast harus selalu di lapisan token toast, di atas modal. */
-.alert.position-fixed {
-    min-width: 300px;
-    max-width: 500px;
-    z-index: var(--dp-z-toast, 13100);
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-}
-
-
 /* ===================================================== */
 /* AUTOCOMPLETE DROPDOWN */
 /* ===================================================== */
@@ -554,23 +544,6 @@ body.column-resizing {
 
     to {
         transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-/* Toast notification smooth entrance */
-.alert.position-fixed {
-    animation: toastSlideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes toastSlideDown {
-    from {
-        transform: translate(-50%, -100%);
-        opacity: 0;
-    }
-
-    to {
-        transform: translate(-50%, 0);
         opacity: 1;
     }
 }

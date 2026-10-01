@@ -82,3 +82,16 @@ class ToastRendererGovernanceTests(SimpleTestCase):
         )
         for path in page_templates:
             self.assertNotIn("detail_project/_alert.html", path.read_text(encoding="utf-8"))
+
+    def test_removed_page_toast_renderers_have_no_active_styles(self):
+        active_stylesheets = (
+            REPO_ROOT / "dashboard" / "static" / "dashboard" / "css" / "dashboard.css",
+            REPO_ROOT / "dashboard" / "static" / "dashboard" / "css" / "ux-enhancements.css",
+            REPO_ROOT / "referensi" / "static" / "referensi" / "css" / "ahsp_database.css",
+            REPO_ROOT / "referensi" / "static" / "referensi" / "css" / "preview_import.css",
+        )
+        obsolete_selectors = ("toast-container-modern", "toast-modern", ".alert.position-fixed")
+        for path in active_stylesheets:
+            source = path.read_text(encoding="utf-8")
+            for selector in obsolete_selectors:
+                self.assertNotIn(selector, source, f"{path.relative_to(REPO_ROOT)} masih menata renderer yang dihapus")

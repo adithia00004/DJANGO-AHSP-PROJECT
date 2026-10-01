@@ -1323,11 +1323,6 @@ table .dp-thead-sticky th {
   z-index: var(--z-dropdown, 1000) !important;
 }
 
-/* Toast notifications */
-.toast-container-modern {
-  z-index: var(--z-toast, 13020) !important;
-}
-
 /* FAB Menu */
 .fab-menu {
   z-index: calc(var(--z-fixed, 1020) + 1) !important;

@@ -520,23 +520,6 @@ body.column-resizing * {
     transition: all 0.2s ease;
 }
 
-/* Toast notification slide in */
-.alert.position-fixed {
-    animation: slideInDown 0.3s ease;
-}
-
-@keyframes slideInDown {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -20px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translate(-50%, 0);
-    }
-}
-
 /* Save button pulse effect */
 @keyframes pulse {
 
