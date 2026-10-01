@@ -300,34 +300,7 @@ export class ExportManagerNew {
       return;
     }
 
-    // Fallback to Bootstrap toast
-    if (window.bootstrap && window.bootstrap.Toast) {
-      const toastHtml = `
-        <div class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
-          <div class="d-flex">
-            <div class="toast-body">
-              <i class="bi bi-hourglass-split"></i> Generating ${format.toUpperCase()} export...
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-          </div>
-        </div>
-      `;
-
-      let container = document.querySelector('.toast-container');
-      if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-        document.body.appendChild(container);
-      }
-
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = toastHtml;
-      const toastElement = tempDiv.firstElementChild;
-      container.appendChild(toastElement);
-
-      const toast = new window.bootstrap.Toast(toastElement);
-      toast.show();
-    }
+    console.warn('[ExportUI] DP.toast tidak tersedia untuk notifikasi proses ekspor.');
   }
 
   /**
@@ -360,36 +333,7 @@ export class ExportManagerNew {
       return;
     }
 
-    // Fallback to Bootstrap toast
-    if (window.bootstrap && window.bootstrap.Toast) {
-      const toastHtml = `
-        <div class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
-          <div class="d-flex">
-            <div class="toast-body">
-              <i class="bi bi-exclamation-triangle"></i> Export failed: ${message}
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-          </div>
-        </div>
-      `;
-
-      let container = document.querySelector('.toast-container');
-      if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-        document.body.appendChild(container);
-      }
-
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = toastHtml;
-      const toastElement = tempDiv.firstElementChild;
-      container.appendChild(toastElement);
-
-      const toast = new window.bootstrap.Toast(toastElement, { autohide: false });
-      toast.show();
-    } else {
-      alert(`Export failed: ${message}`);
-    }
+    console.error('[ExportUI] DP.toast tidak tersedia; ekspor gagal:', message);
   }
 }
 
