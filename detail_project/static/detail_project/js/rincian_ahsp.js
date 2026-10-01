@@ -29,7 +29,7 @@
  * @dependencies
  * - Bootstrap 5 (modals, icons)
  * - ExportManager (optional, for CSV/PDF/Word export)
- * - DP.core.toast (optional, fallback to inline implementation)
+ * - DP.toast (global notification system)
  *
  * @author Claude (AI Assistant)
  * @version TIER 3 Complete
@@ -139,8 +139,6 @@
   // Resizer
   const $resizer = ROOT.querySelector('.rk-resizer');
   const $leftPane = ROOT.querySelector('.rk-left');
-  // Toast
-  const $toast = ROOT.querySelector('#rk-toast');
   const volumeAlertEl = document.getElementById('rk-volume-alert');
   const sourceChange = window.DP?.sourceChange || null;
 
@@ -333,106 +331,16 @@
     if ($ovrInput) $ovrInput.placeholder = enabled ? "Override %" : "Override tidak tersedia";
   }
 
-  // Toast notification - delegate to global DP.toast
-  /**
-   * Show toast notification with auto-dismiss
-   * @param {string} msg - Message to display
-   * @param {string} type - Type: 'success', 'error', 'warning', 'info'
-   * @param {number} delay - Auto-dismiss delay in ms (default: based on type)
-   */
+  // Delegate all notifications to the global toast renderer.
   function showToast(msg, type = 'info', delay = null) {
-    console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
-    const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
-    const duration = delay || defaultDelay;
-
-    // Use new global toast API
-    if (window.DP && window.DP.toast && window.DP.toast[type]) {
-      return window.DP.toast[type](msg, duration);
+    const toast = window.DP?.toast;
+    if (!toast) {
+      console.warn('[RincianAHSP] DP.toast tidak tersedia:', msg);
+      return null;
     }
-
-    // Fallback to legacy API
-    if (window.DP && window.DP.core && window.DP.core.toast) {
-      window.DP.core.toast.show({ message: msg, variant: type, delay: duration });
-      return;
-    }
-
-    // Final fallback to inline implementation
-    if (!$toast) { console.log(`[${type}]`, msg); return; }
-
-    const config = {
-      success: { icon: 'bi-check-circle-fill', bg: '#28a745', color: '#fff' },
-      error: { icon: 'bi-x-circle-fill', bg: '#dc3545', color: '#fff' },
-      warning: { icon: 'bi-exclamation-triangle-fill', bg: '#ffc107', color: '#000' },
-      info: { icon: 'bi-info-circle-fill', bg: '#17a2b8', color: '#fff' }
-    };
-    const cfg = config[type] || config.info;
-
-    const div = document.createElement('div');
-    div.className = `rk-toast rk-toast-${type}`;
-    div.style.cssText = `
-      background: ${cfg.bg};
-      color: ${cfg.color};
-      padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      animation: slideInRight 0.3s ease-out;
-      font-size: 14px;
-      line-height: 1.4;
-      min-width: 300px;
-      max-width: 500px;
-    `;
-    div.innerHTML = `
-      <i class="bi ${cfg.icon}" style="font-size: 20px; flex-shrink: 0;"></i>
-      <span style="flex: 1; white-space: pre-wrap;">${esc(msg)}</span>
-      <button type="button" style="
-        background: none;
-        border: none;
-        color: inherit;
-        font-size: 24px;
-        line-height: 1;
-        cursor: pointer;
-        padding: 0;
-        opacity: 0.7;
-        flex-shrink: 0;
-      " aria-label="Close">&times;</button>
-    `;
-
-    const closeBtn = div.querySelector('button');
-    closeBtn.addEventListener('click', () => {
-      div.style.animation = 'slideOutRight 0.3s ease-in';
-      setTimeout(() => div.remove(), 300);
-    });
-
-    // Auto-dismiss
-    setTimeout(() => {
-      if (div.parentNode) {
-        div.style.animation = 'slideOutRight 0.3s ease-in';
-        setTimeout(() => div.remove(), 300);
-      }
-    }, duration);
-
-    $toast.appendChild(div);
-  }
-
-  // Add animations via <style> if not exists
-  if (!document.getElementById('rk-toast-animations')) {
-    const style = document.createElement('style');
-    style.id = 'rk-toast-animations';
-    style.textContent = `
-      @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-      }
-      @keyframes slideOutRight {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(100%); opacity: 0; }
-      }
-    `;
-    document.head.appendChild(style);
+    const normalizedType = type === 'danger' ? 'error' : type;
+    const method = toast[normalizedType] || toast.info;
+    return method(msg, delay == null ? undefined : delay);
   }
 
   // ====== TIER 3: Granular Loading States ======

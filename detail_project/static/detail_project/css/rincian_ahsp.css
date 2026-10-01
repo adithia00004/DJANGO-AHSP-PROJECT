@@ -814,14 +814,6 @@
   font-family: var(--dp-font-mono);
 }
 
-/* ===== TOAST ===== */
-.ra-app .rk-toast-wrap {
-  position: fixed;
-  bottom: 1rem;
-  right: 1rem;
-  z-index: var(--dp-z-toast);
-}
-
 /* Ensure Help Modal sits above any local overlays (parity with template AHSP) */
 #raHelpModal {
   z-index: calc(var(--dp-z-modal) + 100) !important;
