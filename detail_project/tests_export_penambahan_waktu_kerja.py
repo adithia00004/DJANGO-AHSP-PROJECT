@@ -502,6 +502,27 @@ class RekapPdfLayoutTests(ExtensionSummaryFixtureMixin, TestCase):
 
         self.assertIn("Uraian Pekerjaan", title_page)
 
+    def test_kurva_s_title_stays_with_full_height_chart(self):
+        # Regresi proyek 217: dengan banyak baris grafik halaman pertama
+        # setinggi frame, sehingga judul tertinggal sendirian di satu halaman.
+        sub = SubKlasifikasi.objects.get(project=self.next_week)
+        for number in range(3, 63):
+            pekerjaan = Pekerjaan.objects.create(
+                project=self.next_week, sub_klasifikasi=sub,
+                source_type=Pekerjaan.SOURCE_CUSTOM,
+                snapshot_kode=f"P-{number:03d}", snapshot_uraian=f"Pekerjaan {number}",
+                snapshot_satuan="m2", ordering_index=number,
+            )
+            VolumePekerjaan.objects.create(
+                project=self.next_week, pekerjaan=pekerjaan, quantity=Decimal("1"),
+            )
+
+        pages = self._pages()
+        title_page = next(page for page in pages if "GRAFIK KURVA S" in page)
+
+        self.assertIn("Halaman 1/", title_page)
+        self.assertIn("Uraian Pekerjaan", title_page)
+
 
 class ExtensionExcelMarkerTests(ExtensionSummaryFixtureMixin, TestCase):
     def _workbook(self, report_type, **selection):
@@ -674,7 +695,7 @@ class RekapKurvaSingleCurveTests(TestCase):
 
     ROW_HEIGHT = 17  # calculate_row_height() for a one-line name
 
-    def _pages(self, rows, budget, points):
+    def _pages(self, rows, budget, points, first_chunk_reserve=0):
         config = ExportManager(None)._create_config_simple(
             'Jadwal', page_orientation='landscape', page_size='A3',
         )
@@ -684,6 +705,18 @@ class RekapKurvaSingleCurveTests(TestCase):
             [{'week': w + 1, 'planned': p, 'actual': 0, 'range': ''} for w, p in enumerate(points)],
             total_weeks=len(points),
             max_table_height=budget,
+            first_chunk_reserve=first_chunk_reserve,
+        )
+
+    def test_first_page_reserves_room_for_section_title(self):
+        # 10 baris, 5 baris/halaman; cadangan judul 2 baris hanya di halaman
+        # pertama -> 3 + 5 + 2 baris. Halaman berikutnya tetap penuh.
+        pages = self._pages(10, 5 * self.ROW_HEIGHT, [50, 100],
+                            first_chunk_reserve=2 * self.ROW_HEIGHT)
+        chrome = 24 + 70  # header tabel + legenda
+        self.assertEqual(
+            [round(page.height - chrome) for page in pages],
+            [3 * self.ROW_HEIGHT, 5 * self.ROW_HEIGHT, 2 * self.ROW_HEIGHT],
         )
 
     def test_curve_continues_across_row_pages(self):

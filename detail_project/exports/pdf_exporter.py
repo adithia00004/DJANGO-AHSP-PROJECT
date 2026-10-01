@@ -2056,6 +2056,15 @@ class PDFExporter(ConfigExporterBase):
                 
                 # Use paginated Kurva S if we have data
                 if pekerjaan_rows:
+                    # Tinggi judul seksi (termasuk spasi) yang ikut di halaman
+                    # grafik pertama lewat KeepTogether; potongan baris pertama
+                    # dikurangi sebesar ini agar judul tidak tertinggal sendirian.
+                    _, heading_h = kurva_heading.wrap(doc.width, doc.height)
+                    kurva_heading_reserve = (
+                        heading_h
+                        + kurva_heading.getSpaceAfter()
+                        + kurva_heading_spacer.height
+                    )
                     kurva_pages = self._build_kurva_s_paginated(
                         pekerjaan_rows,
                         kurva_s_data,
@@ -2065,12 +2074,14 @@ class PDFExporter(ConfigExporterBase):
                         # Tinggi tersedia: frame halaman dikurangi judul halaman,
                         # header tabel, legenda, dan judul seksi (halaman pertama).
                         max_table_height=doc.height - 70 - 24 - 30,
+                        first_chunk_reserve=kurva_heading_reserve,
                     )
-                    
+
                     if kurva_pages:
                         # Keep the section title with the first chart page. The
-                        # Drawing already reserves space for the title; grouping
-                        # prevents a title-only page when the table is paginated.
+                        # first row chunk is shortened by the title height
+                        # (first_chunk_reserve) so the group fits one frame;
+                        # grouping prevents a title-only page.
                         story.append(KeepTogether([
                             TOCSectionMarker('Kurva S Progress Kumulatif'),
                             kurva_heading,
@@ -6339,6 +6350,7 @@ class PDFExporter(ConfigExporterBase):
         max_rows_per_page: int = 30,
         weekly_columns: List[Dict] = None,
         max_table_height: float | None = None,
+        first_chunk_reserve: float = 0,
     ) -> List[Drawing]:
         """
         Build paginated Kurva S visualization with freeze columns.
@@ -6443,10 +6455,13 @@ class PDFExporter(ConfigExporterBase):
         row_chunks = []
         if max_table_height:
             # Isi halaman sampai tinggi yang tersedia (bukan jumlah baris tetap).
+            # Potongan pertama dikurangi first_chunk_reserve (judul seksi yang
+            # ikut di halaman grafik pertama).
             start = 0
             while start < num_rows:
                 used, end = 0, start
-                while end < num_rows and (end == start or used + all_row_heights[end] <= max_table_height):
+                limit = max_table_height - (first_chunk_reserve if start == 0 else 0)
+                while end < num_rows and (end == start or used + all_row_heights[end] <= limit):
                     used += all_row_heights[end]
                     end += 1
                 row_chunks.append((start, end))
