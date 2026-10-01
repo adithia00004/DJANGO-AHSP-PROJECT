@@ -45,19 +45,9 @@
     }
 
     function showToast(message, type = 'success') {
-        // Kontrak Feedback UI (AUDIT_UI_UX §10): selalu lewat DP.toast global
-        // agar posisi/gaya/durasi seragam di seluruh web.
-        if (window.DP && window.DP.toast) {
-            (window.DP.toast[type] || window.DP.toast.info)(message);
-            return;
-        }
-        // Emergency fallback only (core/toast.js failed to load).
-        const toast = document.createElement('div');
-        toast.className = `alert alert-${type} position-fixed top-0 start-50 translate-middle-x mt-3 shadow-lg`;
-        toast.style.zIndex = 'var(--dp-z-toast, 13100)';
-        toast.innerHTML = `<i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        const api = window.DP?.toast;
+        if (api) return (api[type] || api.info)(message);
+        console.warn('[ReferensiAPI] DP.toast tidak tersedia:', message);
     }
 
     function formatNumber(num) {
