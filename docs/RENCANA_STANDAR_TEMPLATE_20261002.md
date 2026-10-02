@@ -48,7 +48,7 @@ Status: `TODO` / `WIP` / `REVIEW` / `DONE`.
 | T2.5 | Rekap Kebutuhan Material, berkelompok (PDF & Word; semua mode filter/periode) | REVIEW | mode per periode: satu tabel per periode |
 | T3 | Paket Perencanaan utuh: cover + daftar isi + nomor halaman, 5 dokumen | REVIEW | PDF & Word 217: 20 halaman (sama) |
 | T4 | Laporan Jadwal: palet + "Halaman x dari y" + header kanan | TODO | |
-| T5 | Registri desain (R-51 dst.), tes penjaga, hapus jalur lama yang tidak terpakai | TODO | |
+| T5 | Registri desain (R-51 dst.), tes penjaga, hapus jalur lama yang tidak terpakai | WIP | R-51–R-55 dicatat di `docs/DESIGN_REGISTRY_EXPORT.md`; tes penjaga dan pembersihan jalur lama belum dilakukan. |
 | V | Cek visual owner per tahap (sampel proyek 217) | TODO | |
 
 ## 4. Aturan kerja
@@ -56,7 +56,7 @@ Status: `TODO` / `WIP` / `REVIEW` / `DONE`.
 - Satu tahap = satu commit (atau lebih kecil), pesan bahasa Indonesia.
 - Tes di container sementara yang me-mount worktree (bukan `ahsp_web`); DB tes unik per run.
 - Gerbang tiap tahap: tes export terkait + suite 5 app sebelum merge; sampel PDF & Word proyek 217 untuk owner.
-- Tidak ada push/merge tanpa izin owner.
+- **Tanpa push.** Owner mengizinkan penggabungan lokal pada 2026-10-02.
 
 ## 5. Catatan teknis
 
