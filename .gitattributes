@@ -34,3 +34,6 @@
 *.zip    binary
 *.woff   binary
 *.woff2  binary
+
+# Font binari (standar template export)
+*.ttf    binary

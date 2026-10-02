@@ -319,15 +319,10 @@ class SignatureCoverageTests(TestCase):
         )
 
     def test_every_perencanaan_document_emits_the_shared_block(self):
+        """PDF standar template (2026-10-02): setiap dokumen perencanaan memuat
+        lembar pengesahan bersama dengan nama penanda tangan dari Dashboard."""
         from detail_project.exports.export_manager import ExportManager
-        from detail_project.exports.pdf_exporter import PDFExporter
-
-        original = PDFExporter._build_signatures
-        called = set()
-
-        def spy(exporter_self):
-            called.add(spy.current)
-            return original(exporter_self)
+        from detail_project.tests_jadwal_monthly_report import pdf_page_texts
 
         exports = {
             "rekap_rab": lambda m: m.export_rekap_rab("pdf"),
@@ -336,16 +331,11 @@ class SignatureCoverageTests(TestCase):
             "harga_items": lambda m: m.export_harga_items("pdf"),
             "rekap_kebutuhan": lambda m: m.export_rekap_kebutuhan("pdf"),
         }
-
-        PDFExporter._build_signatures = spy
-        try:
-            for name, call in exports.items():
-                spy.current = name
-                call(ExportManager(self.project))
-        finally:
-            PDFExporter._build_signatures = original
-
-        missing = sorted(set(exports) - called)
+        missing = []
+        for name, call in exports.items():
+            text = "\n".join(pdf_page_texts(call(ExportManager(self.project)).content))
+            if "LEMBAR PENGESAHAN" not in text or "Rozan Fahriady" not in text:
+                missing.append(name)
         self.assertEqual(
             missing,
             [],

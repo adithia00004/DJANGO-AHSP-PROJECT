@@ -138,6 +138,7 @@ class RekapKebutuhanAdapter:
                     pass
         
         rows: List[List[str]] = []
+        row_kategori: List[str] = []  # kategori per baris (pengelompokan template standar)
         counts = Counter()
         
         for r in rows_src:
@@ -181,6 +182,7 @@ class RekapKebutuhanAdapter:
                 self._to_dec(harga_total),
             ])
             counts[kat] += 1
+            row_kategori.append(kat)
 
         footer_rows = [
             ['Total Items', str(len(rows_src))],
@@ -261,6 +263,7 @@ class RekapKebutuhanAdapter:
             }
 
         return {
+            'row_kategori': row_kategori,
             'table_data': {
                 'headers': headers,
                 'rows': rows,
