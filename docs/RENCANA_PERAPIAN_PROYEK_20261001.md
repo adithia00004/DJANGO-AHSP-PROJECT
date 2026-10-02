@@ -28,12 +28,12 @@ Perubahan dari v1:
 
 ---
 
-## 1. Kondisi saat ini (snapshot main `091f9c73`, 2026-10-01)
+## 1. Kondisi saat ini (snapshot setelah merge lokal `70e32b3c`, 2026-10-02)
 
 | Area | Kondisi | Bukti |
 |---|---|---|
-| `main` | `091f9c73`; pekerjaan A-5/A-6 dan A-9 sudah masuk lokal, tanpa push. Commit dasar sebelum rangkaian merge: `69059282` (2026-02-11) | `git show -s --format=fuller main` |
-| Branch | A-9 fast-forward lokal ke `main` selesai di `091f9c73`, tanpa push. T-4/T-6x dikerjakan di `chore/satukan-toast` sampai `2bbb253b`; belum digabung karena cek visual owner T-4/T-6x masih terbuka. `fix/rekap-pdf-layout` tetap di worktree `../ahsp-pdf-rekap-layout`. Empat branch lama belum tergabung; lihat A-8 | `git worktree list`, `git branch --no-merged` |
+| `main` | Merge lokal T-4/T-6x dan template export selesai di `70e32b3c`; tanpa push. Commit dasar sebelum rangkaian merge: `69059282` (2026-02-11) | `git show -s --format=fuller main` |
+| Branch | A-9 fast-forward lokal ke `main` selesai di `091f9c73`. `feat/standar-template` (PDF/Word) masuk cepat-maju melalui `8fb4d42b`; `chore/satukan-toast` masuk lewat merge `70e32b3c`. Owner mengizinkan merge lokal 2026-10-02; tidak ada push. Cek visual owner T-4/T-6x dan export masih terbuka di tracker. `fix/rekap-pdf-layout` tetap di worktree `../ahsp-pdf-rekap-layout`. Empat branch lama belum tergabung; lihat A-8 | `git worktree list`, `git branch --no-merged` |
 | Branch lama belum tergabung | 4 branch, **bukan** bagian garis kerja: `claude/fix-transaction-management-error-011CUox8f9ABCiXmbvqMPmtS` (1 commit, 2025-11-05), `codex/review-workflow_3_pages-and-create-agenda` (1, 2025-11-13), `fix/kurva-s-phase1-critical-fixes` (48, 2026-01-13), `refactor/bundle-quantity-semantic` (16, 2025-12-26). `git cherry` belum menemukan padanan patch, **tetapi isinya bisa saja sudah diintegrasikan ulang dengan cara lain** → perlu review (A-8) | `git branch --no-merged`, `git cherry` |
 | WIP owner | W-1..W-4 sudah dipisah menjadi 3 commit (`bf92d0c7`, `de212bd8`, `6c87a6e6`); kode WIP tidak lagi tersisa di working tree | `git log -3`, bukti A-3 |
 | Migrasi | 27 berkas migrasi di antara `main` dan ujung. **11 menyentuh data atau menambah constraint** (tabel di bawah). Jumlah yang *benar-benar pending* di DB produksi **belum diketahui** | `git diff --name-only main..HEAD -- '*/migrations/*.py'` |
@@ -267,7 +267,7 @@ Status: `TODO` / `WIP` / `REVIEW` / `DONE` / `BLOCKED` (alasan wajib) / `SKIP` (
 | T-6xv | Cek visual owner untuk rincian error import yang tetap terbaca | T-6x | TODO | Owner | | |
 | T-6v | Cek visual owner T-6 | T-6 | DONE | Owner | Owner 2026-10-01: disetujui bersama T-3v | 2026-10-01 |
 | T-4.0 | Inventaris jalur toast (klasifikasi) | T-2 | DONE | Codex | Inventaris §9.1 memeriksa 13 jalur di luar inti; 3 area sudah adapter, 9 renderer aplikasi ditangani, dan partial pesan server ganda dihapus. Markup `import_pdf_parts.html` tidak punya pemuat aktif. | 2026-10-01 |
-| T-4.x | Satukan renderer aktif; pertahankan aksi Undo/Refresh | T-4.0 | DONE | Codex | `39d340fa`, `803fe186`, `4f8f3f78`, `997e2945`, `8344bf1f`, `9a52da2e`, `906ba54d`, `9f85ed18`, `c11c58f4`, `8b2351b1`, `ebcbb945`, `5c550388`. Harga Items, Rekap Kebutuhan, Dashboard sudah delegasi; partial pesan ganda dihapus, CSS toast mati dibersihkan, Jadwal dist dibangun ulang. Vitest 40 file/460 lulus/25 skipped; build lulus. Django terarah: Rincian 10, Volume 29, List+Rekap 21. | 2026-10-01 |
+| T-4.x | Satukan renderer aktif; pertahankan aksi Undo/Refresh | T-4.0 | DONE | Codex | `39d340fa`, `803fe186`, `4f8f3f78`, `997e2945`, `8344bf1f`, `9a52da2e`, `906ba54d`, `9f85ed18`, `c11c58f4`, `8b2351b1`, `ebcbb945`, `5c550388`; merge lokal `70e32b3c`. Vitest 40 file/460 lulus/25 skipped; build lulus. Django terarah: Rincian 10, Volume 29, List+Rekap 21. | 2026-10-02 |
 | T-4.g | Tes penjaga renderer independen | T-4.x | DONE | Codex | `detail_project.tests_toast_renderer_guard`: 4 tes lulus; tidak ada renderer DOM/Bootstrap toast di luar `core/toast.js`, alert server ganda, atau gaya fallback mati pada CSS aktif. | 2026-10-01 |
 | T-4v | Cek visual owner T-4 (posisi/durasi, tombol Undo/Refresh, pesan server) | T-4.x | TODO | Owner | | |
 | T-5.0 | Tabel teks "sebelum → sesudah" | T-4.0 | TODO | | | |

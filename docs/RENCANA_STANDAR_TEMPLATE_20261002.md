@@ -5,8 +5,8 @@
 | Tanggal | 2026-10-02 |
 | Pembaca | Owner, Codex, Claude |
 | Dasar | `D:\PORTOFOLIO ADIT\usulan_standar_template\Usulan_Standar_Template_Dokumen_Export_v4.pdf` (disetujui owner 2026-10-02, termasuk Rincian 0,4 cm, palet, dan krem/tint minimal) |
-| Branch | `feat/standar-template` dari `main` `091f9c73`, di worktree `../ahsp-standar-template` (folder utama dipakai Codex untuk `chore/satukan-toast`) |
-| Status | **WIP** — T1–T3 selesai (menunggu cek visual owner); T4–T5 berikutnya |
+| Branch | `feat/standar-template` dibuat dari `main` `091f9c73`; commits `0a3105b7`, `156964aa`, `8fb4d42b` masuk lokal ke `main` di `70e32b3c` (tanpa push). Worktree `../ahsp-standar-template` tetap tersedia. |
+| Status | **WIP di main lokal** — T1–T3 terpasang; cek visual owner masih menunggu; T4–T5 berikutnya |
 
 ## 1. Keputusan
 
@@ -49,7 +49,7 @@ Status: `TODO` / `WIP` / `REVIEW` / `DONE`.
 | T3 | Paket Perencanaan utuh: cover + daftar isi + nomor halaman, 5 dokumen | REVIEW | PDF & Word 217: 20 halaman (sama) |
 | T4 | Laporan Jadwal: palet + "Halaman x dari y" + header kanan | TODO | |
 | T5 | Registri desain (R-51 dst.), tes penjaga, hapus jalur lama yang tidak terpakai | WIP | R-51–R-55 dicatat di `docs/DESIGN_REGISTRY_EXPORT.md`; tes penjaga dan pembersihan jalur lama belum dilakukan. |
-| V | Cek visual owner per tahap (sampel proyek 217) | TODO | |
+| V | Cek visual owner per tahap (sampel proyek 217) | REVIEW | Codex merender sampel PDF proyek 217 dan memeriksa cover, daftar isi, RAB, Rincian AHSP, Volume, Harga Satuan Dasar, Rekap Kebutuhan, serta halaman akhir: tidak terlihat clipping/overlap. Render Word belum tersedia; pemilik masih perlu meninjau PDF/Word sebelum dianggap selesai. |
 
 ## 4. Aturan kerja
 
@@ -65,3 +65,10 @@ Status: `TODO` / `WIP` / `REVIEW` / `DONE`.
 - Template bawaan python-docx: urutan anak `tblPr` harus sesuai skema OOXML (`_tblpr_insert`), tanda paragraf sel ikut ukuran teks.
 - Huruf PDF DejaVu Sans dari `exports/fonts` (fallback Helvetica bila berkas hilang); Word Arial (∅ dirender Word dengan font pengganti).
 - Tes container worktree: entrypoint image dilewati (ia menjalankan migrate + collectstatic ke DB bersama).
+
+## 6. Hasil integrasi lokal (2026-10-02)
+
+- Branch export (`0a3105b7`, `156964aa`, `8fb4d42b`) dan branch T-4/T-6x digabung lokal ke `main` di `70e32b3c`. Tidak ada push.
+- Gerbang PostgreSQL di container sementara yang me-mount `ahsp-standar-template`, memakai `POSTGRES_TEST_DB=test_standartemplate_20261002_a01` dan `config.settings.test_pg`: **1.057 tes lulus, 0 gagal, 40 skipped**. Django menghapus database tes setelah suite selesai; pengecekan `pg_database` mengonfirmasi database tersebut sudah tidak ada.
+- Gerbang yang sama dengan SQLite menyisakan satu kegagalan lama, `test_incomplete_planned_allocation_flags_partial_only` (`"60"` vs `"60.00"`); kegagalan ini juga direproduksi di baseline `main` `091f9c73`. Gate PostgreSQL hijau.
+- Pascamerge: Vitest **40 file, 460 lulus, 25 skipped**; `npm run build` lulus (peringatan chunk Jadwal >500 KB tetap ada); 28 tes Django terarah untuk template standar, T-4 guard, dan keamanan pesan impor lulus.
