@@ -123,3 +123,44 @@ class StandardPlanningPdfTests(TestCase):
                       'Volume Pekerjaan', 'Daftar Harga Satuan Dasar', 'Rekap Kebutuhan Material'):
             self.assertIn(title, pages[1])
         self.assertIn(f'Halaman {len(pages)} dari {len(pages)}', pages[-1])
+
+
+class StandardPlanningWordTests(StandardPlanningPdfTests):
+    """Word mengikuti spesifikasi yang sama dengan PDF (S-8)."""
+
+    def _doc(self, call):
+        from io import BytesIO
+
+        from docx import Document
+
+        return Document(BytesIO(call(ExportManager(self.project)).content))
+
+    def test_word_has_running_footer_with_page_fields_and_arial(self):
+        doc = self._doc(lambda m: m.export_rekap_rab('word'))
+        self.assertEqual(doc.styles['Normal'].font.name, 'Arial')
+        footer_xml = doc.sections[0].footer._element.xml
+        self.assertIn('PAGE', footer_xml)
+        self.assertIn('NUMPAGES', footer_xml)
+        self.assertIn('Dashboard-RAB.com', footer_xml)
+        self.assertIn('Rencana Anggaran Biaya', doc.sections[0].header.paragraphs[0].text)
+
+    def test_word_rincian_rows_use_compact_minimum(self):
+        doc = self._doc(lambda m: m.export_rincian_ahsp('word'))
+        detail = [t for t in doc.tables if len(t.columns) == 7 and 'Koefisien' in t.rows[0].cells[4].text]
+        self.assertTrue(detail, 'tabel rincian tidak ditemukan')
+        heights = {round(r.height.cm, 2) for t in detail for r in t.rows if r.height is not None}
+        self.assertEqual(heights, {ROW_MIN_HEIGHT_RINCIAN_CM})
+
+    def test_word_paket_has_cover_toc_and_section_per_document(self):
+        doc = self._doc(lambda m: m.export_paket_perencanaan('word'))
+        self.assertTrue(doc.sections[0].different_first_page_header_footer)  # cover tanpa header
+        self.assertIn('TOC', doc.element.body.xml)
+        headers = [s.header.paragraphs[0].text for s in doc.sections]
+        for title in ('Rencana Anggaran Biaya', 'Analisa Harga Satuan Pekerjaan', 'Volume Pekerjaan',
+                      'Daftar Harga Satuan Dasar', 'Rekap Kebutuhan Material'):
+            self.assertTrue(any(title in h for h in headers), f'section {title} tidak ada')
+
+    # Tes PDF warisan tidak diulang di kelas ini.
+    test_planning_pdfs_use_standard_running_header_and_footer = None
+    test_rab_font_has_special_symbols_and_percent_is_id = None
+    test_paket_pdf_is_one_document_with_cover_toc_and_five_documents = None

@@ -127,8 +127,8 @@ class ExportManager:
         """
         config = self._create_config()
         data = self._build_rekap_rab_data()
-        if format_type == 'pdf':
-            return self._standard_pdf('rekap_rab', data, config)
+        if format_type in ('pdf', 'word'):
+            return self._standard_pdf('rekap_rab', data, config, format_type)
 
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:
@@ -266,16 +266,16 @@ class ExportManager:
         mengenal "dokumen berurutan".
         """
         config = self._create_config_simple('PAKET PERENCANAAN', page_orientation='portrait')
-        if format_type == 'pdf':
+        if format_type in ('pdf', 'word'):
             # Standar template (T3, S-5): satu dokumen utuh berisi 5 dokumen
             # perencanaan termasuk Rekap Kebutuhan, dengan cover + daftar isi.
             from .rekap_kebutuhan_adapter import RekapKebutuhanAdapter
-            from .standard.render import export_package_pdf
+            from .standard.render import export_package_pdf, export_package_word
 
             kinds = ['rekap_rab', 'rincian_ahsp', 'volume_pekerjaan', 'harga_items']
             docs = [(kind, doc['data']) for kind, doc in zip(kinds, self._collect_paket_documents())]
             docs.append(('rekap_kebutuhan', RekapKebutuhanAdapter(self.project).get_export_data()))
-            return export_package_pdf(docs, config)
+            return (export_package_word if format_type == 'word' else export_package_pdf)(docs, config)
         documents = self._collect_paket_documents()
 
         exporter_class = self.EXPORTER_MAP.get(format_type)
@@ -288,11 +288,12 @@ class ExportManager:
         return exporter.export_package(documents)
 
     @staticmethod
-    def _standard_pdf(kind: str, data: Dict[str, Any], config) -> HttpResponse:
-        """Dokumen perencanaan PDF memakai standar template (docs/RENCANA_STANDAR_TEMPLATE_20261002.md)."""
-        from .standard.render import export_pdf
+    def _standard_pdf(kind: str, data: Dict[str, Any], config, format_type: str = 'pdf') -> HttpResponse:
+        """Dokumen perencanaan PDF/Word memakai standar template
+        (docs/RENCANA_STANDAR_TEMPLATE_20261002.md)."""
+        from .standard.render import export_pdf, export_word
 
-        return export_pdf(kind, data, config)
+        return (export_word if format_type == 'word' else export_pdf)(kind, data, config)
 
     def _create_config(self) -> ExportConfig:
         """Create export configuration for Rekap RAB (uses PERENCANAAN preset)"""
@@ -555,8 +556,8 @@ class ExportManager:
 
         # Doc 32 Fase 2 — replikasi style registry (pola pilot Harga Items)
         data['style_registry'] = True
-        if format_type == 'pdf':
-            return self._standard_pdf('rekap_kebutuhan', data, config)
+        if format_type in ('pdf', 'word'):
+            return self._standard_pdf('rekap_kebutuhan', data, config, format_type)
 
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:
@@ -588,8 +589,8 @@ class ExportManager:
 
         # Doc 32 Fase 2 — replikasi style registry (pola pilot Harga Items)
         data['style_registry'] = True
-        if format_type == 'pdf':
-            return self._standard_pdf('volume_pekerjaan', data, config)
+        if format_type in ('pdf', 'word'):
+            return self._standard_pdf('volume_pekerjaan', data, config, format_type)
 
         # Get exporter
         exporter_class = self.EXPORTER_MAP.get(format_type)
@@ -625,8 +626,8 @@ class ExportManager:
         # Doc 32 Fase 2 — PILOT aktivasi style registry (per-report).
         # Hanya PDFExporter yang mengonsumsi flag ini; Word menyusul Fase 3.
         data['style_registry'] = True
-        if format_type == 'pdf':
-            return self._standard_pdf('harga_items', data, config)
+        if format_type in ('pdf', 'word'):
+            return self._standard_pdf('harga_items', data, config, format_type)
 
         # Get exporter
         exporter_class = self.EXPORTER_MAP.get(format_type)
@@ -658,8 +659,8 @@ class ExportManager:
 
         # Doc 32 Fase 2 — replikasi style registry (pola pilot Harga Items)
         data['style_registry'] = True
-        if format_type == 'pdf':
-            return self._standard_pdf('rincian_ahsp', data, config)
+        if format_type in ('pdf', 'word'):
+            return self._standard_pdf('rincian_ahsp', data, config, format_type)
 
         # Get exporter
         exporter_class = self.EXPORTER_MAP.get(format_type)
