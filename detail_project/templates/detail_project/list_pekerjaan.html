@@ -13,9 +13,6 @@
 {% endblock %}
 
 {% block dp_content %}
-{# ===== [A] ALERT (GLOBAL) ===== #}
-{% include 'detail_project/_alert.html' %}
-
 {# ===== [B] ROOT WRAPPER / PAGE SHELL ===== #}
 <div id="lp-app" class="lp-app container-fluid list-pekerjaan ux-scrollbar ux-scroll-smooth"
   data-project-id="{{ project.id }}" data-ref-year="{{ project.tahun_project|default:'' }}" data-dom-version="lp-v2"

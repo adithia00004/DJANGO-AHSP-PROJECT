@@ -348,43 +348,15 @@ const ErrorHandler = (() => {
     }
 
     // ===== TOAST NOTIFICATIONS =====
-    // Use global DP.toast system - this is just a fallback
+    // The global core toast is loaded before this module from templates/base.html.
     function showToast(type, message) {
-        // Prefer global toast system
-        if (window.DP && window.DP.toast && window.DP.toast[type]) {
-            window.DP.toast[type](message);
-            return;
+        const api = window.DP?.toast;
+        if (!api) {
+            console.warn('[DP.errorHandler] DP.toast tidak tersedia:', type, message);
+            return null;
         }
-
-        // Fallback to basic alert (if global toast not loaded yet)
-        const toastId = `toast_${Date.now()}`;
-        const iconMap = {
-            success: 'bi-check-circle-fill',
-            warning: 'bi-exclamation-triangle-fill',
-            error: 'bi-x-circle-fill',
-            danger: 'bi-x-circle-fill',
-            info: 'bi-info-circle-fill',
-        };
-
-        const toastHTML = `
-            <div id="${toastId}" class="alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed dp-z-toast" 
-                 style="top: 20px; left: 50%; transform: translateX(-50%); min-width: 300px; z-index: 13100;"
-                 role="alert">
-                <i class="bi ${iconMap[type] || iconMap.info} me-2"></i>
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', toastHTML);
-
-        // Auto-remove after 5s
-        setTimeout(() => {
-            const toast = document.getElementById(toastId);
-            if (toast) {
-                toast.remove();
-            }
-        }, 5000);
+        const method = api[type] || api.info;
+        return method(message);
     }
 
     // ===== INITIALIZATION =====

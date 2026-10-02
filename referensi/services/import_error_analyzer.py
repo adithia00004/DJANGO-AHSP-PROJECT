@@ -10,6 +10,8 @@ import traceback
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
+from django.utils.html import escape
+
 
 @dataclass
 class ErrorAnalysis:
@@ -492,7 +494,7 @@ def format_error_as_html(analysis: ErrorAnalysis) -> str:
     icon = icon_map.get(analysis.severity, 'ℹ️')
 
     html_parts.append(f'<div class="error-message-container">')
-    html_parts.append(f'<h5 class="error-title">{icon} {analysis.user_message}</h5>')
+    html_parts.append(f'<h5 class="error-title">{icon} {escape(analysis.user_message)}</h5>')
 
     # Parse suggestions which contain structured data
     if analysis.suggestions:
@@ -565,27 +567,27 @@ def format_error_as_html(analysis: ErrorAnalysis) -> str:
                 # Content lines
                 if current_section == 'data' and line.startswith('•'):
                     # Duplicate data field
-                    html_parts.append(f'<div class="field-value">{line}</div>')
+                    html_parts.append(f'<div class="field-value">{escape(line)}</div>')
 
                 elif current_section == 'reason' and line.startswith(('1.', '2.', '3.')):
                     # Remove number and checkmark/warning icon
                     clean_line = line[3:].strip()
                     if clean_line.startswith('✅'):
                         clean_line = clean_line[2:].strip()
-                        html_parts.append(f'<li class="likely">✅ {clean_line}</li>')
+                        html_parts.append(f'<li class="likely">✅ {escape(clean_line)}</li>')
                     elif clean_line.startswith('⚠️'):
                         clean_line = clean_line[2:].strip()
-                        html_parts.append(f'<li class="possible">⚠️ {clean_line}</li>')
+                        html_parts.append(f'<li class="possible">⚠️ {escape(clean_line)}</li>')
                     else:
-                        html_parts.append(f'<li>{clean_line}</li>')
+                        html_parts.append(f'<li>{escape(clean_line)}</li>')
 
                 elif current_section in ('option1', 'option2') and line.startswith(('1.', '2.', '3.', '4.')):
                     clean_line = line[3:].strip()
-                    html_parts.append(f'<li>{clean_line}</li>')
+                    html_parts.append(f'<li>{escape(clean_line)}</li>')
 
                 elif current_section == 'option3' and line.startswith('•'):
                     clean_line = line[2:].strip()
-                    html_parts.append(f'<li>{clean_line}</li>')
+                    html_parts.append(f'<li>{escape(clean_line)}</li>')
 
             # Close any open tags
             if current_section == 'option3':
@@ -600,14 +602,14 @@ def format_error_as_html(analysis: ErrorAnalysis) -> str:
 
             # Technical details
             if analysis.error_type != 'Unknown':
-                html_parts.append(f'<p><strong>🔧 Tipe Error:</strong> <code>{analysis.error_type}</code></p>')
+                html_parts.append(f'<p><strong>🔧 Tipe Error:</strong> <code>{escape(analysis.error_type)}</code></p>')
 
             # Affected rows
             if analysis.affected_rows:
                 rows_str = ', '.join(map(str, analysis.affected_rows[:10]))
                 if len(analysis.affected_rows) > 10:
                     rows_str += f", ... (+{len(analysis.affected_rows) - 10} lainnya)"
-                html_parts.append(f'<p><strong>📍 Baris bermasalah:</strong> {rows_str}</p>')
+                html_parts.append(f'<p><strong>📍 Baris bermasalah:</strong> {escape(rows_str)}</p>')
 
             # Suggestions
             if analysis.suggestions:
@@ -617,7 +619,7 @@ def format_error_as_html(analysis: ErrorAnalysis) -> str:
                 for suggestion in analysis.suggestions:
                     clean_suggestion = suggestion.strip()
                     if clean_suggestion and not clean_suggestion.startswith(('📝', '🔧', '💡')):
-                        html_parts.append(f'<li>{clean_suggestion}</li>')
+                        html_parts.append(f'<li>{escape(clean_suggestion)}</li>')
                 html_parts.append('</ul>')
                 html_parts.append('</div>')
 

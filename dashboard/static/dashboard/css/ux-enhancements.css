@@ -735,109 +735,6 @@
 }
 
 /* ===========================================================
-   TOAST NOTIFICATIONS
-   =========================================================== */
-.toast-container-modern {
-  position: fixed;
-  top: 2rem;
-  right: 2rem;
-  z-index: var(--z-toast, 1060);
-  display: flex;
-  flex-direction: column;
-  gap: var(--corp-space-3);
-  max-width: 400px;
-}
-
-.toast-modern {
-  background: var(--dp-c-surface);
-  border: 1px solid var(--dp-c-border);
-  border-radius: var(--corp-radius-lg);
-  box-shadow: var(--corp-shadow-xl);
-  padding: var(--corp-space-4);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--corp-space-3);
-  animation: toastSlideIn var(--corp-duration-300) var(--corp-ease-out);
-}
-
-@keyframes toastSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.toast-icon {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 0.875rem;
-}
-
-.toast-success .toast-icon {
-  background: var(--corp-success-light);
-  color: var(--corp-success-dark);
-}
-
-.toast-warning .toast-icon {
-  background: var(--corp-warning-light);
-  color: var(--corp-warning-dark);
-}
-
-.toast-error .toast-icon {
-  background: var(--corp-danger-light);
-  color: var(--corp-danger-dark);
-}
-
-.toast-info .toast-icon {
-  background: var(--corp-info-light);
-  color: var(--corp-info-dark);
-}
-
-.toast-content {
-  flex: 1;
-}
-
-.toast-title {
-  font-size: var(--corp-font-sm);
-  font-weight: var(--corp-font-semibold);
-  color: var(--dp-c-text);
-  margin-bottom: 0.25rem;
-}
-
-.toast-message {
-  font-size: var(--corp-font-xs);
-  color: var(--dp-c-muted);
-  line-height: var(--corp-leading-normal);
-}
-
-.toast-close {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--dp-c-muted);
-  border-radius: var(--corp-radius-sm);
-  transition: all var(--corp-duration-150) var(--corp-ease-out);
-}
-
-.toast-close:hover {
-  background: var(--dp-c-surface-2);
-  color: var(--dp-c-text);
-}
-
-/* ===========================================================
    EMPTY STATES
    =========================================================== */
 .empty-state-modern {
@@ -912,13 +809,6 @@
 
   .filter-group {
     width: 100%;
-  }
-
-  .toast-container-modern {
-    top: 1rem;
-    right: 1rem;
-    left: 1rem;
-    max-width: none;
   }
 
   .bulk-actions-bar.active {

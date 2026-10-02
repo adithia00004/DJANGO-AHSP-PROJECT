@@ -329,34 +329,21 @@
           if (changedProjectId && String(changedProjectId) === String(projectId)) {
             log('[BROADCAST] Received ordering_changed from other tab');
 
-            // Show warning toast
-            tShow('Urutan pekerjaan diubah di tab lain. Refresh halaman untuk melihat perubahan terbaru.', 'warning', 8000);
-
-            // Optionally: Add refresh button to banner
-            const banner = document.createElement('div');
-            banner.className = 'alert alert-warning alert-dismissible fade show position-fixed';
-            banner.style.cssText = 'top: 80px; right: 20px; z-index: 9999; max-width: 400px;';
-            banner.innerHTML = `
-              <strong>Perubahan dari tab lain</strong><br>
-              <small>Urutan pekerjaan telah diubah di tab lain.</small>
-              <div class="mt-2">
-                <button class="btn btn-sm btn-warning" data-action="lp-reload">
-                  <i class="bi bi-arrow-clockwise"></i> Refresh Sekarang
-                </button>
-              </div>
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
-            `;
-            document.body.appendChild(banner);
-
-            const reloadBtn = banner.querySelector('[data-action="lp-reload"]');
-            if (reloadBtn) {
-              reloadBtn.addEventListener('click', () => {
-                confirmReload('Perubahan dari tab lain tidak akan terlihat sebelum reload.');
+            const message = 'Urutan pekerjaan diubah di tab lain. Refresh halaman untuk melihat perubahan terbaru.';
+            if (window.DP?.toast?.show) {
+              window.DP.toast.show({
+                title: 'Perubahan dari tab lain',
+                message,
+                type: 'warning',
+                duration: 30000,
+                actions: [{
+                  label: 'Refresh Sekarang',
+                  onClick: () => confirmReload('Perubahan dari tab lain tidak akan terlihat sebelum reload.'),
+                }],
               });
+            } else {
+              tShow(message, 'warning', 30000);
             }
-
-            // Auto-remove after 30 seconds
-            setTimeout(() => banner.remove(), 30000);
           }
         }
       };

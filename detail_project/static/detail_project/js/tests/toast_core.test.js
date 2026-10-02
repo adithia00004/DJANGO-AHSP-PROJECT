@@ -148,6 +148,39 @@ describe('core/toast.js', () => {
     expect(visible()).toHaveLength(0);
   });
 
+  test('tombol aksi dirender sebagai teks, memanggil callback, lalu menutup toast', () => {
+    const toast = loadToast();
+    const onClick = vi.fn();
+    const el = toast.show({
+      message: 'Impor selesai',
+      type: 'success',
+      duration: 0,
+      actions: [{ label: '<Undo>', onClick }],
+    });
+    const button = el.querySelector('.dp-toast-action');
+
+    expect(button.textContent).toBe('<Undo>');
+    expect(el.querySelector('undo')).toBeNull();
+    button.click();
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(el.classList.contains('dp-toast-hide')).toBe(true);
+    expect(visible()).toHaveLength(0);
+  });
+
+  test('toast aksi dengan pesan sama tetap punya callback masing-masing', () => {
+    const toast = loadToast();
+    const firstAction = vi.fn();
+    const secondAction = vi.fn();
+    const first = toast.show({ message: 'Undo tersedia', actions: [{ label: 'Undo', onClick: firstAction }] });
+    const second = toast.show({ message: 'Undo tersedia', actions: [{ label: 'Undo', onClick: secondAction }] });
+
+    expect(first).not.toBe(second);
+    first.querySelector('.dp-toast-action').click();
+    expect(firstAction).toHaveBeenCalledOnce();
+    expect(secondAction).not.toHaveBeenCalled();
+    expect(visible()).toEqual([second]);
+  });
+
   test('window.showToast & DP.core.toast memakai aturan yang sama', () => {
     loadToast();
     window.showToast('x', 'danger');

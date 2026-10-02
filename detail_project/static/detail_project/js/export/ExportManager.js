@@ -728,44 +728,15 @@ class ExportManager {
    * Show toast notification
    * @private
    */
-  _toast(message, type = 'info') {
-    // Check for existing toast system
-    if (window.TOAST) {
-      if (type === 'success') {
-        window.TOAST.ok(message);
-      } else if (type === 'danger' || type === 'error') {
-        window.TOAST.err(message);
-      } else {
-        window.TOAST.info && window.TOAST.info(message);
-      }
-    } else {
-      // Fallback: create simple toast
-      this._showSimpleToast(message, type);
+    _toast(message, type = 'info') {
+    const api = window.DP?.toast;
+    if (!api) {
+      console.warn('[ExportManager] DP.toast tidak tersedia:', message);
+      return null;
     }
-  }
-
-  /**
-   * Simple toast fallback (if no toast system available)
-   * @private
-   */
-  _showSimpleToast(message, type) {
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${type === 'danger' ? 'danger' : type === 'success' ? 'success' : 'info'} position-fixed`;
-    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-    toast.textContent = message;
-    toast.role = 'alert';
-
-    document.body.appendChild(toast);
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.3s';
-      setTimeout(() => {
-        if (document.body.contains(toast)) {
-          document.body.removeChild(toast);
-        }
-      }, 300);
-    }, 3000);
+    const normalizedType = type === 'danger' ? 'error' : type;
+    const method = api[normalizedType] || api.info;
+    return method(message);
   }
 
   /**
